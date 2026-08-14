@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { logoutAction } from "@/app/login/actions";
+import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
+import { usePersistedState } from "@/lib/use-persisted-state";
 
 type NavItem = {
   href: string;
@@ -29,52 +32,174 @@ type SidebarProps = {
 export function Sidebar({ shopName, staffName, roleLabel, isOwner }: SidebarProps) {
   const pathname = usePathname();
   const items = NAV.filter((item) => !item.ownerOnly || isOwner);
+  const [collapsed, setCollapsed] = usePersistedState(STORAGE_KEYS.sidebarCollapsed, false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMobileOpen(false);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  const iconOnly = collapsed;
 
   return (
-    <aside className="flex w-[220px] shrink-0 flex-col bg-slate-900 text-slate-200">
-      <div className="flex items-center gap-2 px-5 py-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-500 text-sm font-bold text-white">
-          S
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-white">ShopInbox</p>
-          <p className="text-[11px] text-slate-400">{shopName}</p>
-        </div>
-      </div>
+    <>
+      <button
+        type="button"
+        aria-label="Mở menu"
+        onClick={() => setMobileOpen(true)}
+        className="icon-btn fixed left-3 top-3 z-40 bg-surface shadow-sm ring-1 ring-border md:hidden"
+      >
+        <MenuIcon />
+      </button>
 
-      <nav className="flex flex-1 flex-col gap-1 px-3">
-        {items.map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
-                active
-                  ? "bg-teal-500 text-white"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              }`}
+      {mobileOpen ? (
+        <button
+          type="button"
+          aria-label="Đóng menu"
+          className="fixed inset-0 z-40 bg-slate-900/30 backdrop-blur-[1px] transition-opacity duration-150 md:hidden"
+          onClick={() => setMobileOpen(false)}
+        />
+      ) : null}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-surface shadow-lg transition-[width,transform] duration-200 ease-out md:static md:z-auto md:shadow-none ${
+          iconOnly ? LAYOUT_CLASS.sidebarCollapsed : LAYOUT_CLASS.sidebar
+        } ${mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
+      >
+        <div
+          className={`flex items-center border-b border-border py-4 ${iconOnly ? "flex-col gap-2 px-2" : "gap-3 px-4"}`}
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-600 text-sm font-bold text-white shadow-sm">
+            S
+          </div>
+          {!iconOnly ? (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-slate-900">ShopInbox</p>
+              <p className="truncate text-xs text-slate-500">{shopName}</p>
+            </div>
+          ) : null}
+          {!iconOnly ? (
+            <button
+              type="button"
+              aria-label="Thu gọn sidebar"
+              onClick={() => setCollapsed(true)}
+              className="icon-btn hidden shrink-0 md:inline-flex"
             >
-              <item.icon />
-              {item.label}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="border-t border-slate-800 px-4 py-4">
-        <p className="text-sm font-medium text-white">{staffName}</p>
-        <p className="text-xs text-slate-400">{roleLabel}</p>
-        <form action={logoutAction}>
+              <ChevronLeftIcon />
+            </button>
+          ) : null}
           <button
-            type="submit"
-            className="mt-2 text-xs text-slate-500 hover:text-slate-300"
+            type="button"
+            aria-label="Đóng menu"
+            onClick={() => setMobileOpen(false)}
+            className={`icon-btn shrink-0 ${iconOnly ? "" : "md:hidden"}`}
           >
-            Đăng xuất
+            <CloseIcon />
           </button>
-        </form>
-      </div>
-    </aside>
+        </div>
+
+        <nav className={`flex flex-1 flex-col gap-1 py-4 ${iconOnly ? "px-2" : "px-3"}`}>
+          {items.map((item) => {
+            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setMobileOpen(false)}
+                title={iconOnly ? item.label : undefined}
+                className={`flex items-center rounded-lg text-sm font-medium transition-colors duration-150 ${
+                  iconOnly ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5"
+                } ${
+                  active
+                    ? "bg-teal-50 text-teal-800 ring-1 ring-teal-200"
+                    : "text-slate-600 hover:bg-surface-muted hover:text-slate-900"
+                }`}
+              >
+                <span className={active ? "text-teal-600" : "text-slate-400"}>
+                  <item.icon />
+                </span>
+                {!iconOnly ? item.label : null}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className={`border-t border-border py-4 ${iconOnly ? "px-2" : "px-4"}`}>
+          {!iconOnly ? (
+            <div className="rounded-lg bg-surface-muted px-3 py-2.5">
+              <p className="truncate text-sm font-medium text-slate-900">{staffName}</p>
+              <p className="text-xs text-slate-500">{roleLabel}</p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              aria-label="Mở rộng sidebar"
+              onClick={() => setCollapsed(false)}
+              className="icon-btn mx-auto hidden w-full md:flex"
+            >
+              <ChevronRightIcon />
+            </button>
+          )}
+          <form action={logoutAction}>
+            <button
+              type="submit"
+              title="Đăng xuất"
+              className={`btn-ghost mt-2 text-xs ${iconOnly ? "w-full justify-center px-0" : "w-full justify-start px-2"}`}
+            >
+              {iconOnly ? <LogoutIcon /> : "Đăng xuất"}
+            </button>
+          </form>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+function MenuIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function ChevronLeftIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="m15 18-6-6 6-6" />
+    </svg>
+  );
+}
+
+function ChevronRightIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
+function LogoutIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" x2="9" y1="12" y2="12" />
+    </svg>
   );
 }
 

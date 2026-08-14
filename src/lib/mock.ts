@@ -1,3 +1,4 @@
+/** Seed/demo data cho Prisma seed — không phải API runtime. */
 import type {
   ChannelAccount,
   Conversation,
@@ -262,14 +263,14 @@ export const quickReplies: QuickReply[] = [
   { id: "q3", title: "Ship trong ngày", text: "Shop gửi trong ngày, 1-2 ngày nhận ạ." },
 ];
 
-export function customerById(id: string) {
+export function getCustomerById(id: string) {
   return customers.find((item) => item.id === id);
 }
 
-export function ordersByCustomer(customerId: string) {
+export function getOrdersByCustomer(customerId: string) {
   return orders.filter((item) => item.customerId === customerId);
 }
 
-export function messagesByConversation(conversationId: string) {
+export function getMessagesByConversation(conversationId: string) {
   return messages.filter((item) => item.conversationId === conversationId);
 }

@@ -1,5 +1,6 @@
 import { ChannelBadge } from "@/components/ChannelBadge";
-import { ORDER_STATUS_LABEL, formatMoney, formatTime, orderTotal } from "@/lib/labels";
+import { OrderStatusSelect } from "@/components/OrderStatusSelect";
+import { formatMoney, formatTime, orderTotal } from "@/lib/labels";
 import { getOrdersPageData } from "@/lib/queries";
 
 export default async function OrdersPage() {
@@ -7,39 +8,57 @@ export default async function OrdersPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="border-b border-slate-200 bg-white px-6 py-4">
-        <h1 className="text-lg font-semibold text-slate-900">Đơn hàng</h1>
-        <p className="text-sm text-slate-500">
-          Đọc từ PostgreSQL — tạo đơn từ chat sẽ làm ở Lát 3
+      <header className="page-header">
+        <h1 className="page-title">Đơn hàng</h1>
+        <p className="page-subtitle">
+          Tạo từ Inbox, lưu PostgreSQL. Đổi trạng thái ngay trên bảng.
         </p>
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-6">
-        <table className="w-full overflow-hidden rounded-xl bg-white text-left text-sm shadow-sm">
-          <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-            <tr>
-              <th className="px-4 py-3 font-medium">Mã</th>
-              <th className="px-4 py-3 font-medium">Khách</th>
-              <th className="px-4 py-3 font-medium">Kênh</th>
-              <th className="px-4 py-3 font-medium">Tổng</th>
-              <th className="px-4 py-3 font-medium">Trạng thái</th>
-              <th className="px-4 py-3 font-medium">Ngày</th>
-            </tr>
-          </thead>
-          <tbody>
-            {orders.map((order) => (
-              <tr key={order.id} className="border-t border-slate-100">
-                <td className="px-4 py-3 font-semibold text-slate-800">{order.code}</td>
-                <td className="px-4 py-3">{order.customerName}</td>
-                <td className="px-4 py-3">
-                  <ChannelBadge channel={order.channel} />
-                </td>
-                <td className="px-4 py-3">{formatMoney(orderTotal(order.items))}</td>
-                <td className="px-4 py-3">{ORDER_STATUS_LABEL[order.status]}</td>
-                <td className="px-4 py-3 text-slate-500">{formatTime(order.createdAt)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {orders.length === 0 ? (
+          <div className="empty-state">
+            <p className="text-base font-medium text-slate-700">Chưa có đơn hàng</p>
+            <p className="mt-1 text-sm text-slate-500">Tạo đơn từ Inbox khi chat với khách</p>
+          </div>
+        ) : (
+          <div className="table-shell overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left text-sm">
+              <thead className="sticky top-0 z-10 border-b border-border bg-surface-muted text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-4 py-3.5 font-semibold">Mã</th>
+                  <th className="px-4 py-3.5 font-semibold">Khách</th>
+                  <th className="px-4 py-3.5 font-semibold">Kênh</th>
+                  <th className="px-4 py-3.5 font-semibold">Tổng</th>
+                  <th className="px-4 py-3.5 font-semibold">Trạng thái</th>
+                  <th className="px-4 py-3.5 font-semibold">Ngày</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order, index) => (
+                  <tr
+                    key={order.id}
+                    className={`border-t border-border transition hover:bg-teal-50/40 ${
+                      index % 2 === 1 ? "bg-surface-muted/50" : "bg-surface"
+                    }`}
+                  >
+                    <td className="px-4 py-3.5 font-semibold text-slate-900">{order.code}</td>
+                    <td className="px-4 py-3.5 text-slate-700">{order.customerName}</td>
+                    <td className="px-4 py-3.5">
+                      <ChannelBadge channel={order.channel} />
+                    </td>
+                    <td className="px-4 py-3.5 font-medium text-slate-800">
+                      {formatMoney(orderTotal(order.items))}
+                    </td>
+                    <td className="px-4 py-3.5">
+                      <OrderStatusSelect orderId={order.id} status={order.status} />
+                    </td>
+                    <td className="px-4 py-3.5 text-slate-500">{formatTime(order.createdAt)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

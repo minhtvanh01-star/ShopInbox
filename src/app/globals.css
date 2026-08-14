@@ -1,14 +1,48 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f1f5f9;
+  --background: #f8fafc;
   --foreground: #0f172a;
+  --surface: #ffffff;
+  --surface-muted: #f1f5f9;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --accent: #0d9488;
+  --accent-hover: #0f766e;
+  --accent-soft: #ccfbf1;
+  --accent-muted: #f0fdfa;
+  --danger-soft: #fef2f2;
+  --danger: #b91c1c;
+  --success-soft: #ecfdf5;
+  --success: #047857;
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+  --shadow-md: 0 4px 12px -2px rgb(15 23 42 / 0.08);
+  --shadow-lg: 0 12px 24px -4px rgb(15 23 42 / 0.1);
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 56px;
+  --inbox-list-min: 260px;
+  --inbox-list-max: 320px;
+  --inbox-panel-min: 240px;
+  --inbox-panel-max: 300px;
+  --modal-sidebar-width: 280px;
+  --chat-bubble-max: 78%;
+  --transition-fast: 150ms;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-muted: var(--accent-muted);
   --font-sans: var(--font-be-vietnam);
+  --shadow-card: var(--shadow-sm);
+  --shadow-elevated: var(--shadow-md);
 }
 
 html,
@@ -20,4 +54,126 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-be-vietnam), sans-serif;
+}
+
+@layer components {
+  .page-header {
+    @apply border-b border-border bg-surface px-6 py-5;
+  }
+
+  .page-title {
+    @apply text-xl font-semibold tracking-tight text-slate-900;
+  }
+
+  .page-subtitle {
+    @apply mt-1 text-sm text-slate-500;
+  }
+
+  .card {
+    @apply rounded-xl border border-border bg-surface;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .card-padded {
+    @apply rounded-xl border border-border bg-surface p-5;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .section-label {
+    @apply text-xs font-semibold uppercase tracking-wide text-slate-400;
+  }
+
+  .label {
+    @apply mb-1.5 block text-sm font-medium text-slate-700;
+  }
+
+  .input-field {
+    @apply h-11 w-full rounded-lg border border-border bg-white px-3.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 disabled:bg-surface-muted disabled:opacity-60;
+  }
+
+  .input-field-sm {
+    @apply h-10 w-full rounded-lg border border-border bg-white px-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 disabled:bg-surface-muted disabled:opacity-60;
+  }
+
+  .btn-primary {
+    @apply inline-flex h-11 items-center justify-center rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .btn-primary-sm {
+    @apply inline-flex h-10 items-center justify-center rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white transition-colors duration-150 hover:bg-teal-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-secondary {
+    @apply inline-flex h-10 items-center justify-center rounded-lg border border-border bg-white px-4 text-sm font-medium text-slate-700 transition-colors duration-150 hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-300/60 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center justify-center rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors duration-150 hover:bg-surface-muted hover:text-slate-900;
+  }
+
+  .textarea-field {
+    @apply w-full rounded-lg border border-border bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 disabled:bg-surface-muted disabled:opacity-60;
+  }
+
+  .form-panel {
+    @apply rounded-xl border border-border bg-surface p-4;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .form-panel-accent {
+    @apply rounded-xl border border-teal-200 bg-accent-muted p-4;
+  }
+
+  .field-group {
+    @apply space-y-1.5;
+  }
+
+  .alert-error {
+    @apply rounded-lg px-3 py-2 text-sm;
+    background: var(--danger-soft);
+    color: var(--danger);
+  }
+
+  .alert-success {
+    @apply rounded-lg px-3 py-2 text-sm;
+    background: var(--success-soft);
+    color: var(--success);
+  }
+
+  .nav-tab {
+    @apply flex flex-1 flex-col items-center gap-0.5 px-2 py-2.5 text-[11px] font-medium transition-colors duration-150;
+  }
+
+  .nav-tab-active {
+    @apply text-teal-700;
+  }
+
+  .nav-tab-inactive {
+    @apply text-slate-500 hover:text-slate-700;
+  }
+
+  .icon-btn {
+    @apply inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition-colors duration-150 hover:bg-surface-muted hover:text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/30;
+  }
+
+  .filter-pill {
+    @apply rounded-full px-3 py-1.5 text-xs font-medium transition-colors duration-150;
+  }
+
+  .filter-pill-active {
+    @apply bg-teal-600 text-white shadow-sm;
+  }
+
+  .filter-pill-inactive {
+    @apply bg-white text-slate-600 ring-1 ring-border hover:bg-surface-muted;
+  }
+
+  .empty-state {
+    @apply flex flex-col items-center justify-center rounded-xl border border-dashed border-border bg-surface px-6 py-12 text-center;
+  }
+
+  .table-shell {
+    @apply overflow-hidden rounded-xl border border-border bg-surface;
+    box-shadow: var(--shadow-sm);
+  }
 }

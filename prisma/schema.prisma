@@ -16,6 +16,7 @@ enum Channel {
 
 enum ChannelStatus {
   disconnected
+  connecting
   ready
 }
 
@@ -77,13 +78,22 @@ model Staff {
 }
 
 model ChannelAccount {
-  id      String        @id
-  shopId  String
-  shop    Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  channel Channel
-  name    String
-  status  ChannelStatus
-  note    String
+  id             String        @id
+  shopId         String
+  shop           Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  channel        Channel
+  name           String
+  status         ChannelStatus
+  note           String
+  appId          String?
+  appSecret      String?
+  pageId         String?
+  webhookSecret  String?
+  oaId           String?
+  accessToken    String?
+  refreshToken   String?
+  displayName    String?
+  expiresAt      DateTime?
 
   @@unique([shopId, channel])
   @@map("channel_accounts")

@@ -1,5 +1,6 @@
+/** Shared domain types — frontend và backend cùng dùng (Channel, Order, ChannelAccount, …). */
 export type Channel = "facebook" | "zalo" | "instagram" | "web";
-export type ChannelStatus = "disconnected" | "ready";
+export type ChannelStatus = "disconnected" | "connecting" | "ready";
 export type StaffRole = "owner" | "staff";
 export type ConversationTag = "new" | "consulting" | "closed" | "spam";
 export type OrderStatus = "new" | "confirmed" | "shipping" | "done" | "cancelled";
@@ -11,6 +12,15 @@ export type ChannelAccount = {
   name: string;
   status: ChannelStatus;
   note: string;
+  appId?: string | null;
+  appSecret?: string | null;
+  pageId?: string | null;
+  webhookSecret?: string | null;
+  oaId?: string | null;
+  accessToken?: string | null;
+  refreshToken?: string | null;
+  displayName?: string | null;
+  expiresAt?: string | null;
 };
 
 export type Customer = {

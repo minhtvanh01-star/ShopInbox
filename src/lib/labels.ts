@@ -1,3 +1,4 @@
+/** Shared Vietnamese labels + formatters (CHANNEL_LABEL, formatMoney, …). */
 import type { Channel, ChannelStatus, ConversationTag, OrderStatus, StaffRole } from "./types";
 
 export const CHANNEL_LABEL: Record<Channel, string> = {
@@ -9,7 +10,8 @@ export const CHANNEL_LABEL: Record<Channel, string> = {
 
 export const CHANNEL_STATUS_LABEL: Record<ChannelStatus, string> = {
   disconnected: "Chưa nối",
-  ready: "Sẵn sàng",
+  connecting: "Đang kết nối",
+  ready: "Đã nối",
 };
 
 export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {

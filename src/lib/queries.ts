@@ -1,11 +1,13 @@
-import { prisma } from "@/lib/prisma";
+/** Server queries (`get*`): đọc PostgreSQL cho trang app. Tạm ở `lib` đến khi Lát 3/kênh ổn định. */
+import { prisma } from "@/backend/prisma";
 import { STAFF_ROLE_LABEL } from "@/lib/labels";
-import { requireSession } from "@/lib/auth";
+import { requireSession } from "@/backend/auth";
 import type {
   Conversation,
   Customer,
   Message,
   Order,
+  Product,
   QuickReply,
   StaffRole,
 } from "@/lib/types";
@@ -47,7 +49,7 @@ export async function getShopContext(): Promise<ShopContext> {
 export async function getInboxData() {
   const session = await requireSession();
   const shopId = session.shopId;
-  const [conversations, messages, customers, orders, quickReplies] = await Promise.all([
+  const [conversations, messages, customers, orders, products, quickReplies] = await Promise.all([
     prisma.conversation.findMany({
       where: { shopId },
       orderBy: { lastAt: "desc" },
@@ -64,6 +66,10 @@ export async function getInboxData() {
       where: { shopId },
       include: { items: true },
       orderBy: { createdAt: "desc" },
+    }),
+    prisma.product.findMany({
+      where: { shopId, inStock: true },
+      orderBy: { name: "asc" },
     }),
     prisma.quickReply.findMany({
       where: { shopId },
@@ -117,6 +123,15 @@ export async function getInboxData() {
           qty: orderItem.qty,
           price: orderItem.price,
         })),
+      }),
+    ),
+    products: products.map(
+      (item): Product => ({
+        id: item.id,
+        name: item.name,
+        sku: item.sku ?? undefined,
+        price: item.price,
+        inStock: item.inStock,
       }),
     ),
     quickReplies: quickReplies.map(
@@ -187,5 +202,13 @@ export async function getChannelAccounts() {
     name: account.name,
     status: account.status,
     note: account.note,
+    appId: account.appId,
+    appSecret: account.appSecret,
+    pageId: account.pageId,
+    webhookSecret: account.webhookSecret,
+    oaId: account.oaId,
+    displayName: account.displayName,
+    expiresAt: account.expiresAt ? toIso(account.expiresAt) : null,
+    hasOAuthToken: Boolean(account.accessToken),
   }));
 }

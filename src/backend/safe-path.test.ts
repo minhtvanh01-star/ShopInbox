@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { safeInternalPath } from "@/lib/safe-path";
+import { safeInternalPath } from "@/backend/safe-path";
 
 describe("safeInternalPath", () => {
   it("keeps valid internal paths", () => {

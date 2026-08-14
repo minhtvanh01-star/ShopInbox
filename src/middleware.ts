@@ -1,10 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, verifySessionToken } from "@/lib/session-token";
+import { SESSION_COOKIE, verifySessionToken } from "@/backend/session-token";
 
 const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PREFIXES = ["/api/webhooks/"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    return NextResponse.next();
+  }
+
   const isPublic = PUBLIC_PATHS.some(
     (path) => pathname === path || pathname.startsWith(`${path}/`),
   );

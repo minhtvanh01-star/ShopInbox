@@ -4,10 +4,10 @@ import {
   createSessionToken,
   verifySessionToken,
   type SessionPayload,
-} from "@/lib/session-token";
+} from "@/backend/session-token";
 
 export { SESSION_COOKIE, type SessionPayload };
-export { verifySessionToken } from "@/lib/session-token";
+export { verifySessionToken } from "@/backend/session-token";
 
 export async function setSessionCookie(payload: SessionPayload) {
   const token = await createSessionToken(payload);

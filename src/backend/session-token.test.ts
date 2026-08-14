@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createSessionToken, verifySessionToken } from "@/lib/session-token";
+import { createSessionToken, verifySessionToken } from "@/backend/session-token";
 
 describe("session-token", () => {
   beforeEach(() => {

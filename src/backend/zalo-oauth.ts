@@ -1,0 +1,95 @@
+import type { ZaloOAuthConfig } from "@/backend/oauth-config";
+
+type ZaloTokenResponse = {
+  access_token?: string;
+  refresh_token?: string;
+  expires_in?: string | number;
+  error?: number;
+  error_name?: string;
+  error_description?: string;
+};
+
+type ZaloOaResponse = {
+  data?: {
+    id?: string;
+    name?: string;
+    oa_id?: string;
+  };
+  error?: number;
+  message?: string;
+};
+
+function readZaloError(data: ZaloTokenResponse | ZaloOaResponse) {
+  if ("error_description" in data && data.error_description) {
+    return data.error_description;
+  }
+  if ("message" in data && data.message) {
+    return data.message;
+  }
+  if ("error_name" in data && data.error_name) {
+    return data.error_name;
+  }
+  return "Zalo API lỗi";
+}
+
+export function buildZaloOAuthUrl(config: ZaloOAuthConfig, state: string) {
+  const url = new URL("https://oauth.zaloapp.com/v4/oa/permission");
+  url.searchParams.set("app_id", config.appId);
+  url.searchParams.set("redirect_uri", config.redirectUri);
+  url.searchParams.set("state", state);
+  return url.toString();
+}
+
+export async function exchangeZaloCode(config: ZaloOAuthConfig, code: string) {
+  const body = new URLSearchParams({
+    app_id: config.appId,
+    app_secret: config.appSecret,
+    code,
+  });
+
+  const response = await fetch("https://oauth.zaloapp.com/v4/oa/access_token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: body.toString(),
+  });
+
+  const data = (await response.json()) as ZaloTokenResponse;
+  if (!response.ok || !data.access_token) {
+    throw new Error(readZaloError(data));
+  }
+
+  const expiresIn =
+    typeof data.expires_in === "string" ? Number.parseInt(data.expires_in, 10) : data.expires_in;
+
+  const expiresAt =
+    typeof expiresIn === "number" && Number.isFinite(expiresIn)
+      ? new Date(Date.now() + expiresIn * 1000)
+      : null;
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+    expiresAt,
+  };
+}
+
+export async function fetchZaloOaInfo(accessToken: string, oaIdHint?: string | null) {
+  const url = new URL("https://openapi.zalo.me/v2.0/oa/getoa");
+  url.searchParams.set("access_token", accessToken);
+
+  const response = await fetch(url.toString());
+  const data = (await response.json()) as ZaloOaResponse;
+
+  if (!response.ok || data.error) {
+    throw new Error(readZaloError(data));
+  }
+
+  const oaId = data.data?.oa_id ?? data.data?.id ?? oaIdHint ?? "";
+  const name = data.data?.name ?? "Zalo OA";
+
+  if (!oaId) {
+    throw new Error("Không lấy được OA ID từ Zalo");
+  }
+
+  return { oaId, name };
+}
