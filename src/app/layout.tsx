@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { Be_Vietnam_Pro } from "next/font/google";
 import "./globals.css";
 
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
   description: "Hộp thư đa kênh cho cửa hàng — trả lời tin nhắn và lưu đơn hàng.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="vi" className={`${beVietnam.variable} h-full antialiased`}>
       <body className="min-h-full font-sans">{children}</body>

@@ -1,0 +1,11 @@
+# Cấu hình deploy trên Railway (UAT / production).
+# Pre-deploy chạy migrate trước khi app nhận traffic.
+
+[build]
+builder = "RAILPACK"
+
+[deploy]
+startCommand = "npm run start"
+preDeployCommand = "npx prisma migrate deploy"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3
