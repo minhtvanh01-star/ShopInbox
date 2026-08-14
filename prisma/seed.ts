@@ -1,7 +1,9 @@
 import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
+import { hash } from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import {
+  EXTRA_STAFF,
   SHOP,
   channelAccounts,
   conversations,
@@ -46,10 +48,24 @@ async function main() {
       id: SHOP.staffId,
       shopId: SHOP.id,
       name: SHOP.staffName,
+      email: SHOP.staffEmail,
+      passwordHash: await hash(SHOP.staffPassword, 12),
       role: SHOP.role,
     },
   });
 
+  for (const member of EXTRA_STAFF) {
+    await prisma.staff.create({
+      data: {
+        id: member.id,
+        shopId: SHOP.id,
+        name: member.name,
+        email: member.email,
+        passwordHash: await hash(member.password, 12),
+        role: member.role,
+      },
+    });
+  }
   await prisma.channelAccount.createMany({
     data: channelAccounts.map((account) => ({
       id: account.id,

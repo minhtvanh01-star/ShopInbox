@@ -13,9 +13,22 @@ export const SHOP = {
   name: "Lily Boutique",
   staffId: "staff1",
   staffName: "Minh",
+  staffEmail: "admin@lily.vn",
+  staffPassword: "Admin@123",
   role: "owner" as const,
   roleLabel: "Chủ shop",
 };
+
+export const EXTRA_STAFF = [
+  {
+    id: "staff2",
+    name: "Lan",
+    email: "nhanvien@lily.vn",
+    password: "Staff@123",
+    role: "staff" as const,
+  },
+];
+
 
 export const channelAccounts: ChannelAccount[] = [
   {

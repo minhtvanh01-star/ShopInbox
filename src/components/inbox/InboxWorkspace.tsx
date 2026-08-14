@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useOptimistic, useState, useTransition } from "react";
+import { sendMessage } from "@/app/(app)/actions";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import {
   CHANNEL_LABEL,
@@ -9,14 +10,14 @@ import {
   formatTime,
   orderTotal,
 } from "@/lib/labels";
-import {
-  conversations as seedConversations,
-  customerById,
-  messages as seedMessages,
-  ordersByCustomer,
-  quickReplies,
-} from "@/lib/mock";
-import type { Channel, Conversation, Message } from "@/lib/types";
+import type {
+  Channel,
+  Conversation,
+  Customer,
+  Message,
+  Order,
+  QuickReply,
+} from "@/lib/types";
 
 const FILTERS: Array<{ id: "all" | Channel; label: string }> = [
   { id: "all", label: "Tất cả" },
@@ -26,51 +27,104 @@ const FILTERS: Array<{ id: "all" | Channel; label: string }> = [
   { id: "web", label: "Web" },
 ];
 
-export function InboxWorkspace() {
+type InboxWorkspaceProps = {
+  conversations: Conversation[];
+  messages: Message[];
+  customers: Customer[];
+  orders: Order[];
+  quickReplies: QuickReply[];
+};
+
+type ConversationPatch = {
+  id: string;
+  lastMessage: string;
+  lastAt: string;
+};
+
+export function InboxWorkspace({
+  conversations,
+  messages,
+  customers,
+  orders,
+  quickReplies,
+}: InboxWorkspaceProps) {
   const [channel, setChannel] = useState<"all" | Channel>("all");
-  const [selectedId, setSelectedId] = useState(seedConversations[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(conversations[0]?.id ?? "");
   const [draft, setDraft] = useState("");
-  const [localMessages, setLocalMessages] = useState<Message[]>(seedMessages);
-  const [localConversations, setLocalConversations] = useState<Conversation[]>(
-    seedConversations,
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const [optimisticMessages, addOptimisticMessage] = useOptimistic(
+    messages,
+    (current, message: Message) => [...current, message],
   );
-  const [localSeq, setLocalSeq] = useState(1);
+  const [optimisticConversations, patchOptimisticConversation] = useOptimistic(
+    conversations,
+    (current, patch: ConversationPatch) =>
+      current.map((item) =>
+        item.id === patch.id
+          ? {
+              ...item,
+              lastMessage: patch.lastMessage,
+              lastAt: patch.lastAt,
+              unread: 0,
+            }
+          : item,
+      ),
+  );
+
+  const customerById = useMemo(() => {
+    const map = new Map(customers.map((item) => [item.id, item]));
+    return (id: string) => map.get(id);
+  }, [customers]);
 
   const visible = useMemo(
     () =>
-      localConversations
+      optimisticConversations
         .filter((item) => channel === "all" || item.channel === channel)
         .sort((a, b) => +new Date(b.lastAt) - +new Date(a.lastAt)),
-    [channel, localConversations],
+    [channel, optimisticConversations],
   );
 
   const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
   const customer = selected ? customerById(selected.customerId) : undefined;
   const thread = selected
-    ? localMessages.filter((item) => item.conversationId === selected.id)
+    ? optimisticMessages.filter((item) => item.conversationId === selected.id)
     : [];
-  const customerOrders = customer ? ordersByCustomer(customer.id) : [];
+  const customerOrders = customer
+    ? orders.filter((item) => item.customerId === customer.id)
+    : [];
 
   function send(text: string) {
-    if (!selected || !text.trim()) return;
+    if (!selected || !text.trim() || isPending) return;
+
+    const body = text.trim();
+    const tempId = `temp-${crypto.randomUUID()}`;
     const sentAt = new Date().toISOString();
-    const message: Message = {
-      id: `local-${localSeq}`,
+    const optimistic: Message = {
+      id: tempId,
       conversationId: selected.id,
       sender: "shop",
-      text: text.trim(),
+      text: body,
       createdAt: sentAt,
     };
-    setLocalSeq((value) => value + 1);
-    setLocalMessages((current) => [...current, message]);
-    setLocalConversations((current) =>
-      current.map((item) =>
-        item.id === selected.id
-          ? { ...item, lastMessage: message.text, lastAt: message.createdAt, unread: 0 }
-          : item,
-      ),
-    );
+
+    setError(null);
     setDraft("");
+
+    startTransition(async () => {
+      addOptimisticMessage(optimistic);
+      patchOptimisticConversation({
+        id: selected.id,
+        lastMessage: body,
+        lastAt: sentAt,
+      });
+
+      try {
+        await sendMessage(selected.id, body);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Gửi tin thất bại");
+      }
+    });
   }
 
   return (
@@ -78,7 +132,7 @@ export function InboxWorkspace() {
       <section className="flex w-[320px] shrink-0 flex-col border-r border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-4 py-3">
           <h1 className="text-base font-semibold text-slate-900">Inbox</h1>
-          <p className="text-xs text-slate-500">Dữ liệu mẫu — Lát 1</p>
+          <p className="text-xs text-slate-500">Dữ liệu PostgreSQL — Lát 2</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {FILTERS.map((item) => (
               <button
@@ -171,13 +225,15 @@ export function InboxWorkspace() {
               ))}
             </div>
             <footer className="border-t border-slate-200 bg-white p-4">
+              {error ? <p className="mb-2 text-xs text-red-600">{error}</p> : null}
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {quickReplies.map((item) => (
                   <button
                     key={item.id}
                     type="button"
+                    disabled={isPending}
                     onClick={() => send(item.text)}
-                    className="rounded-full border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                    className="rounded-full border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"
                   >
                     {item.title}
                   </button>
@@ -194,11 +250,13 @@ export function InboxWorkspace() {
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   placeholder="Nhập tin nhắn..."
-                  className="h-10 flex-1 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-teal-500"
+                  disabled={isPending}
+                  className="h-10 flex-1 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-teal-500 disabled:bg-slate-50"
                 />
                 <button
                   type="submit"
-                  className="h-10 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700"
+                  disabled={isPending}
+                  className="h-10 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700 disabled:opacity-50"
                 >
                   Gửi
                 </button>

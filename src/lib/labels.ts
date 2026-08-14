@@ -1,10 +1,20 @@
-import type { Channel, ConversationTag, OrderStatus } from "./types";
+import type { Channel, ChannelStatus, ConversationTag, OrderStatus, StaffRole } from "./types";
 
 export const CHANNEL_LABEL: Record<Channel, string> = {
   facebook: "Facebook",
   zalo: "Zalo",
   instagram: "Instagram",
   web: "Web",
+};
+
+export const CHANNEL_STATUS_LABEL: Record<ChannelStatus, string> = {
+  disconnected: "Chưa nối",
+  ready: "Sẵn sàng",
+};
+
+export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
+  owner: "Chủ shop",
+  staff: "Nhân viên",
 };
 
 export const TAG_LABEL: Record<ConversationTag, string> = {

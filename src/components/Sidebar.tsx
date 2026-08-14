@@ -2,17 +2,33 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { SHOP } from "@/lib/mock";
+import { logoutAction } from "@/app/login/actions";
 
-const NAV = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: () => React.JSX.Element;
+  ownerOnly?: boolean;
+};
+
+const NAV: NavItem[] = [
   { href: "/inbox", label: "Inbox", icon: InboxIcon },
   { href: "/orders", label: "Đơn hàng", icon: OrderIcon },
   { href: "/customers", label: "Khách", icon: PeopleIcon },
+  { href: "/staff", label: "Nhân viên", icon: PeopleIcon, ownerOnly: true },
   { href: "/settings", label: "Cài đặt", icon: GearIcon },
 ];
 
-export function Sidebar() {
+type SidebarProps = {
+  shopName: string;
+  staffName: string;
+  roleLabel: string;
+  isOwner: boolean;
+};
+
+export function Sidebar({ shopName, staffName, roleLabel, isOwner }: SidebarProps) {
   const pathname = usePathname();
+  const items = NAV.filter((item) => !item.ownerOnly || isOwner);
 
   return (
     <aside className="flex w-[220px] shrink-0 flex-col bg-slate-900 text-slate-200">
@@ -22,12 +38,12 @@ export function Sidebar() {
         </div>
         <div>
           <p className="text-sm font-semibold text-white">ShopInbox</p>
-          <p className="text-[11px] text-slate-400">{SHOP.name}</p>
+          <p className="text-[11px] text-slate-400">{shopName}</p>
         </div>
       </div>
 
       <nav className="flex flex-1 flex-col gap-1 px-3">
-        {NAV.map((item) => {
+        {items.map((item) => {
           const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
           return (
             <Link
@@ -47,11 +63,16 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t border-slate-800 px-4 py-4">
-        <p className="text-sm font-medium text-white">{SHOP.staffName}</p>
-        <p className="text-xs text-slate-400">{SHOP.roleLabel}</p>
-        <Link href="/login" className="mt-2 inline-block text-xs text-slate-500 hover:text-slate-300">
-          Đăng xuất
-        </Link>
+        <p className="text-sm font-medium text-white">{staffName}</p>
+        <p className="text-xs text-slate-400">{roleLabel}</p>
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            className="mt-2 text-xs text-slate-500 hover:text-slate-300"
+          >
+            Đăng xuất
+          </button>
+        </form>
       </div>
     </aside>
   );
@@ -91,7 +112,7 @@ function GearIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="12" r="3" />
-      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
     </svg>
   );
 }

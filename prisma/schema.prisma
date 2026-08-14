@@ -61,13 +61,16 @@ model Shop {
 }
 
 model Staff {
-  id            String         @id
-  shopId        String
-  shop          Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  name          String
-  role          StaffRole
+  id           String         @id
+  shopId       String
+  shop         Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name         String
+  email        String         @unique
+  passwordHash String
+  role         StaffRole
+  createdAt    DateTime       @default(now())
   assignedChats Conversation[]
-  sentMessages  Message[]
+  sentMessages Message[]
 
   @@index([shopId])
   @@map("staff")

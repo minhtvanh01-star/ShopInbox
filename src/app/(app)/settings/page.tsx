@@ -1,24 +1,30 @@
-const CHANNELS = [
-  { id: "facebook", name: "Facebook Messenger", status: "Chưa nối", note: "Cần app Meta — làm sau khi duyệt UI" },
-  { id: "zalo", name: "Zalo OA", status: "Chưa nối", note: "Cần Official Account — làm sau" },
-  { id: "instagram", name: "Instagram DM", status: "Chưa nối", note: "Đi cùng Meta app" },
-  { id: "web", name: "Chat website", status: "Sẵn sàng (Lát 4)", note: "Widget sẽ chạy thật, không cần duyệt MXH" },
-];
+import { CHANNEL_STATUS_LABEL } from "@/lib/labels";
+import { getChannelAccounts } from "@/lib/queries";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const channels = await getChannelAccounts();
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="border-b border-slate-200 bg-white px-6 py-4">
         <h1 className="text-lg font-semibold text-slate-900">Cài đặt kênh</h1>
-        <p className="text-sm text-slate-500">Bốn kênh đã có chỗ trên UI. Facebook / Zalo / Instagram chưa nối API thật.</p>
+        <p className="text-sm text-slate-500">
+          Trạng thái kênh đọc từ PostgreSQL. Facebook / Zalo / Instagram chưa nối API thật.
+        </p>
       </header>
       <div className="grid gap-4 p-6 md:grid-cols-2">
-        {CHANNELS.map((channel) => (
+        {channels.map((channel) => (
           <article key={channel.id} className="rounded-xl bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <h2 className="font-semibold text-slate-900">{channel.name}</h2>
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                {channel.status}
+              <span
+                className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                  channel.status === "ready"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-amber-50 text-amber-700"
+                }`}
+              >
+                {CHANNEL_STATUS_LABEL[channel.status]}
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-slate-500">{channel.note}</p>

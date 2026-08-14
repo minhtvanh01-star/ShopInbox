@@ -1,7 +1,17 @@
-import Link from "next/link";
-import { SHOP } from "@/lib/mock";
+import { LoginForm } from "@/components/LoginForm";
+import { prisma } from "@/lib/prisma";
+import { DEMO_SHOP_ID } from "@/lib/queries";
+import { safeInternalPath } from "@/lib/safe-path";
 
-export default function LoginPage() {
+type LoginPageProps = {
+  searchParams: Promise<{ next?: string }>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const params = await searchParams;
+  const shop = await prisma.shop.findUnique({ where: { id: DEMO_SHOP_ID } });
+  const nextPath = safeInternalPath(params.next);
+
   return (
     <main className="flex min-h-full items-center justify-center bg-slate-100 px-4">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm">
@@ -15,15 +25,10 @@ export default function LoginPage() {
           </div>
         </div>
         <p className="text-sm leading-6 text-slate-600">
-          Bản Lát 1 dùng cửa hàng mẫu <strong>{SHOP.name}</strong>. Chưa cần mật khẩu
-          thật — bấm vào để xem khung 3 cột.
+          Đăng nhập bằng tài khoản nhân viên. Mật khẩu được lưu dạng mã hóa (bcrypt), không lưu
+          plain text.
         </p>
-        <Link
-          href="/inbox"
-          className="mt-6 flex h-11 items-center justify-center rounded-lg bg-teal-600 text-sm font-semibold text-white hover:bg-teal-700"
-        >
-          Vào cửa hàng demo
-        </Link>
+        <LoginForm shopName={shop?.name ?? "ShopInbox"} nextPath={nextPath} />
       </div>
     </main>
   );

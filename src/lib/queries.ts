@@ -1,0 +1,191 @@
+import { prisma } from "@/lib/prisma";
+import { STAFF_ROLE_LABEL } from "@/lib/labels";
+import { requireSession } from "@/lib/auth";
+import type {
+  Conversation,
+  Customer,
+  Message,
+  Order,
+  QuickReply,
+  StaffRole,
+} from "@/lib/types";
+
+export const DEMO_SHOP_ID = "shop1";
+
+export type ShopContext = {
+  shopId: string;
+  shopName: string;
+  staffId: string;
+  staffName: string;
+  staffEmail: string;
+  role: StaffRole;
+  roleLabel: string;
+};
+
+function toIso(value: Date) {
+  return value.toISOString();
+}
+
+export async function getShopContext(): Promise<ShopContext> {
+  const session = await requireSession();
+  const staff = await prisma.staff.findUniqueOrThrow({
+    where: { id: session.staffId },
+    include: { shop: true },
+  });
+
+  return {
+    shopId: staff.shopId,
+    shopName: staff.shop.name,
+    staffId: staff.id,
+    staffName: staff.name,
+    staffEmail: staff.email,
+    role: staff.role,
+    roleLabel: STAFF_ROLE_LABEL[staff.role],
+  };
+}
+
+export async function getInboxData() {
+  const session = await requireSession();
+  const shopId = session.shopId;
+  const [conversations, messages, customers, orders, quickReplies] = await Promise.all([
+    prisma.conversation.findMany({
+      where: { shopId },
+      orderBy: { lastAt: "desc" },
+    }),
+    prisma.message.findMany({
+      where: { shopId },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.customer.findMany({
+      where: { shopId },
+      orderBy: { name: "asc" },
+    }),
+    prisma.order.findMany({
+      where: { shopId },
+      include: { items: true },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.quickReply.findMany({
+      where: { shopId },
+      orderBy: { title: "asc" },
+    }),
+  ]);
+
+  return {
+    conversations: conversations.map(
+      (item): Conversation => ({
+        id: item.id,
+        channel: item.channel,
+        customerId: item.customerId,
+        lastMessage: item.lastMessage,
+        lastAt: toIso(item.lastAt),
+        unread: item.unread,
+        tag: item.tag,
+      }),
+    ),
+    messages: messages.map(
+      (item): Message => ({
+        id: item.id,
+        conversationId: item.conversationId,
+        sender: item.sender,
+        text: item.text,
+        createdAt: toIso(item.createdAt),
+      }),
+    ),
+    customers: customers.map(
+      (item): Customer => ({
+        id: item.id,
+        name: item.name,
+        phone: item.phone ?? undefined,
+        email: item.email ?? undefined,
+        address: item.address ?? undefined,
+        note: item.note ?? undefined,
+      }),
+    ),
+    orders: orders.map(
+      (item): Order => ({
+        id: item.id,
+        code: item.code,
+        customerId: item.customerId,
+        conversationId: item.conversationId,
+        address: item.address,
+        status: item.status,
+        createdAt: toIso(item.createdAt),
+        items: item.items.map((orderItem) => ({
+          productId: orderItem.productId ?? undefined,
+          name: orderItem.name,
+          qty: orderItem.qty,
+          price: orderItem.price,
+        })),
+      }),
+    ),
+    quickReplies: quickReplies.map(
+      (item): QuickReply => ({
+        id: item.id,
+        title: item.title,
+        text: item.text,
+      }),
+    ),
+  };
+}
+
+export async function getOrdersPageData() {
+  const session = await requireSession();
+  const orders = await prisma.order.findMany({
+    where: { shopId: session.shopId },
+    include: {
+      customer: true,
+      conversation: true,
+      items: true,
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return orders.map((order) => ({
+    id: order.id,
+    code: order.code,
+    customerName: order.customer.name,
+    channel: order.conversation.channel,
+    status: order.status,
+    createdAt: toIso(order.createdAt),
+    items: order.items.map((item) => ({
+      qty: item.qty,
+      price: item.price,
+    })),
+  }));
+}
+
+export async function getCustomersPageData() {
+  const session = await requireSession();
+  const customers = await prisma.customer.findMany({
+    where: { shopId: session.shopId },
+    include: {
+      _count: { select: { orders: true } },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  return customers.map((customer) => ({
+    id: customer.id,
+    name: customer.name,
+    phone: customer.phone,
+    note: customer.note,
+    orderCount: customer._count.orders,
+  }));
+}
+
+export async function getChannelAccounts() {
+  const session = await requireSession();
+  const accounts = await prisma.channelAccount.findMany({
+    where: { shopId: session.shopId },
+    orderBy: { name: "asc" },
+  });
+
+  return accounts.map((account) => ({
+    id: account.id,
+    channel: account.channel,
+    name: account.name,
+    status: account.status,
+    note: account.note,
+  }));
+}
