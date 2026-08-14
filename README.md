@@ -7,23 +7,31 @@ Hiện tại: **Lát 3** — đăng nhập + Inbox đọc/ghi DB + **tạo đơn
 ## Yêu cầu
 
 - Node.js 20+
-- Docker Desktop đang chạy (chỉ cần nền — làm việc bằng lệnh)
+- PostgreSQL cài trên máy (cổng **5432**). Không cần Docker.
 
-## 1. Bật database
+## 1. Database local
+
+Tạo database nếu chưa có (PowerShell, `psql` trong `C:\Program Files\PostgreSQL\<version>\bin`):
 
 ```powershell
-cd E:\project_job\ShopInbox
-docker compose up -d
-docker compose ps
+& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -U postgres -d postgres -c "CREATE DATABASE shopinbox;"
 ```
 
-Postgres ở cổng **5433**.
+Copy `.env.example` → `.env` rồi chỉnh `DATABASE_URL` cho khớp user/password máy bạn:
+
+```
+DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/shopinbox"
+```
+
+(Mật khẩu có ký tự đặc biệt thì URL-encode.)
 
 ## 2. Cài package + migrate + seed
 
 ```powershell
+cd E:\project_job\ShopInbox
 npm install
-npx prisma migrate dev
+npx prisma migrate deploy
+npx prisma generate
 npx prisma db seed
 ```
 
@@ -65,16 +73,26 @@ npm test
 
 ## Biến môi trường
 
-Copy `.env.example` → `.env`:
+Copy `.env.example` → `.env`. Mặc định trỏ Postgres **local** cổng 5432:
 
 ```
-DATABASE_URL="postgresql://shopinbox:shopinbox@localhost:5433/shopinbox"
+DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/shopinbox"
 SESSION_SECRET="shopinbox-dev-session-secret-change-me"
 ```
 
 Tuỳ chọn — đăng nhập Google: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`. Xem [docs/dang-nhap-google.md](docs/dang-nhap-google.md).
 
 Đổi `SESSION_SECRET` khi deploy. Không commit `.env`.
+
+### Docker (tuỳ chọn)
+
+Không bắt buộc. Nếu muốn Postgres trong container thay vì bản cài máy:
+
+```powershell
+docker compose up -d
+```
+
+Rồi đổi `.env` sang `postgresql://shopinbox:shopinbox@127.0.0.1:5433/shopinbox` (cổng **5433** để khỏi trùng Postgres local 5432).
 
 ## Cài đặt kênh
 

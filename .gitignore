@@ -43,3 +43,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Cursor / local editor (không commit)
+.cursor/
+
+# Local-only verify / hooks / prettier (không commit)
+.githooks/
+.prettierrc.json
+.prettierignore
+scripts/verify.local.*
+scripts/setup-git-hooks.mjs
