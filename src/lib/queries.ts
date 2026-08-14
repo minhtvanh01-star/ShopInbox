@@ -1,7 +1,9 @@
 /** Server queries (`get*`): đọc PostgreSQL cho trang app. Tạm ở `lib` đến khi Lát 3/kênh ổn định. */
 import { prisma } from "@/backend/prisma";
-import { STAFF_ROLE_LABEL } from "@/lib/labels";
 import { requireSession } from "@/backend/auth";
+import { getPermissionCodes, hasPermission } from "@/backend/rbac";
+import { roleLabel } from "@/lib/labels";
+import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 import type {
   Conversation,
   Customer,
@@ -9,7 +11,6 @@ import type {
   Order,
   Product,
   QuickReply,
-  StaffRole,
 } from "@/lib/types";
 
 export const DEMO_SHOP_ID = "shop1";
@@ -20,8 +21,9 @@ export type ShopContext = {
   staffId: string;
   staffName: string;
   staffEmail: string;
-  role: StaffRole;
+  role: string;
   roleLabel: string;
+  permissions: string[];
 };
 
 function toIso(value: Date) {
@@ -32,7 +34,7 @@ export async function getShopContext(): Promise<ShopContext> {
   const session = await requireSession();
   const staff = await prisma.staff.findUniqueOrThrow({
     where: { id: session.staffId },
-    include: { shop: true },
+    include: { shop: true, role: true },
   });
 
   return {
@@ -41,8 +43,9 @@ export async function getShopContext(): Promise<ShopContext> {
     staffId: staff.id,
     staffName: staff.name,
     staffEmail: staff.email,
-    role: staff.role,
-    roleLabel: STAFF_ROLE_LABEL[staff.role],
+    role: staff.roleCode,
+    roleLabel: staff.role?.name ?? roleLabel(staff.roleCode),
+    permissions: await getPermissionCodes(session),
   };
 }
 
@@ -191,6 +194,8 @@ export async function getCustomersPageData() {
 
 export async function getChannelAccounts() {
   const session = await requireSession();
+  const canConnect = await hasPermission(session, PERMISSION_CODES.channelsConnect);
+
   const accounts = await prisma.channelAccount.findMany({
     where: { shopId: session.shopId },
     orderBy: { name: "asc" },
@@ -202,13 +207,15 @@ export async function getChannelAccounts() {
     name: account.name,
     status: account.status,
     note: account.note,
-    appId: account.appId,
-    appSecret: account.appSecret,
-    pageId: account.pageId,
-    webhookSecret: account.webhookSecret,
-    oaId: account.oaId,
+    appId: canConnect ? account.appId : null,
+    appSecret: canConnect ? account.appSecret : null,
+    pageId: canConnect ? account.pageId : null,
+    webhookSecret: canConnect ? account.webhookSecret : null,
+    oaId: canConnect ? account.oaId : null,
     displayName: account.displayName,
     expiresAt: account.expiresAt ? toIso(account.expiresAt) : null,
+    connectedAt: account.connectedAt ? toIso(account.connectedAt) : null,
+    lastWebhookAt: account.lastWebhookAt ? toIso(account.lastWebhookAt) : null,
     hasOAuthToken: Boolean(account.accessToken),
   }));
 }

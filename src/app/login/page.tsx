@@ -1,10 +1,11 @@
 import { LoginForm } from "@/components/auth/LoginForm";
 import { prisma } from "@/backend/prisma";
+import { getGoogleOAuthConfig } from "@/backend/google-oauth";
 import { DEMO_SHOP_ID } from "@/lib/queries";
 import { safeInternalPath } from "@/backend/safe-path";
 
 type LoginPageProps = {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; auth_error?: string; auth_message?: string }>;
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
@@ -25,9 +26,16 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </div>
         </div>
         <p className="rounded-lg bg-surface-muted px-4 py-3 text-sm leading-6 text-slate-600">
-          Đăng nhập bằng tài khoản nhân viên. Mật khẩu được mã hóa (bcrypt), không lưu plain text.
+          Đăng nhập bằng email/mật khẩu hoặc Google. Mật khẩu được mã hóa (bcrypt), không lưu plain
+          text.
         </p>
-        <LoginForm shopName={shop?.name ?? "ShopInbox"} nextPath={nextPath} />
+        <LoginForm
+          shopName={shop?.name ?? "ShopInbox"}
+          nextPath={nextPath}
+          googleOAuthConfigured={Boolean(getGoogleOAuthConfig())}
+          authError={params.auth_error}
+          authMessage={params.auth_message}
+        />
       </div>
     </main>
   );

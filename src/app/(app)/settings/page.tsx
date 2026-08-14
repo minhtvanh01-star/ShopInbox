@@ -7,6 +7,7 @@ import {
 import { getPendingMetaPages } from "@/app/(app)/settings/actions";
 import { getShopContext, getChannelAccounts } from "@/lib/queries";
 import { SettingsWorkspace } from "@/components/settings/SettingsWorkspace";
+import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 
 type SettingsPageProps = {
   searchParams: Promise<{
@@ -32,11 +33,12 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
     <div className="flex min-h-0 flex-1 flex-col">
       <SettingsWorkspace
         channels={channels}
-        isOwner={shop.role === "owner"}
+        canConnect={shop.permissions.includes(PERMISSION_CODES.channelsConnect)}
         metaOAuthConfigured={Boolean(metaConfig)}
         zaloOAuthConfigured={Boolean(zaloConfig)}
         metaWebhookUrl={getMetaWebhookUrl()}
         zaloWebhookUrl={getZaloWebhookUrl()}
+        metaWebhookVerifyToken={metaConfig?.webhookVerifyToken ?? ""}
         pendingMetaPages={pendingMetaPages}
         oauthFlash={{
           success: params.oauth_success,

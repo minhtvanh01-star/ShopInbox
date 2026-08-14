@@ -1,5 +1,6 @@
 /** Shared Vietnamese labels + formatters (CHANNEL_LABEL, formatMoney, …). */
-import type { Channel, ChannelStatus, ConversationTag, OrderStatus, StaffRole } from "./types";
+import type { Channel, ChannelStatus, ConversationTag, OrderStatus } from "./types";
+import { ROLE_LABEL, roleLabel } from "./rbac-catalog";
 
 export const CHANNEL_LABEL: Record<Channel, string> = {
   facebook: "Facebook",
@@ -14,10 +15,9 @@ export const CHANNEL_STATUS_LABEL: Record<ChannelStatus, string> = {
   ready: "Đã nối",
 };
 
-export const STAFF_ROLE_LABEL: Record<StaffRole, string> = {
-  owner: "Chủ shop",
-  staff: "Nhân viên",
-};
+/** Nhãn vai trò từ catalog (admin/staff/manager + alias owner). */
+export const STAFF_ROLE_LABEL = ROLE_LABEL;
+export { roleLabel };
 
 export const TAG_LABEL: Record<ConversationTag, string> = {
   new: "Mới",
@@ -48,6 +48,16 @@ export function formatTime(iso: string) {
     minute: "2-digit",
     day: "2-digit",
     month: "2-digit",
+  }).format(new Date(iso));
+}
+
+export function formatDateTime(iso: string) {
+  return new Intl.DateTimeFormat("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   }).format(new Date(iso));
 }
 

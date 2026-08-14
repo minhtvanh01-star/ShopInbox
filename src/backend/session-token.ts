@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
-import type { StaffRole } from "@/lib/types";
+import { normalizeRoleCode } from "@/lib/rbac-catalog";
 
 export const SESSION_COOKIE = "shopinbox_session";
 
@@ -8,8 +8,24 @@ export type SessionPayload = {
   shopId: string;
   email: string;
   name: string;
-  role: StaffRole;
+  role: string;
 };
+
+export function toSessionPayload(staff: {
+  id: string;
+  shopId: string;
+  email: string;
+  name: string;
+  roleCode: string;
+}): SessionPayload {
+  return {
+    staffId: staff.id,
+    shopId: staff.shopId,
+    email: staff.email,
+    name: staff.name,
+    role: normalizeRoleCode(staff.roleCode),
+  };
+}
 
 function getSecret() {
   const secret = process.env.SESSION_SECRET;
@@ -20,12 +36,13 @@ function getSecret() {
 }
 
 export async function createSessionToken(payload: SessionPayload) {
+  const role = normalizeRoleCode(payload.role);
   return new SignJWT({
     staffId: payload.staffId,
     shopId: payload.shopId,
     email: payload.email,
     name: payload.name,
-    role: payload.role,
+    role,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -41,7 +58,8 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       typeof payload.shopId !== "string" ||
       typeof payload.email !== "string" ||
       typeof payload.name !== "string" ||
-      (payload.role !== "owner" && payload.role !== "staff")
+      typeof payload.role !== "string" ||
+      payload.role.length === 0
     ) {
       return null;
     }
@@ -51,7 +69,7 @@ export async function verifySessionToken(token: string): Promise<SessionPayload 
       shopId: payload.shopId,
       email: payload.email,
       name: payload.name,
-      role: payload.role,
+      role: normalizeRoleCode(payload.role),
     };
   } catch {
     return null;

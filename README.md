@@ -44,6 +44,8 @@ Mở [http://localhost:3000](http://localhost:3000) → trang đăng nhập.
 
 - Mật khẩu lưu **bcrypt hash** trong bảng `staff` (không lưu plain text).
 - Admin vào menu **Nhân viên** để thêm tài khoản mới.
+- **Hồ sơ cá nhân** (`/settings/profile`): cập nhật tên, SĐT, ảnh; liên kết Google; đổi mật khẩu (tài khoản email).
+- **Đăng nhập với Google** trên trang `/login` khi đã cấu hình OAuth — xem [docs/dang-nhap-google.md](docs/dang-nhap-google.md).
 - Đăng xuất xóa cookie session.
 - Trong Inbox bấm **Tạo đơn** để lưu đơn vào PostgreSQL; trang Đơn hàng đổi trạng thái được.
 
@@ -69,6 +71,8 @@ Copy `.env.example` → `.env`:
 DATABASE_URL="postgresql://shopinbox:shopinbox@localhost:5433/shopinbox"
 SESSION_SECRET="shopinbox-dev-session-secret-change-me"
 ```
+
+Tuỳ chọn — đăng nhập Google: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`. Xem [docs/dang-nhap-google.md](docs/dang-nhap-google.md).
 
 Đổi `SESSION_SECRET` khi deploy. Không commit `.env`.
 

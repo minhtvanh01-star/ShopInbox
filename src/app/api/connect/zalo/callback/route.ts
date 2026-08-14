@@ -1,10 +1,13 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { hasPermission } from "@/backend/rbac";
 import { getSession } from "@/backend/session";
+import { auditMetaFromRequest, writeAudit } from "@/backend/audit";
 import { saveOAuthConnection } from "@/backend/channel-connect";
 import { getZaloOAuthConfig } from "@/backend/oauth-config";
 import { OAUTH_STATE_COOKIE, verifyOAuthStateToken } from "@/backend/oauth-state";
 import { exchangeZaloCode, fetchZaloOaInfo } from "@/backend/zalo-oauth";
+import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
 
 function settingsUrl(request: Request, params: Record<string, string>) {
   const url = new URL("/settings", request.url);
@@ -16,7 +19,7 @@ function settingsUrl(request: Request, params: Record<string, string>) {
 
 export async function GET(request: Request) {
   const session = await getSession();
-  if (!session || session.role !== "owner") {
+  if (!session || !(await hasPermission(session, PERMISSION_CODES.channelsConnect))) {
     return NextResponse.redirect(new URL("/login?next=/settings", request.url));
   }
 
@@ -64,6 +67,13 @@ export async function GET(request: Request) {
       refreshToken: token.refreshToken,
       expiresAt: token.expiresAt,
       oaId: oa.oaId,
+    });
+    await writeAudit({
+      ...auditMetaFromRequest(request),
+      actor: session,
+      action: AUDIT_ACTIONS.channelConnect,
+      entityType: "ChannelAccount",
+      metadata: { channel: "zalo", displayName: oa.name, via: "zalo_oauth" },
     });
 
     const response = NextResponse.redirect(

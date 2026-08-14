@@ -13,6 +13,12 @@ import {
   products,
   quickReplies,
 } from "../src/lib/mock";
+import {
+  PERMISSIONS,
+  ROLE_PERMISSIONS,
+  ROLES,
+  normalizeRoleCode,
+} from "../src/lib/rbac-catalog";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -23,7 +29,55 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString }),
 });
 
+async function syncRbacCatalog() {
+  for (const role of ROLES) {
+    await prisma.role.upsert({
+      where: { code: role.code },
+      create: {
+        code: role.code,
+        name: role.name,
+        description: role.description,
+        isSystem: role.isSystem,
+        isActive: role.isActive,
+        sortOrder: role.sortOrder,
+      },
+      update: {
+        name: role.name,
+        description: role.description,
+        isSystem: role.isSystem,
+        isActive: role.isActive,
+        sortOrder: role.sortOrder,
+      },
+    });
+  }
+
+  for (const permission of PERMISSIONS) {
+    await prisma.permission.upsert({
+      where: { code: permission.code },
+      create: {
+        code: permission.code,
+        name: permission.name,
+        description: permission.description,
+        group: permission.group,
+      },
+      update: {
+        name: permission.name,
+        description: permission.description,
+        group: permission.group,
+      },
+    });
+  }
+
+  await prisma.rolePermission.deleteMany();
+  await prisma.rolePermission.createMany({
+    data: Object.entries(ROLE_PERMISSIONS).flatMap(([roleCode, codes]) =>
+      codes.map((permissionCode) => ({ roleCode, permissionCode })),
+    ),
+  });
+}
+
 async function main() {
+  await prisma.auditLog.deleteMany();
   await prisma.orderItem.deleteMany();
   await prisma.order.deleteMany();
   await prisma.message.deleteMany();
@@ -35,6 +89,8 @@ async function main() {
   await prisma.channelAccount.deleteMany();
   await prisma.staff.deleteMany();
   await prisma.shop.deleteMany();
+
+  await syncRbacCatalog();
 
   await prisma.shop.create({
     data: {
@@ -50,7 +106,7 @@ async function main() {
       name: SHOP.staffName,
       email: SHOP.staffEmail,
       passwordHash: await hash(SHOP.staffPassword, 12),
-      role: SHOP.role,
+      roleCode: normalizeRoleCode(SHOP.role),
     },
   });
 
@@ -62,7 +118,7 @@ async function main() {
         name: member.name,
         email: member.email,
         passwordHash: await hash(member.password, 12),
-        role: member.role,
+        roleCode: normalizeRoleCode(member.role),
       },
     });
   }

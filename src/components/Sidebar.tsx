@@ -6,32 +6,35 @@ import { useEffect, useState } from "react";
 import { logoutAction } from "@/app/login/actions";
 import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
 import { usePersistedState } from "@/lib/use-persisted-state";
+import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 
 type NavItem = {
   href: string;
   label: string;
   icon: () => React.JSX.Element;
-  ownerOnly?: boolean;
+  permission?: string;
 };
 
 const NAV: NavItem[] = [
-  { href: "/inbox", label: "Inbox", icon: InboxIcon },
-  { href: "/orders", label: "Đơn hàng", icon: OrderIcon },
-  { href: "/customers", label: "Khách", icon: PeopleIcon },
-  { href: "/staff", label: "Nhân viên", icon: PeopleIcon, ownerOnly: true },
-  { href: "/settings", label: "Cài đặt", icon: GearIcon },
+  { href: "/inbox", label: "Inbox", icon: InboxIcon, permission: PERMISSION_CODES.inboxRead },
+  { href: "/orders", label: "Đơn hàng", icon: OrderIcon, permission: PERMISSION_CODES.ordersRead },
+  { href: "/customers", label: "Khách", icon: PeopleIcon, permission: PERMISSION_CODES.customersRead },
+  { href: "/staff", label: "Nhân viên", icon: PeopleIcon, permission: PERMISSION_CODES.staffRead },
+  { href: "/audit", label: "Nhật ký hoạt động", icon: AuditIcon, permission: PERMISSION_CODES.auditRead },
+  { href: "/settings", label: "Cài đặt kênh", icon: GearIcon },
+  { href: "/settings/profile", label: "Hồ sơ cá nhân", icon: UserIcon, permission: PERMISSION_CODES.profileUpdate },
 ];
 
 type SidebarProps = {
   shopName: string;
   staffName: string;
   roleLabel: string;
-  isOwner: boolean;
+  permissions: string[];
 };
 
-export function Sidebar({ shopName, staffName, roleLabel, isOwner }: SidebarProps) {
+export function Sidebar({ shopName, staffName, roleLabel, permissions }: SidebarProps) {
   const pathname = usePathname();
-  const items = NAV.filter((item) => !item.ownerOnly || isOwner);
+  const items = NAV.filter((item) => !item.permission || permissions.includes(item.permission));
   const [collapsed, setCollapsed] = usePersistedState(STORAGE_KEYS.sidebarCollapsed, false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -238,6 +241,27 @@ function GearIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function AuditIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+      <path d="M16 13H8" />
+      <path d="M16 17H8" />
+      <path d="M10 9H8" />
     </svg>
   );
 }

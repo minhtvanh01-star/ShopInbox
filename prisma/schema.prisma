@@ -20,11 +20,6 @@ enum ChannelStatus {
   ready
 }
 
-enum StaffRole {
-  owner
-  staff
-}
-
 enum ConversationTag {
   new
   consulting
@@ -57,24 +52,91 @@ model Shop {
   orders           Order[]
   products         Product[]
   quickReplies     QuickReply[]
+  auditLogs        AuditLog[]
 
   @@map("shops")
 }
 
+model Role {
+  code        String           @id
+  name        String
+  description String           @default("")
+  isSystem    Boolean          @default(true)
+  isActive    Boolean          @default(true)
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now())
+  permissions RolePermission[]
+  staff       Staff[]
+
+  @@map("roles")
+}
+
+model Permission {
+  code        String           @id
+  name        String
+  description String           @default("")
+  group       String           @default("") @map("group_name")
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleCode       String
+  permissionCode String
+  role           Role       @relation(fields: [roleCode], references: [code], onDelete: Cascade)
+  permission     Permission @relation(fields: [permissionCode], references: [code], onDelete: Cascade)
+
+  @@id([roleCode, permissionCode])
+  @@map("role_permissions")
+}
+
 model Staff {
-  id           String         @id
-  shopId       String
-  shop         Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  name         String
-  email        String         @unique
-  passwordHash String
-  role         StaffRole
-  createdAt    DateTime       @default(now())
+  id            String         @id
+  shopId        String
+  shop          Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name          String
+  email         String         @unique
+  passwordHash  String?
+  googleId      String?        @unique
+  avatarUrl     String?
+  phone         String?
+  roleCode      String
+  role          Role           @relation(fields: [roleCode], references: [code], onDelete: Restrict)
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
   assignedChats Conversation[]
-  sentMessages Message[]
+  sentMessages  Message[]
+  auditLogs     AuditLog[]
 
   @@index([shopId])
+  @@index([roleCode])
+  @@index([shopId, isActive])
   @@map("staff")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  shopId     String?
+  shop       Shop?    @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  actorId    String?
+  actor      Staff?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorEmail String?
+  actorRole  String?
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  userAgent  String?
+
+  @@index([actorId])
+  @@index([createdAt])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([shopId, createdAt])
+  @@map("audit_logs")
 }
 
 model ChannelAccount {
@@ -88,12 +150,15 @@ model ChannelAccount {
   appId          String?
   appSecret      String?
   pageId         String?
+  linkedPageId   String?
   webhookSecret  String?
   oaId           String?
   accessToken    String?
   refreshToken   String?
   displayName    String?
   expiresAt      DateTime?
+  connectedAt    DateTime?
+  lastWebhookAt  DateTime?
 
   @@unique([shopId, channel])
   @@map("channel_accounts")
@@ -159,10 +224,12 @@ model Message {
   conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   staffId        String?
   staff          Staff?        @relation(fields: [staffId], references: [id], onDelete: SetNull)
-  sender         MessageSender
-  text           String
-  createdAt      DateTime      @default(now())
+  sender             MessageSender
+  text               String
+  externalMessageId  String?
+  createdAt          DateTime      @default(now())
 
+  @@unique([shopId, externalMessageId])
   @@index([conversationId, createdAt])
   @@index([shopId])
   @@map("messages")

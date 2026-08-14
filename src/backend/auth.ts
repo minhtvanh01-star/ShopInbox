@@ -1,5 +1,8 @@
 import { redirect } from "next/navigation";
+import { prisma } from "@/backend/prisma";
 import { getSession, type SessionPayload } from "@/backend/session";
+import { toSessionPayload } from "@/backend/session-token";
+import { normalizeRoleCode } from "@/lib/rbac-catalog";
 
 export async function requireSession(): Promise<SessionPayload> {
   const session = await getSession();
@@ -9,18 +12,18 @@ export async function requireSession(): Promise<SessionPayload> {
   return session;
 }
 
-export async function requireOwner(): Promise<SessionPayload> {
-  const session = await requireSession();
-  if (session.role !== "owner") {
-    redirect("/inbox");
-  }
-  return session;
+export async function loadStaffSession(staffId: string): Promise<SessionPayload> {
+  const staff = await prisma.staff.findUniqueOrThrow({
+    where: { id: staffId },
+    select: {
+      id: true,
+      shopId: true,
+      email: true,
+      name: true,
+      roleCode: true,
+    },
+  });
+  return toSessionPayload(staff);
 }
 
-export async function requireOwnerApi(): Promise<SessionPayload | null> {
-  const session = await getSession();
-  if (!session || session.role !== "owner") {
-    return null;
-  }
-  return session;
-}
+export { normalizeRoleCode };

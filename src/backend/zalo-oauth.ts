@@ -93,3 +93,79 @@ export async function fetchZaloOaInfo(accessToken: string, oaIdHint?: string | n
 
   return { oaId, name };
 }
+
+export async function refreshZaloAccessToken(
+  config: ZaloOAuthConfig,
+  refreshToken: string,
+) {
+  const body = new URLSearchParams({
+    app_id: config.appId,
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
+
+  const response = await fetch("https://oauth.zaloapp.com/v4/oa/access_token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      secret_key: config.appSecret,
+    },
+    body: body.toString(),
+  });
+
+  const data = (await response.json()) as ZaloTokenResponse;
+  if (!response.ok || !data.access_token) {
+    throw new Error(readZaloError(data));
+  }
+
+  const expiresIn =
+    typeof data.expires_in === "string" ? Number.parseInt(data.expires_in, 10) : data.expires_in;
+
+  const expiresAt =
+    typeof expiresIn === "number" && Number.isFinite(expiresIn)
+      ? new Date(Date.now() + expiresIn * 1000)
+      : null;
+
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? refreshToken,
+    expiresAt,
+  };
+}
+
+type ZaloSendResponse = {
+  data?: { message_id?: string; msg_id?: string };
+  error?: number;
+  message?: string;
+};
+
+/** Gửi tin CS từ OA tới user (Zalo Open API). */
+export async function sendZaloOaMessage(input: {
+  accessToken: string;
+  recipientId: string;
+  text: string;
+}) {
+  const url = new URL("https://openapi.zalo.me/v3.0/oa/message/cs");
+  url.searchParams.set("access_token", input.accessToken);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      recipient: { user_id: input.recipientId },
+      message: { text: input.text },
+    }),
+  });
+
+  const data = (await response.json()) as ZaloSendResponse;
+  if (!response.ok || (typeof data.error === "number" && data.error !== 0)) {
+    throw new Error(readZaloError(data));
+  }
+
+  const externalMessageId = data.data?.message_id ?? data.data?.msg_id;
+  if (!externalMessageId) {
+    throw new Error(data.message ?? "Zalo không trả về message_id");
+  }
+
+  return { externalMessageId };
+}

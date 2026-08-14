@@ -1,8 +1,11 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { ChannelBadge } from "@/components/ChannelBadge";
 import {
   completeMetaPageAction,
+  disconnectChannelAction,
   saveChannelCredentialsAction,
   type CompleteMetaPageState,
   type SaveChannelCredentialsState,
@@ -12,7 +15,7 @@ import {
   PLATFORM_AVAILABILITY_LABEL,
   type PlatformOption,
 } from "@/lib/channels";
-import { CHANNEL_STATUS_LABEL } from "@/lib/labels";
+import { CHANNEL_STATUS_LABEL, formatDateTime } from "@/lib/labels";
 import { LAYOUT_CLASS } from "@/lib/ui-layout";
 import type { Channel, ChannelStatus } from "@/lib/types";
 import type { MetaPageOption } from "@/lib/oauth-types";
@@ -30,16 +33,19 @@ export type ChannelAccountView = {
   oaId?: string | null;
   displayName?: string | null;
   expiresAt?: string | null;
+  connectedAt?: string | null;
+  lastWebhookAt?: string | null;
   hasOAuthToken?: boolean;
 };
 
 type AddConnectionModalProps = {
   channels: ChannelAccountView[];
-  isOwner: boolean;
+  canConnect: boolean;
   metaOAuthConfigured: boolean;
   zaloOAuthConfigured: boolean;
   metaWebhookUrl: string;
   zaloWebhookUrl: string;
+  metaWebhookVerifyToken: string;
   pendingMetaPages: { channel: Channel; pages: MetaPageOption[] } | null;
   initialPlatformId?: string;
   onClose: () => void;
@@ -102,13 +108,67 @@ function statusBadgeClass(status: ChannelStatus) {
   return "bg-amber-50 text-amber-700 ring-amber-200";
 }
 
+function CopyButton({ value, label }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button type="button" onClick={copy} className="btn-ghost shrink-0 px-2 py-1 text-xs">
+      {copied ? "Đã copy!" : label ?? "Copy"}
+    </button>
+  );
+}
+
+function SetupChecklist({
+  oauthDone,
+  webhookRegistered,
+  messagesSynced,
+}: {
+  oauthDone: boolean;
+  webhookRegistered: boolean;
+  messagesSynced: boolean;
+}) {
+  const items = [
+    { done: oauthDone, label: "OAuth — đăng nhập & lưu token" },
+    { done: webhookRegistered, label: "Webhook URL — đăng ký trong Meta/Zalo dashboard" },
+    { done: messagesSynced, label: "Tin nhắn đã đồng bộ vào Inbox" },
+  ];
+
+  return (
+    <ul className="space-y-2 text-sm">
+      {items.map((item) => (
+        <li key={item.label} className="flex items-start gap-2">
+          <span
+            className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+              item.done ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-400"
+            }`}
+          >
+            {item.done ? "✓" : "○"}
+          </span>
+          <span className={item.done ? "text-slate-700" : "text-slate-500"}>{item.label}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function AddConnectionModal({
   channels,
-  isOwner,
+  canConnect,
   metaOAuthConfigured,
   zaloOAuthConfigured,
   metaWebhookUrl,
   zaloWebhookUrl,
+  metaWebhookVerifyToken,
   pendingMetaPages,
   initialPlatformId,
   onClose,
@@ -116,6 +176,8 @@ export function AddConnectionModal({
   const [selectedId, setSelectedId] = useState(initialPlatformId ?? "facebook");
   const [search, setSearch] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const router = useRouter();
   const [saveState, saveAction, savePending] = useActionState(
     saveChannelCredentialsAction,
     saveInitialState,
@@ -173,6 +235,18 @@ export function AddConnectionModal({
       : selected.channel === "facebook" || selected.channel === "instagram"
         ? metaWebhookUrl
         : null;
+
+  async function handleDisconnect() {
+    if (!account || !canConnect || disconnecting) return;
+    const confirmed = window.confirm("Ngắt kết nối kênh này? Token OAuth sẽ bị xóa trên server.");
+    if (!confirmed) return;
+    setDisconnecting(true);
+    const formData = new FormData();
+    formData.set("channel", account.channel);
+    await disconnectChannelAction({}, formData);
+    setDisconnecting(false);
+    router.refresh();
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
@@ -307,17 +381,41 @@ export function AddConnectionModal({
                         ? "Đã lưu token OAuth trên server"
                         : "Chưa kết nối OAuth"}
                     </p>
+                    {account.connectedAt ? (
+                      <p className="mt-1 text-xs text-slate-400">
+                        Kết nối lúc {formatDateTime(account.connectedAt)}
+                      </p>
+                    ) : null}
                   </div>
-                  <span
-                    className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${statusBadgeClass(account.status)}`}
-                  >
-                    {CHANNEL_STATUS_LABEL[account.status]}
-                  </span>
+                  <div className="flex flex-col items-end gap-2">
+                    <ChannelBadge channel={account.channel} />
+                    <span
+                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${statusBadgeClass(account.status)}`}
+                    >
+                      {account.status === "ready" ? "Đã nối" : CHANNEL_STATUS_LABEL[account.status]}
+                    </span>
+                  </div>
                 </div>
 
-                {!isOwner ? (
+                {account.status === "ready" ? (
+                  <div className="mb-4 rounded-xl border border-border bg-surface-muted/60 p-4">
+                    <p className="section-label mb-3">Tiến độ thiết lập</p>
+                    <SetupChecklist
+                      oauthDone={Boolean(account.hasOAuthToken)}
+                      webhookRegistered={Boolean(account.lastWebhookAt)}
+                      messagesSynced={Boolean(account.lastWebhookAt)}
+                    />
+                    {account.lastWebhookAt ? (
+                      <p className="mt-3 text-xs text-emerald-600">
+                        Tin nhắn gần nhất: {formatDateTime(account.lastWebhookAt)}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {!canConnect ? (
                   <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
-                    Chỉ chủ shop mới kết nối OAuth hoặc lưu cấu hình.
+                    Bạn không có quyền kết nối OAuth hoặc lưu cấu hình kênh.
                   </p>
                 ) : null}
 
@@ -350,7 +448,7 @@ export function AddConnectionModal({
                               name="pageId"
                               value={page.pageId}
                               required
-                              disabled={disabled || !isOwner}
+                              disabled={disabled || !canConnect}
                               className="text-teal-600"
                             />
                             <span>{label}</span>
@@ -363,7 +461,7 @@ export function AddConnectionModal({
                     </fieldset>
                     {pickState.error ? <p className="alert-error">{pickState.error}</p> : null}
                     {pickState.success ? <p className="alert-success">{pickState.success}</p> : null}
-                    <button type="submit" disabled={!isOwner || pickPending} className="btn-primary">
+                    <button type="submit" disabled={!canConnect || pickPending} className="btn-primary">
                       {pickPending ? "Đang lưu..." : "Xác nhận trang"}
                     </button>
                   </form>
@@ -378,7 +476,7 @@ export function AddConnectionModal({
                           ? "Đăng nhập Zalo OA và cấp quyền cho ứng dụng ShopInbox."
                           : "Đăng nhập Facebook (admin Fanpage / Instagram Business) và cấp quyền."}
                       </p>
-                      {oauthConfigured && oauthUrl && isOwner ? (
+                      {oauthConfigured && oauthUrl && canConnect ? (
                         <a href={oauthUrl} className="btn-primary mt-3 inline-flex">
                           {selected.channel === "zalo"
                             ? "Kết nối với Zalo"
@@ -397,12 +495,43 @@ export function AddConnectionModal({
                       <div className="rounded-xl border border-border bg-surface-muted/60 p-4">
                         <p className="text-sm font-medium text-slate-900">Bước 2 — Webhook</p>
                         <p className="mt-1 text-xs text-slate-500">
-                          Dán URL này vào Meta / Zalo Developers để nhận tin nhắn (cần HTTPS công khai).
+                          Copy URL và đăng ký trong Meta / Zalo Developers (cần HTTPS công khai).
                         </p>
-                        <code className="mt-2 block break-all rounded bg-surface px-2 py-2 font-mono text-xs text-slate-700">
-                          {webhookUrl}
-                        </code>
+                        <div className="mt-2 flex items-start gap-2 rounded bg-surface px-2 py-2">
+                          <code className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700">
+                            {webhookUrl}
+                          </code>
+                          <CopyButton value={webhookUrl} />
+                        </div>
+                        {(selected.channel === "facebook" || selected.channel === "instagram") &&
+                        metaWebhookVerifyToken ? (
+                          <div className="mt-3">
+                            <p className="text-xs text-slate-500">Verify token (Meta):</p>
+                            <div className="mt-1 flex items-start gap-2 rounded bg-surface px-2 py-2">
+                              <code className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700">
+                                {metaWebhookVerifyToken}
+                              </code>
+                              <CopyButton value={metaWebhookVerifyToken} label="Copy token" />
+                            </div>
+                          </div>
+                        ) : null}
+                        {selected.channel === "facebook" ? (
+                          <p className="mt-2 text-xs text-teal-700">
+                            Facebook: app tự thử đăng ký webhook page sau OAuth (nếu token cho phép).
+                          </p>
+                        ) : null}
                       </div>
+                    ) : null}
+
+                    {canConnect && account.status === "ready" && account.hasOAuthToken ? (
+                      <button
+                        type="button"
+                        onClick={handleDisconnect}
+                        disabled={disconnecting}
+                        className="text-sm font-medium text-red-700 hover:text-red-900"
+                      >
+                        {disconnecting ? "Đang ngắt kết nối..." : "Ngắt kết nối kênh"}
+                      </button>
                     ) : null}
 
                     <button
@@ -440,7 +569,7 @@ export function AddConnectionModal({
                             type={isSecret ? "password" : "text"}
                             placeholder={isSecret && existing ? maskSecret(existing) : field.placeholder}
                             defaultValue={isSecret ? "" : (existing ?? "")}
-                            disabled={!isOwner}
+                            disabled={!canConnect}
                             className="input-field-sm disabled:bg-surface-muted"
                           />
                           {isSecret && existing ? (
@@ -461,7 +590,7 @@ export function AddConnectionModal({
                         name="note"
                         rows={2}
                         defaultValue={account.note}
-                        disabled={!isOwner}
+                        disabled={!canConnect}
                         placeholder="VD: Đã tạo app Meta, chờ duyệt quyền pages_messaging"
                         className="textarea-field disabled:bg-surface-muted"
                       />
@@ -471,7 +600,7 @@ export function AddConnectionModal({
                     {saveState.success ? <p className="alert-success">{saveState.success}</p> : null}
 
                     <div className="flex flex-wrap items-center gap-3 pt-2">
-                      <button type="submit" disabled={!isOwner || savePending} className="btn-secondary">
+                      <button type="submit" disabled={!canConnect || savePending} className="btn-secondary">
                         {savePending ? "Đang lưu..." : "Lưu cấu hình thủ công"}
                       </button>
                       <button type="button" onClick={onClose} className="btn-ghost">

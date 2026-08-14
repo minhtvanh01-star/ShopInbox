@@ -150,4 +150,55 @@ Modal có mục **Cấu hình nâng cao (dev)** để dán App ID / Secret thủ
 - [ ] App Meta/Zalo ở chế độ **Live**
 - [ ] Chỉ chủ shop kết nối kênh
 
-**Giới hạn hiện tại (Lát 4):** OAuth + lưu token + webhook stub (log event). Đồng bộ tin nhắn vào Inbox sẽ bật ở bước tiếp theo.
+**Giới hạn hiện tại (Lát 4+):**
+
+- **Đồng bộ inbound:** Webhook Meta/Zalo ghi tin nhắn khách vào PostgreSQL → hiện trong Inbox khi tải/trang refresh (`revalidatePath` sau webhook).
+- **Gửi outbound:** Inbox gọi Meta Graph Send API / Zalo OA send khi kênh `ready` + có token; lưu `external_message_id` để dedup với webhook echo. Kênh web / demo (chưa OAuth) vẫn chỉ ghi DB.
+- **Dedup:** `external_message_id` (mid/msg_id) tránh ghi trùng; Meta echo (`is_echo`) bỏ qua inbound.
+
+---
+
+## 7. Đồng bộ tin nhắn (webhook → Inbox)
+
+### Luồng tự động
+
+1. Khách nhắn Fanpage / IG / Zalo OA.
+2. Meta/Zalo gọi POST webhook (`/api/webhooks/meta` hoặc `/api/webhooks/zalo`).
+3. Server tìm `channel_accounts` theo `pageId` / `oaId`, tạo `Customer` + `Conversation` nếu chưa có, ghi `Message` (sender = customer).
+4. Cập nhật `last_webhook_at` trên kênh — UI hiện checklist &quot;Tin nhắn đã đồng bộ&quot;.
+5. Inbox refresh (F5 hoặc điều hướng lại) thấy hội thoại mới.
+
+### Tự cấu hình vs thủ công
+
+| Bước | Tự động trong app | Thủ công (dashboard) |
+|------|-------------------|----------------------|
+| OAuth + lưu token | ✓ | — |
+| Hiện Webhook URL + Verify token (copy) | ✓ | — |
+| Facebook: `subscribed_apps` sau OAuth | ✓ thử tự gọi | Meta Developers nếu thất bại |
+| Instagram webhook | — | Đăng ký app webhook + subscribe Page liên kết IG |
+| Zalo webhook URL | ✓ hiện URL | Zalo OA Admin → Webhook |
+| Verify token Meta | ✓ dùng `META_WEBHOOK_VERIFY_TOKEN` | Nhập cùng giá trị khi verify |
+
+### Test end-to-end (local + ngrok)
+
+```bash
+# Terminal 1
+npm run dev
+
+# Terminal 2
+ngrok http 3000
+```
+
+1. Cập nhật `.env` với URL ngrok (`NEXT_PUBLIC_APP_URL`, redirect URIs).
+2. Chủ shop: **Cài đặt → Kết nối** OAuth Facebook/Zalo.
+3. Copy webhook URL từ modal → dán Meta/Zalo Developers, verify token = `META_WEBHOOK_VERIFY_TOKEN`.
+4. Nhắn thử từ tài khoản khách → mở **Inbox**, refresh nếu cần.
+5. **Cài đặt** hiện &quot;Webhook gần nhất&quot; khi nhận event.
+
+### Migration mới (nếu chưa chạy)
+
+```bash
+npm run db:migrate
+```
+
+Thêm cột: `messages.external_message_id`, `channel_accounts.connected_at`, `channel_accounts.last_webhook_at`.

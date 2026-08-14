@@ -2,9 +2,10 @@
 
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { requireOwner } from "@/backend/auth";
+import { writeAudit } from "@/backend/audit";
+import { hasPermission, requirePermission } from "@/backend/rbac";
 import { getSession } from "@/backend/session";
-import { saveOAuthConnection } from "@/backend/channel-connect";
+import { disconnectChannel, saveOAuthConnection } from "@/backend/channel-connect";
 import { pickMetaPageForChannel } from "@/backend/meta-oauth";
 import {
   OAUTH_PAGES_COOKIE,
@@ -14,6 +15,7 @@ import type { MetaPageOption } from "@/lib/oauth-types";
 import { channelHasCredentials } from "@/lib/channels";
 import { prisma } from "@/backend/prisma";
 import type { Channel } from "@/lib/types";
+import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
 
 export type SaveChannelCredentialsState = {
   error?: string;
@@ -41,7 +43,7 @@ export async function getPendingMetaPages(): Promise<{
   pages: MetaPageOption[];
 } | null> {
   const session = await getSession();
-  if (!session || session.role !== "owner") {
+  if (!session || !(await hasPermission(session, PERMISSION_CODES.channelsConnect))) {
     return null;
   }
   const jar = await cookies();
@@ -62,7 +64,7 @@ export async function completeMetaPageAction(
   _prev: CompleteMetaPageState,
   formData: FormData,
 ): Promise<CompleteMetaPageState> {
-  const session = await requireOwner();
+  const session = await requirePermission(PERMISSION_CODES.channelsConnect);
   const jar = await cookies();
   const token = jar.get(OAUTH_PAGES_COOKIE)?.value;
   if (!token) {
@@ -92,9 +94,16 @@ export async function completeMetaPageAction(
       displayName: picked.displayName,
       accessToken: picked.accessToken,
       pageId: picked.externalId,
+      linkedPageId: picked.linkedPageId,
     });
     jar.delete(OAUTH_PAGES_COOKIE);
     revalidatePath("/settings");
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.channelConnect,
+      entityType: "ChannelAccount",
+      metadata: { channel: payload.channel, displayName: picked.displayName, via: "meta_page_pick" },
+    });
     return { success: `Đã kết nối ${picked.displayName}.` };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Không lưu được kết nối Meta." };
@@ -105,7 +114,7 @@ export async function saveChannelCredentialsAction(
   _prev: SaveChannelCredentialsState,
   formData: FormData,
 ): Promise<SaveChannelCredentialsState> {
-  const session = await requireOwner();
+  const session = await requirePermission(PERMISSION_CODES.channelsConnect);
 
   const channel = formData.get("channel");
   if (typeof channel !== "string" || !CHANNELS.includes(channel as Channel)) {
@@ -159,6 +168,14 @@ export async function saveChannelCredentialsAction(
 
   revalidatePath("/settings");
 
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.channelCredentialsSave,
+    entityType: "ChannelAccount",
+    entityId: account.id,
+    metadata: { channel, ready },
+  });
+
   return {
     success: ready
       ? "Đã lưu cấu hình. Kênh sẵn sàng (cần webhook để nhận tin nhắn)."
@@ -166,7 +183,39 @@ export async function saveChannelCredentialsAction(
   };
 }
 
+export type DisconnectChannelState = {
+  error?: string;
+  success?: string;
+};
+
+export async function disconnectChannelAction(
+  _prev: DisconnectChannelState,
+  formData: FormData,
+): Promise<DisconnectChannelState> {
+  const session = await requirePermission(PERMISSION_CODES.channelsConnect);
+  const channel = formData.get("channel");
+  if (typeof channel !== "string" || !CHANNELS.includes(channel as Channel)) {
+    return { error: "Kênh không hợp lệ" };
+  }
+
+  try {
+    await disconnectChannel(session.shopId, channel as Channel);
+    revalidatePath("/settings");
+    revalidatePath("/inbox");
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.channelDisconnect,
+      entityType: "ChannelAccount",
+      metadata: { channel },
+    });
+    return { success: "Đã ngắt kết nối kênh." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không ngắt được kết nối." };
+  }
+}
+
 export async function clearOAuthPagesCookie() {
+  await requirePermission(PERMISSION_CODES.channelsConnect);
   const jar = await cookies();
   jar.delete(OAUTH_PAGES_COOKIE);
 }

@@ -2,13 +2,16 @@
 
 /** Server mutations (inbox/orders). Tạm cạnh route đến khi Lát 3 ổn định. */
 import { revalidatePath } from "next/cache";
-import { requireSession } from "@/backend/auth";
+import { writeAudit } from "@/backend/audit";
+import { dispatchOutboundMessage } from "@/backend/channel-send";
+import { requirePermission } from "@/backend/rbac";
 import { nextOrderCode, normalizeOrderItems, type DraftOrderItem } from "@/backend/order-code";
 import { prisma } from "@/backend/prisma";
+import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
 import type { OrderStatus } from "@/lib/types";
 
 export async function sendMessage(conversationId: string, text: string) {
-  const session = await requireSession();
+  const session = await requirePermission(PERMISSION_CODES.inboxReply);
   const body = text.trim();
   if (!conversationId || !body) {
     throw new Error("Tin nhắn không hợp lệ");
@@ -21,6 +24,13 @@ export async function sendMessage(conversationId: string, text: string) {
     throw new Error("Không tìm thấy hội thoại");
   }
 
+  const outbound = await dispatchOutboundMessage({
+    shopId: session.shopId,
+    channel: conversation.channel,
+    customerId: conversation.customerId,
+    text: body,
+  });
+
   const createdAt = new Date();
   const message = await prisma.message.create({
     data: {
@@ -29,6 +39,7 @@ export async function sendMessage(conversationId: string, text: string) {
       staffId: session.staffId,
       sender: "shop",
       text: body,
+      externalMessageId: outbound.mode === "remote" ? outbound.externalMessageId : null,
       createdAt,
     },
   });
@@ -43,6 +54,18 @@ export async function sendMessage(conversationId: string, text: string) {
   });
 
   revalidatePath("/inbox");
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.messageSend,
+    entityType: "Message",
+    entityId: message.id,
+    metadata: {
+      conversationId,
+      channel: conversation.channel,
+      mode: outbound.mode,
+    },
+  });
 
   return {
     id: message.id,
@@ -59,7 +82,7 @@ export async function createOrder(input: {
   phone?: string;
   items: DraftOrderItem[];
 }) {
-  const session = await requireSession();
+  const session = await requirePermission(PERMISSION_CODES.ordersCreate);
   const address = input.address.trim();
   const phone = input.phone?.trim() || undefined;
   const items = normalizeOrderItems(input.items);
@@ -147,6 +170,14 @@ export async function createOrder(input: {
   revalidatePath("/orders");
   revalidatePath("/customers");
 
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.orderCreate,
+    entityType: "Order",
+    entityId: order.id,
+    metadata: { code: order.code, conversationId: conversation.id },
+  });
+
   return {
     id: order.id,
     code: order.code,
@@ -156,7 +187,7 @@ export async function createOrder(input: {
 const ORDER_STATUSES: OrderStatus[] = ["new", "confirmed", "shipping", "done", "cancelled"];
 
 export async function updateOrderStatus(orderId: string, status: OrderStatus) {
-  const session = await requireSession();
+  const session = await requirePermission(PERMISSION_CODES.ordersUpdate);
   if (!ORDER_STATUSES.includes(status)) {
     throw new Error("Trạng thái không hợp lệ");
   }
@@ -171,6 +202,14 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus) {
   await prisma.order.update({
     where: { id: orderId },
     data: { status },
+  });
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.orderStatusChange,
+    entityType: "Order",
+    entityId: orderId,
+    metadata: { from: order.status, to: status, code: order.code },
   });
 
   revalidatePath("/orders");

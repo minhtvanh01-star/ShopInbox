@@ -1,4 +1,6 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
+import { processZaloWebhook } from "@/backend/webhook-zalo";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -13,6 +15,18 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
-  console.info("[webhook/zalo] event", JSON.stringify(body));
-  return NextResponse.json({ received: true });
+  if (!body) {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  try {
+    const result = await processZaloWebhook(body);
+    if (result.processed > 0) {
+      revalidatePath("/inbox");
+    }
+    return NextResponse.json({ received: true, ...result });
+  } catch (err) {
+    console.error("[webhook/zalo] ingest error", err);
+    return NextResponse.json({ received: true, error: "ingest_failed" });
+  }
 }

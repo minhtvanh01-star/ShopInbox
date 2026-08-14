@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/backend/session-token";
 
 const PUBLIC_PATHS = ["/login"];
-const PUBLIC_PREFIXES = ["/api/webhooks/"];
+const PUBLIC_PREFIXES = ["/api/webhooks/", "/api/auth/google/"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

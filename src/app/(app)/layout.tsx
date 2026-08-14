@@ -11,7 +11,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         shopName={shop.shopName}
         staffName={shop.staffName}
         roleLabel={shop.roleLabel}
-        isOwner={shop.role === "owner"}
+        permissions={shop.permissions}
       />
       <main className="flex min-w-0 flex-1 flex-col pt-14 md:pt-0">{children}</main>
     </div>

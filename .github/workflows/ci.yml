@@ -1,0 +1,68 @@
+# Chạy tự động khi push / mở PR vào nhánh chính hoặc UAT.
+# Mục tiêu: lint + unit test + migrate trên Postgres tạm — trước khi lên UAT/main.
+name: CI
+
+on:
+  push:
+    branches: [main, dev, uat, "uat/**"]
+  pull_request:
+    branches: [main, dev, uat, "uat/**"]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, test, migrate
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: shopinbox
+          POSTGRES_PASSWORD: shopinbox
+          POSTGRES_DB: shopinbox_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shopinbox -d shopinbox_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://shopinbox:shopinbox@localhost:5432/shopinbox_ci
+      SESSION_SECRET: shopinbox-ci-session-secret-min-16
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Prisma schema
+        run: npx prisma validate
+
+      - name: Apply migrations (CI database)
+        run: npx prisma migrate deploy
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build

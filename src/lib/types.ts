@@ -1,7 +1,8 @@
 /** Shared domain types — frontend và backend cùng dùng (Channel, Order, ChannelAccount, …). */
 export type Channel = "facebook" | "zalo" | "instagram" | "web";
 export type ChannelStatus = "disconnected" | "connecting" | "ready";
-export type StaffRole = "owner" | "staff";
+/** Mã vai trò lấy từ bảng `roles` / catalog — không hardcode enum UI. */
+export type StaffRole = string;
 export type ConversationTag = "new" | "consulting" | "closed" | "spam";
 export type OrderStatus = "new" | "confirmed" | "shipping" | "done" | "cancelled";
 export type MessageSender = "customer" | "shop";

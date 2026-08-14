@@ -124,6 +124,7 @@ export function pickMetaPageForChannel(channel: Channel, page: MetaPageOption) {
       externalId: page.pageId,
       displayName: page.pageName,
       accessToken: page.pageAccessToken,
+      linkedPageId: page.pageId,
     };
   }
 
@@ -139,5 +140,61 @@ export function pickMetaPageForChannel(channel: Channel, page: MetaPageOption) {
     externalId: page.instagramId,
     displayName: label,
     accessToken: page.pageAccessToken,
+    linkedPageId: page.pageId,
   };
+}
+
+export async function subscribeMetaPageWebhook(pageId: string, pageAccessToken: string) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/subscribed_apps`);
+  url.searchParams.set("access_token", pageAccessToken);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      subscribed_fields: [
+        "messages",
+        "messaging_postbacks",
+        "message_deliveries",
+        "message_reads",
+      ],
+    }),
+  });
+
+  const data = await readJson<{ success?: boolean }>(response);
+  return Boolean(data.success);
+}
+
+type MetaSendResponse = {
+  recipient_id?: string;
+  message_id?: string;
+  error?: { message?: string; code?: number };
+};
+
+/** Gửi tin Messenger / Instagram DM qua Graph Send API (Page access token). */
+export async function sendMetaMessage(input: {
+  pageId: string;
+  accessToken: string;
+  recipientId: string;
+  text: string;
+}) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${input.pageId}/messages`);
+  url.searchParams.set("access_token", input.accessToken);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      recipient: { id: input.recipientId },
+      messaging_type: "RESPONSE",
+      message: { text: input.text },
+    }),
+  });
+
+  const data = await readJson<MetaSendResponse>(response);
+  if (!data.message_id) {
+    throw new Error(data.error?.message ?? "Meta không trả về message_id");
+  }
+
+  return { externalMessageId: data.message_id };
 }

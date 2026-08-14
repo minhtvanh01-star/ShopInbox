@@ -12,7 +12,7 @@ describe("session-token", () => {
       shopId: "shop1",
       email: "admin@lily.vn",
       name: "Minh",
-      role: "owner" as const,
+      role: "admin" as const,
     };
 
     const token = await createSessionToken(payload);
@@ -27,10 +27,22 @@ describe("session-token", () => {
       shopId: "shop1",
       email: "admin@lily.vn",
       name: "Minh",
-      role: "owner",
+      role: "admin",
     });
 
     expect(await verifySessionToken(`${token}x`)).toBeNull();
     expect(await verifySessionToken("not-a-jwt")).toBeNull();
+  });
+
+  it("normalizes legacy owner role to admin", async () => {
+    const token = await createSessionToken({
+      staffId: "staff1",
+      shopId: "shop1",
+      email: "admin@lily.vn",
+      name: "Minh",
+      role: "owner",
+    });
+
+    expect(await verifySessionToken(token)).toMatchObject({ role: "admin" });
   });
 });

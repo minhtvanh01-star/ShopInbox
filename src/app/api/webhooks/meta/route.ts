@@ -1,5 +1,7 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getMetaOAuthConfig } from "@/backend/oauth-config";
+import { processMetaWebhook } from "@/backend/webhook-meta";
 
 export async function GET(request: Request) {
   const config = getMetaOAuthConfig();
@@ -27,6 +29,18 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
-  console.info("[webhook/meta] event", JSON.stringify(body));
-  return NextResponse.json({ received: true });
+  if (!body) {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  try {
+    const result = await processMetaWebhook(body);
+    if (result.processed > 0) {
+      revalidatePath("/inbox");
+    }
+    return NextResponse.json({ received: true, ...result });
+  } catch (err) {
+    console.error("[webhook/meta] ingest error", err);
+    return NextResponse.json({ received: true, error: "ingest_failed" });
+  }
 }

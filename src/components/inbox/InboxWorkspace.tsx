@@ -166,7 +166,7 @@ export function InboxWorkspace({
       >
         <div className="border-b border-border px-4 py-4">
           <h1 className="text-lg font-semibold text-slate-900">Inbox</h1>
-          <p className="mt-0.5 text-xs text-slate-500">PostgreSQL — tạo đơn từ chat</p>
+          <p className="mt-0.5 text-xs text-slate-500">Tin nhắn đồng bộ từ Facebook, Zalo, Instagram</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {FILTERS.map((item) => (
               <button
@@ -204,7 +204,7 @@ export function InboxWorkspace({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-semibold text-slate-900">
-                      {person?.name}
+                      {person?.name ?? "Khách"}
                     </span>
                     <span className="shrink-0 text-[11px] text-slate-400">
                       {formatTime(item.lastAt)}
