@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useOptimistic, useState, useTransition } from "react";
+import { sendMessage } from "@/app/(app)/actions";
 import { ChannelBadge } from "@/components/ChannelBadge";
+import { CreateOrderForm } from "@/components/inbox/CreateOrderForm";
 import {
   CHANNEL_LABEL,
   TAG_LABEL,
@@ -9,14 +11,17 @@ import {
   formatTime,
   orderTotal,
 } from "@/lib/labels";
-import {
-  conversations as seedConversations,
-  customerById,
-  messages as seedMessages,
-  ordersByCustomer,
-  quickReplies,
-} from "@/lib/mock";
-import type { Channel, Conversation, Message } from "@/lib/types";
+import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
+import { usePersistedState } from "@/lib/use-persisted-state";
+import type {
+  Channel,
+  Conversation,
+  Customer,
+  Message,
+  Order,
+  Product,
+  QuickReply,
+} from "@/lib/types";
 
 const FILTERS: Array<{ id: "all" | Channel; label: string }> = [
   { id: "all", label: "Tất cả" },
@@ -26,69 +31,150 @@ const FILTERS: Array<{ id: "all" | Channel; label: string }> = [
   { id: "web", label: "Web" },
 ];
 
-export function InboxWorkspace() {
+type MobilePane = "list" | "chat" | "customer";
+
+type InboxWorkspaceProps = {
+  conversations: Conversation[];
+  messages: Message[];
+  customers: Customer[];
+  orders: Order[];
+  products: Product[];
+  quickReplies: QuickReply[];
+};
+
+type ConversationPatch = {
+  id: string;
+  lastMessage: string;
+  lastAt: string;
+};
+
+const MOBILE_TABS: Array<{ id: MobilePane; label: string }> = [
+  { id: "list", label: "Hội thoại" },
+  { id: "chat", label: "Chat" },
+  { id: "customer", label: "Khách" },
+];
+
+export function InboxWorkspace({
+  conversations,
+  messages,
+  customers,
+  orders,
+  products,
+  quickReplies,
+}: InboxWorkspaceProps) {
   const [channel, setChannel] = useState<"all" | Channel>("all");
-  const [selectedId, setSelectedId] = useState(seedConversations[0]?.id ?? "");
+  const [selectedId, setSelectedId] = useState(conversations[0]?.id ?? "");
   const [draft, setDraft] = useState("");
-  const [localMessages, setLocalMessages] = useState<Message[]>(seedMessages);
-  const [localConversations, setLocalConversations] = useState<Conversation[]>(
-    seedConversations,
+  const [creatingOrder, setCreatingOrder] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mobilePane, setMobilePane] = useState<MobilePane>("list");
+  const [customerPanelOpen, setCustomerPanelOpen] = usePersistedState(
+    STORAGE_KEYS.inboxCustomerPanel,
+    true,
   );
-  const [localSeq, setLocalSeq] = useState(1);
+  const [isPending, startTransition] = useTransition();
+  const [optimisticMessages, addOptimisticMessage] = useOptimistic(
+    messages,
+    (current, message: Message) => [...current, message],
+  );
+  const [optimisticConversations, patchOptimisticConversation] = useOptimistic(
+    conversations,
+    (current, patch: ConversationPatch) =>
+      current.map((item) =>
+        item.id === patch.id
+          ? {
+              ...item,
+              lastMessage: patch.lastMessage,
+              lastAt: patch.lastAt,
+              unread: 0,
+            }
+          : item,
+      ),
+  );
+
+  const customerById = useMemo(() => {
+    const map = new Map(customers.map((item) => [item.id, item]));
+    return (id: string) => map.get(id);
+  }, [customers]);
 
   const visible = useMemo(
     () =>
-      localConversations
+      optimisticConversations
         .filter((item) => channel === "all" || item.channel === channel)
         .sort((a, b) => +new Date(b.lastAt) - +new Date(a.lastAt)),
-    [channel, localConversations],
+    [channel, optimisticConversations],
   );
 
   const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
   const customer = selected ? customerById(selected.customerId) : undefined;
   const thread = selected
-    ? localMessages.filter((item) => item.conversationId === selected.id)
+    ? optimisticMessages.filter((item) => item.conversationId === selected.id)
     : [];
-  const customerOrders = customer ? ordersByCustomer(customer.id) : [];
+  const customerOrders = customer
+    ? orders.filter((item) => item.customerId === customer.id)
+    : [];
 
-  function send(text: string) {
-    if (!selected || !text.trim()) return;
-    const sentAt = new Date().toISOString();
-    const message: Message = {
-      id: `local-${localSeq}`,
-      conversationId: selected.id,
-      sender: "shop",
-      text: text.trim(),
-      createdAt: sentAt,
-    };
-    setLocalSeq((value) => value + 1);
-    setLocalMessages((current) => [...current, message]);
-    setLocalConversations((current) =>
-      current.map((item) =>
-        item.id === selected.id
-          ? { ...item, lastMessage: message.text, lastAt: message.createdAt, unread: 0 }
-          : item,
-      ),
-    );
-    setDraft("");
+  function selectConversation(id: string) {
+    setSelectedId(id);
+    setCreatingOrder(false);
+    setMobilePane("chat");
   }
 
+  function send(text: string) {
+    if (!selected || !text.trim() || isPending) return;
+
+    const body = text.trim();
+    const tempId = `temp-${crypto.randomUUID()}`;
+    const sentAt = new Date().toISOString();
+    const optimistic: Message = {
+      id: tempId,
+      conversationId: selected.id,
+      sender: "shop",
+      text: body,
+      createdAt: sentAt,
+    };
+
+    setError(null);
+    setDraft("");
+
+    startTransition(async () => {
+      addOptimisticMessage(optimistic);
+      patchOptimisticConversation({
+        id: selected.id,
+        lastMessage: body,
+        lastAt: sentAt,
+      });
+
+      try {
+        await sendMessage(selected.id, body);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Gửi tin thất bại");
+      }
+    });
+  }
+
+  const showList = mobilePane === "list";
+  const showChat = mobilePane === "chat";
+  const showCustomer = mobilePane === "customer";
+
   return (
-    <div className="flex min-h-0 flex-1">
-      <section className="flex w-[320px] shrink-0 flex-col border-r border-slate-200 bg-white">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h1 className="text-base font-semibold text-slate-900">Inbox</h1>
-          <p className="text-xs text-slate-500">Dữ liệu mẫu — Lát 1</p>
+    <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <section
+        className={`flex flex-col border-border-strong bg-surface transition-opacity duration-150 lg:border-r ${
+          LAYOUT_CLASS.inboxList
+        } ${showList ? "flex min-h-0 flex-1 lg:flex-none" : "hidden lg:flex"}`}
+      >
+        <div className="border-b border-border px-4 py-4">
+          <h1 className="text-lg font-semibold text-slate-900">Inbox</h1>
+          <p className="mt-0.5 text-xs text-slate-500">Tin nhắn đồng bộ từ Facebook, Zalo, Instagram</p>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {FILTERS.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setChannel(item.id)}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                  channel === item.id
-                    ? "bg-slate-900 text-white"
-                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                className={`filter-pill ${
+                  channel === item.id ? "filter-pill-active" : "filter-pill-inactive"
                 }`}
               >
                 {item.label}
@@ -97,6 +183,11 @@ export function InboxWorkspace() {
           </div>
         </div>
         <ul className="min-h-0 flex-1 overflow-y-auto">
+          {visible.length === 0 ? (
+            <li className="px-4 py-8 text-center text-sm text-slate-500">
+              Không có hội thoại phù hợp bộ lọc
+            </li>
+          ) : null}
           {visible.map((item) => {
             const person = customerById(item.customerId);
             const active = selected?.id === item.id;
@@ -104,14 +195,16 @@ export function InboxWorkspace() {
               <li key={item.id}>
                 <button
                   type="button"
-                  onClick={() => setSelectedId(item.id)}
-                  className={`flex w-full flex-col gap-1 border-b border-slate-100 px-4 py-3 text-left ${
-                    active ? "bg-teal-50" : "hover:bg-slate-50"
+                  onClick={() => selectConversation(item.id)}
+                  className={`flex w-full flex-col gap-1.5 border-b border-border px-4 py-3.5 text-left transition-colors duration-150 ${
+                    active
+                      ? "border-l-[3px] border-l-teal-500 bg-accent-muted"
+                      : "border-l-[3px] border-l-transparent hover:bg-surface-muted"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate text-sm font-semibold text-slate-900">
-                      {person?.name}
+                      {person?.name ?? "Khách"}
                     </span>
                     <span className="shrink-0 text-[11px] text-slate-400">
                       {formatTime(item.lastAt)}
@@ -121,7 +214,7 @@ export function InboxWorkspace() {
                     <ChannelBadge channel={item.channel} />
                     <span className="text-[11px] text-slate-500">{TAG_LABEL[item.tag]}</span>
                     {item.unread > 0 && (
-                      <span className="ml-auto rounded-full bg-teal-500 px-1.5 text-[10px] font-semibold text-white">
+                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-teal-600 px-1.5 text-[10px] font-bold text-white">
                         {item.unread}
                       </span>
                     )}
@@ -134,33 +227,59 @@ export function InboxWorkspace() {
         </ul>
       </section>
 
-      <section className="flex min-w-0 flex-1 flex-col bg-slate-50">
+      <section
+        className={`flex min-w-0 flex-col bg-surface-muted ${
+          showChat ? "min-h-0 flex-1" : "hidden lg:flex lg:min-h-0 lg:flex-1"
+        }`}
+      >
         {selected && customer ? (
           <>
-            <header className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-3">
-              <div>
-                <p className="font-semibold text-slate-900">{customer.name}</p>
-                <p className="text-xs text-slate-500">
+            <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3 sm:px-5 sm:py-4">
+              <div className="min-w-0">
+                <p className="truncate text-base font-semibold text-slate-900">{customer.name}</p>
+                <p className="mt-0.5 truncate text-xs text-slate-500">
                   {CHANNEL_LABEL[selected.channel]} · {TAG_LABEL[selected.tag]}
                 </p>
               </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCustomerPanelOpen((open) => !open);
+                    setMobilePane("customer");
+                  }}
+                  className="icon-btn hidden lg:inline-flex"
+                  aria-label={customerPanelOpen ? "Ẩn panel khách hàng" : "Hiện panel khách hàng"}
+                  title={customerPanelOpen ? "Ẩn khách hàng" : "Hiện khách hàng"}
+                >
+                  <PanelIcon open={customerPanelOpen} />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMobilePane("customer")}
+                  className="icon-btn lg:hidden"
+                  aria-label="Xem khách hàng"
+                >
+                  <UserIcon />
+                </button>
+              </div>
             </header>
-            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
               {thread.map((item) => (
                 <div
                   key={item.id}
                   className={`flex ${item.sender === "shop" ? "justify-end" : "justify-start"}`}
                 >
                   <div
-                    className={`max-w-[75%] rounded-2xl px-3.5 py-2 text-sm leading-6 ${
+                    className={`max-w-[var(--chat-bubble-max)] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm transition-colors duration-150 ${
                       item.sender === "shop"
-                        ? "bg-teal-600 text-white"
-                        : "bg-white text-slate-800 shadow-sm"
+                        ? "rounded-br-md bg-teal-600 text-white"
+                        : "rounded-bl-md border border-border bg-surface text-slate-800"
                     }`}
                   >
                     <p>{item.text}</p>
                     <p
-                      className={`mt-1 text-[10px] ${
+                      className={`mt-1.5 text-[10px] ${
                         item.sender === "shop" ? "text-teal-100" : "text-slate-400"
                       }`}
                     >
@@ -170,14 +289,16 @@ export function InboxWorkspace() {
                 </div>
               ))}
             </div>
-            <footer className="border-t border-slate-200 bg-white p-4">
-              <div className="mb-2 flex flex-wrap gap-1.5">
+            <footer className="border-t border-border bg-surface p-3 sm:p-4">
+              {error ? <p className="alert-error mb-2 text-xs">{error}</p> : null}
+              <div className="mb-3 flex flex-wrap gap-1.5">
                 {quickReplies.map((item) => (
                   <button
                     key={item.id}
                     type="button"
+                    disabled={isPending}
                     onClick={() => send(item.text)}
-                    className="rounded-full border border-slate-200 px-2.5 py-1 text-xs text-slate-600 hover:bg-slate-50"
+                    className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors duration-150 hover:border-teal-200 hover:bg-accent-muted hover:text-teal-800 disabled:opacity-50"
                   >
                     {item.title}
                   </button>
@@ -194,57 +315,177 @@ export function InboxWorkspace() {
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   placeholder="Nhập tin nhắn..."
-                  className="h-10 flex-1 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-teal-500"
+                  disabled={isPending}
+                  className="input-field-sm h-11 flex-1"
                 />
-                <button
-                  type="submit"
-                  className="h-10 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700"
-                >
+                <button type="submit" disabled={isPending} className="btn-primary-sm shrink-0">
                   Gửi
                 </button>
               </form>
             </footer>
           </>
         ) : (
-          <div className="flex flex-1 items-center justify-center text-sm text-slate-500">
-            Chọn một hội thoại
+          <div className="empty-state m-4 flex-1 sm:m-6">
+            <p className="text-base font-medium text-slate-700">Chọn một hội thoại</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Danh sách bên trái — chi tiết khách bên phải
+            </p>
           </div>
         )}
       </section>
 
-      <aside className="flex w-[300px] shrink-0 flex-col border-l border-slate-200 bg-white">
+      <aside
+        className={`flex flex-col border-border-strong bg-surface transition-[width,opacity] duration-200 lg:border-l ${
+          LAYOUT_CLASS.inboxPanel
+        } ${
+          customerPanelOpen
+            ? showCustomer
+              ? "min-h-0 flex-1 lg:flex-none"
+              : "hidden lg:flex"
+            : "hidden"
+        }`}
+      >
         {customer ? (
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-5">
-            <h2 className="text-sm font-semibold text-slate-900">Khách</h2>
+          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4 sm:p-5">
+            <div className="flex items-start justify-between gap-2">
+              <p className="section-label">Khách hàng</p>
+              <button
+                type="button"
+                onClick={() => setCustomerPanelOpen(false)}
+                className="icon-btn -mr-1 -mt-1 lg:hidden"
+                aria-label="Đóng panel khách"
+              >
+                <CloseIcon />
+              </button>
+            </div>
             <p className="mt-3 text-lg font-semibold text-slate-900">{customer.name}</p>
             <p className="mt-1 text-sm text-slate-600">{customer.phone ?? "Chưa có SĐT"}</p>
-            <p className="mt-3 text-sm leading-6 text-slate-500">{customer.note}</p>
-            <button
-              type="button"
-              className="mt-5 h-10 rounded-lg bg-slate-900 text-sm font-semibold text-white"
-            >
-              Tạo đơn
-            </button>
-            <p className="mt-2 text-[11px] text-slate-400">Form đơn sẽ làm ở Lát 3</p>
-            <h3 className="mt-6 text-xs font-semibold uppercase tracking-wide text-slate-400">
-              Đơn gần đây
-            </h3>
-            <div className="mt-2 space-y-2">
-              {customerOrders.length === 0 && (
-                <p className="text-sm text-slate-500">Chưa có đơn</p>
-              )}
-              {customerOrders.map((order) => (
-                <div key={order.id} className="rounded-lg border border-slate-200 p-3">
-                  <p className="text-sm font-semibold text-slate-800">{order.code}</p>
-                  <p className="text-xs text-slate-500">
-                    {formatMoney(orderTotal(order.items))}
-                  </p>
-                </div>
-              ))}
+            {customer.note ? (
+              <p className="mt-3 rounded-lg bg-surface-muted px-3 py-2.5 text-sm leading-6 text-slate-600">
+                {customer.note}
+              </p>
+            ) : null}
+            {creatingOrder && selected ? (
+              <CreateOrderForm
+                conversationId={selected.id}
+                customerName={customer.name}
+                defaultPhone={customer.phone}
+                defaultAddress={customer.address}
+                products={products}
+                onClose={() => setCreatingOrder(false)}
+              />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setCreatingOrder(true)}
+                  className="btn-primary mt-5 w-full"
+                >
+                  Tạo đơn
+                </button>
+                <p className="mt-2 text-center text-[11px] text-slate-400">
+                  Lưu đơn vào PostgreSQL, gắn với hội thoại này
+                </p>
+              </>
+            )}
+            <div className="mt-6 border-t border-border pt-5">
+              <p className="section-label">Đơn gần đây</p>
+              <div className="mt-3 space-y-2">
+                {customerOrders.length === 0 && (
+                  <p className="text-sm text-slate-500">Chưa có đơn</p>
+                )}
+                {customerOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="rounded-lg border border-border bg-surface-muted px-3 py-2.5 transition-colors duration-150 hover:bg-surface"
+                  >
+                    <p className="text-sm font-semibold text-slate-800">{order.code}</p>
+                    <p className="text-xs text-slate-500">{formatMoney(orderTotal(order.items))}</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <div className="flex flex-1 items-center justify-center p-5 text-center text-sm text-slate-400">
+            Chọn hội thoại để xem thông tin khách
+          </div>
+        )}
       </aside>
+
+      <nav className="flex shrink-0 border-t border-border bg-surface lg:hidden">
+        {MOBILE_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setMobilePane(tab.id)}
+            className={`nav-tab ${mobilePane === tab.id ? "nav-tab-active" : "nav-tab-inactive"}`}
+          >
+            <MobileTabIcon pane={tab.id} active={mobilePane === tab.id} />
+            {tab.label}
+          </button>
+        ))}
+      </nav>
     </div>
+  );
+}
+
+function PanelIcon({ open }: { open: boolean }) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      {open ? (
+        <>
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M15 3v18" />
+        </>
+      ) : (
+        <>
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <path d="M9 3v18" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+function UserIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function MobileTabIcon({ pane, active }: { pane: MobilePane; active: boolean }) {
+  const color = active ? "text-teal-600" : "text-slate-400";
+  if (pane === "list") {
+    return (
+      <svg className={color} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M22 12h-6l-2 3h-4l-2-3H2" />
+        <path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+      </svg>
+    );
+  }
+  if (pane === "chat") {
+    return (
+      <svg className={color} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    );
+  }
+  return (
+    <svg className={color} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+      <circle cx="12" cy="7" r="4" />
+    </svg>
   );
 }

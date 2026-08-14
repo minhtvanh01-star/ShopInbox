@@ -1,0 +1,297 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Channel {
+  facebook
+  zalo
+  instagram
+  web
+}
+
+enum ChannelStatus {
+  disconnected
+  connecting
+  ready
+}
+
+enum ConversationTag {
+  new
+  consulting
+  closed
+  spam
+}
+
+enum OrderStatus {
+  new
+  confirmed
+  shipping
+  done
+  cancelled
+}
+
+enum MessageSender {
+  customer
+  shop
+}
+
+model Shop {
+  id               String             @id
+  name             String
+  createdAt        DateTime           @default(now())
+  staff            Staff[]
+  channelAccounts  ChannelAccount[]
+  customers        Customer[]
+  conversations    Conversation[]
+  messages         Message[]
+  orders           Order[]
+  products         Product[]
+  quickReplies     QuickReply[]
+  auditLogs        AuditLog[]
+
+  @@map("shops")
+}
+
+model Role {
+  code        String           @id
+  name        String
+  description String           @default("")
+  isSystem    Boolean          @default(true)
+  isActive    Boolean          @default(true)
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now())
+  permissions RolePermission[]
+  staff       Staff[]
+
+  @@map("roles")
+}
+
+model Permission {
+  code        String           @id
+  name        String
+  description String           @default("")
+  group       String           @default("") @map("group_name")
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleCode       String
+  permissionCode String
+  role           Role       @relation(fields: [roleCode], references: [code], onDelete: Cascade)
+  permission     Permission @relation(fields: [permissionCode], references: [code], onDelete: Cascade)
+
+  @@id([roleCode, permissionCode])
+  @@map("role_permissions")
+}
+
+model Staff {
+  id            String         @id
+  shopId        String
+  shop          Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name          String
+  email         String         @unique
+  passwordHash  String?
+  googleId      String?        @unique
+  avatarUrl     String?
+  phone         String?
+  roleCode      String
+  role          Role           @relation(fields: [roleCode], references: [code], onDelete: Restrict)
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  assignedChats Conversation[]
+  sentMessages  Message[]
+  auditLogs     AuditLog[]
+
+  @@index([shopId])
+  @@index([roleCode])
+  @@index([shopId, isActive])
+  @@map("staff")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  createdAt  DateTime @default(now())
+  shopId     String?
+  shop       Shop?    @relation(fields: [shopId], references: [id], onDelete: SetNull)
+  actorId    String?
+  actor      Staff?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorEmail String?
+  actorRole  String?
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  userAgent  String?
+
+  @@index([actorId])
+  @@index([createdAt])
+  @@index([action])
+  @@index([entityType, entityId])
+  @@index([shopId, createdAt])
+  @@map("audit_logs")
+}
+
+model ChannelAccount {
+  id             String        @id
+  shopId         String
+  shop           Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  channel        Channel
+  name           String
+  status         ChannelStatus
+  note           String
+  appId          String?
+  appSecret      String?
+  pageId         String?
+  linkedPageId   String?
+  webhookSecret  String?
+  oaId           String?
+  accessToken    String?
+  refreshToken   String?
+  displayName    String?
+  expiresAt      DateTime?
+  connectedAt    DateTime?
+  lastWebhookAt  DateTime?
+
+  @@unique([shopId, channel])
+  @@map("channel_accounts")
+}
+
+model Customer {
+  id            String              @id
+  shopId        String
+  shop          Shop                @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name          String
+  phone         String?
+  email         String?
+  address       String?
+  note          String?
+  identities    CustomerIdentity[]
+  conversations Conversation[]
+  orders        Order[]
+
+  @@index([shopId])
+  @@index([shopId, phone])
+  @@map("customers")
+}
+
+model CustomerIdentity {
+  id         String   @id
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  channel    Channel
+  externalId String?
+
+  @@unique([customerId, channel])
+  @@index([channel, externalId])
+  @@map("customer_identities")
+}
+
+model Conversation {
+  id         String           @id
+  shopId     String
+  shop       Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  staffId    String?
+  staff      Staff?           @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  channel    Channel
+  lastMessage String          @default("")
+  lastAt     DateTime
+  unread     Int              @default(0)
+  tag        ConversationTag
+  messages   Message[]
+  orders     Order[]
+
+  @@index([shopId, lastAt])
+  @@index([customerId])
+  @@index([staffId])
+  @@map("conversations")
+}
+
+model Message {
+  id             String        @id @default(cuid())
+  shopId         String
+  shop           Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  staffId        String?
+  staff          Staff?        @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  sender             MessageSender
+  text               String
+  externalMessageId  String?
+  createdAt          DateTime      @default(now())
+
+  @@unique([shopId, externalMessageId])
+  @@index([conversationId, createdAt])
+  @@index([shopId])
+  @@map("messages")
+}
+
+model Product {
+  id      String      @id
+  shopId  String
+  shop    Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name    String
+  sku     String?
+  price   Int
+  inStock Boolean     @default(true)
+  items   OrderItem[]
+
+  @@index([shopId])
+  @@map("products")
+}
+
+model Order {
+  id             String       @id
+  shopId         String
+  shop           Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  customerId     String
+  customer       Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  code           String
+  address        String
+  status         OrderStatus
+  createdAt      DateTime     @default(now())
+  items          OrderItem[]
+
+  @@unique([shopId, code])
+  @@index([customerId])
+  @@index([conversationId])
+  @@index([shopId, createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id        String   @id @default(cuid())
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  name      String
+  qty       Int
+  price     Int
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model QuickReply {
+  id     String @id
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  title  String
+  text   String
+
+  @@index([shopId])
+  @@map("quick_replies")
+}

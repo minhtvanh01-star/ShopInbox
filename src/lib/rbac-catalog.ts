@@ -1,0 +1,277 @@
+/** Nguồn cấu hình vai trò / quyền / nhãn audit. Seed đọc file này — thêm manager không cần sửa if-role. */
+
+export const ROLE_CODES = {
+  admin: "admin",
+  staff: "staff",
+  manager: "manager",
+} as const;
+
+export type RoleCode = (typeof ROLE_CODES)[keyof typeof ROLE_CODES];
+
+/** JWT / seed cũ dùng `owner` — map về `admin`. */
+export const ROLE_CODE_ALIASES: Record<string, string> = {
+  owner: ROLE_CODES.admin,
+};
+
+export const PERMISSION_CODES = {
+  inboxRead: "inbox.read",
+  inboxReply: "inbox.reply",
+  ordersRead: "orders.read",
+  ordersUpdate: "orders.update",
+  ordersCreate: "orders.create",
+  customersRead: "customers.read",
+  channelsConnect: "channels.connect",
+  staffRead: "staff.read",
+  staffManage: "staff.manage",
+  auditRead: "audit.read",
+  settingsUpdate: "settings.update",
+  profileUpdate: "profile.update",
+} as const;
+
+export type PermissionCode = (typeof PERMISSION_CODES)[keyof typeof PERMISSION_CODES];
+
+export type CatalogPermission = {
+  code: PermissionCode;
+  name: string;
+  description: string;
+  group: string;
+};
+
+export const PERMISSIONS: CatalogPermission[] = [
+  {
+    code: PERMISSION_CODES.inboxRead,
+    name: "Xem inbox",
+    description: "Xem danh sách hội thoại và tin nhắn.",
+    group: "inbox",
+  },
+  {
+    code: PERMISSION_CODES.inboxReply,
+    name: "Trả lời inbox",
+    description: "Gửi tin nhắn từ shop.",
+    group: "inbox",
+  },
+  {
+    code: PERMISSION_CODES.ordersRead,
+    name: "Xem đơn hàng",
+    description: "Xem danh sách đơn.",
+    group: "orders",
+  },
+  {
+    code: PERMISSION_CODES.ordersUpdate,
+    name: "Cập nhật đơn",
+    description: "Đổi trạng thái đơn hàng.",
+    group: "orders",
+  },
+  {
+    code: PERMISSION_CODES.ordersCreate,
+    name: "Tạo đơn",
+    description: "Tạo đơn từ hội thoại.",
+    group: "orders",
+  },
+  {
+    code: PERMISSION_CODES.customersRead,
+    name: "Xem khách",
+    description: "Xem danh sách khách hàng.",
+    group: "customers",
+  },
+  {
+    code: PERMISSION_CODES.channelsConnect,
+    name: "Kết nối kênh",
+    description: "OAuth / lưu cấu hình / ngắt kết nối kênh.",
+    group: "channels",
+  },
+  {
+    code: PERMISSION_CODES.staffRead,
+    name: "Xem nhân viên",
+    description: "Xem danh sách tài khoản nhân viên.",
+    group: "staff",
+  },
+  {
+    code: PERMISSION_CODES.staffManage,
+    name: "Quản lý nhân viên",
+    description: "Thêm, sửa vai trò nhân viên.",
+    group: "staff",
+  },
+  {
+    code: PERMISSION_CODES.auditRead,
+    name: "Xem nhật ký",
+    description: "Xem audit trail (ai làm gì).",
+    group: "audit",
+  },
+  {
+    code: PERMISSION_CODES.settingsUpdate,
+    name: "Cài đặt shop",
+    description: "Sửa cấu hình cửa hàng.",
+    group: "settings",
+  },
+  {
+    code: PERMISSION_CODES.profileUpdate,
+    name: "Sửa hồ sơ",
+    description: "Cập nhật hồ sơ cá nhân.",
+    group: "profile",
+  },
+];
+
+export type CatalogRole = {
+  code: RoleCode;
+  name: string;
+  description: string;
+  isSystem: boolean;
+  isActive: boolean;
+  sortOrder: number;
+};
+
+export const ROLES: CatalogRole[] = [
+  {
+    code: ROLE_CODES.admin,
+    name: "Admin / Chủ shop",
+    description: "Chủ shop — toàn quyền, gồm nhân viên và kết nối kênh.",
+    isSystem: true,
+    isActive: true,
+    sortOrder: 10,
+  },
+  {
+    code: ROLE_CODES.manager,
+    name: "Quản lý",
+    description: "Giống nhân viên, thêm xem nhật ký và danh sách nhân viên. Gán user khi cần — không sửa code.",
+    isSystem: true,
+    isActive: true,
+    sortOrder: 20,
+  },
+  {
+    code: ROLE_CODES.staff,
+    name: "Nhân viên",
+    description: "Inbox, đơn hàng, khách, hồ sơ cá nhân.",
+    isSystem: true,
+    isActive: true,
+    sortOrder: 30,
+  },
+];
+
+const STAFF_PERMISSIONS: PermissionCode[] = [
+  PERMISSION_CODES.inboxRead,
+  PERMISSION_CODES.inboxReply,
+  PERMISSION_CODES.ordersRead,
+  PERMISSION_CODES.ordersUpdate,
+  PERMISSION_CODES.ordersCreate,
+  PERMISSION_CODES.customersRead,
+  PERMISSION_CODES.profileUpdate,
+];
+
+const MANAGER_PERMISSIONS: PermissionCode[] = [
+  ...STAFF_PERMISSIONS,
+  PERMISSION_CODES.auditRead,
+  PERMISSION_CODES.staffRead,
+];
+
+/** Map mặc định role → quyền (seed). Admin nhận mọi quyền trong catalog. */
+export const ROLE_PERMISSIONS: Record<RoleCode, readonly PermissionCode[]> = {
+  [ROLE_CODES.admin]: PERMISSIONS.map((item) => item.code),
+  [ROLE_CODES.manager]: MANAGER_PERMISSIONS,
+  [ROLE_CODES.staff]: STAFF_PERMISSIONS,
+};
+
+export const ROLE_LABEL: Record<string, string> = {
+  [ROLE_CODES.admin]: "Admin / Chủ shop",
+  [ROLE_CODES.manager]: "Quản lý",
+  [ROLE_CODES.staff]: "Nhân viên",
+  owner: "Admin / Chủ shop",
+};
+
+export const ROLE_BADGE_CLASS: Record<string, string> = {
+  [ROLE_CODES.admin]: "bg-teal-50 text-teal-700 ring-teal-200",
+  [ROLE_CODES.manager]: "bg-indigo-50 text-indigo-700 ring-indigo-200",
+  [ROLE_CODES.staff]: "bg-slate-100 text-slate-700 ring-slate-200",
+  owner: "bg-teal-50 text-teal-700 ring-teal-200",
+};
+
+export const DEFAULT_ROLE_CODE = ROLE_CODES.staff;
+export const BOOTSTRAP_ROLE_CODE = ROLE_CODES.admin;
+
+export function normalizeRoleCode(code: string | null | undefined): string {
+  if (!code) return DEFAULT_ROLE_CODE;
+  return ROLE_CODE_ALIASES[code] ?? code;
+}
+
+export function roleLabel(code: string | null | undefined): string {
+  const canonical = normalizeRoleCode(code);
+  return ROLE_LABEL[canonical] ?? ROLE_LABEL[code ?? ""] ?? canonical;
+}
+
+export function roleBadgeClass(code: string | null | undefined): string {
+  const canonical = normalizeRoleCode(code);
+  return (
+    ROLE_BADGE_CLASS[canonical] ??
+    ROLE_BADGE_CLASS[code ?? ""] ??
+    "bg-slate-100 text-slate-700 ring-slate-200"
+  );
+}
+
+export function catalogPermissionsForRole(roleCode: string): readonly PermissionCode[] {
+  const canonical = normalizeRoleCode(roleCode);
+  if (canonical in ROLE_PERMISSIONS) {
+    return ROLE_PERMISSIONS[canonical as RoleCode];
+  }
+  return [];
+}
+
+export function catalogHasPermission(roleCode: string, permission: string): boolean {
+  return catalogPermissionsForRole(roleCode).includes(permission as PermissionCode);
+}
+
+export const AUDIT_ACTIONS = {
+  authLogin: "auth.login",
+  authLoginFail: "auth.login_fail",
+  staffCreate: "staff.create",
+  staffUpdate: "staff.update",
+  staffDisable: "staff.disable",
+  channelConnect: "channel.connect",
+  channelDisconnect: "channel.disconnect",
+  channelCredentialsSave: "channel.credentials_save",
+  orderCreate: "order.create",
+  orderStatusChange: "order.status_change",
+  profileUpdate: "profile.update",
+  profilePasswordChange: "profile.password_change",
+  messageSend: "message.send",
+} as const;
+
+export type AuditActionCode = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
+
+export const AUDIT_ACTION_LABEL: Record<string, string> = {
+  [AUDIT_ACTIONS.authLogin]: "Đăng nhập",
+  [AUDIT_ACTIONS.authLoginFail]: "Đăng nhập thất bại",
+  [AUDIT_ACTIONS.staffCreate]: "Tạo nhân viên",
+  [AUDIT_ACTIONS.staffUpdate]: "Cập nhật nhân viên",
+  [AUDIT_ACTIONS.staffDisable]: "Vô hiệu hóa nhân viên",
+  [AUDIT_ACTIONS.channelConnect]: "Kết nối kênh",
+  [AUDIT_ACTIONS.channelDisconnect]: "Ngắt kết nối kênh",
+  [AUDIT_ACTIONS.channelCredentialsSave]: "Lưu cấu hình kênh",
+  [AUDIT_ACTIONS.orderCreate]: "Tạo đơn hàng",
+  [AUDIT_ACTIONS.orderStatusChange]: "Đổi trạng thái đơn",
+  [AUDIT_ACTIONS.profileUpdate]: "Cập nhật hồ sơ",
+  [AUDIT_ACTIONS.profilePasswordChange]: "Đổi mật khẩu",
+  [AUDIT_ACTIONS.messageSend]: "Gửi tin nhắn",
+};
+
+export const AUDIT_ENTITY_LABEL: Record<string, string> = {
+  Staff: "Nhân viên",
+  Order: "Đơn hàng",
+  Conversation: "Hội thoại",
+  Message: "Tin nhắn",
+  ChannelAccount: "Kênh",
+  Profile: "Hồ sơ",
+  Session: "Phiên đăng nhập",
+};
+
+export function auditActionLabel(action: string): string {
+  return AUDIT_ACTION_LABEL[action] ?? action;
+}
+
+export function auditEntityLabel(entityType: string | null | undefined): string {
+  if (!entityType) return "—";
+  return AUDIT_ENTITY_LABEL[entityType] ?? entityType;
+}
+
+export function roleCodeForNewStaff(existingStaffCount: number): RoleCode {
+  return existingStaffCount === 0 ? BOOTSTRAP_ROLE_CODE : DEFAULT_ROLE_CODE;
+}

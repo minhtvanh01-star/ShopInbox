@@ -1,14 +1,44 @@
+/** Shared domain types — frontend và backend cùng dùng (Channel, Order, ChannelAccount, …). */
 export type Channel = "facebook" | "zalo" | "instagram" | "web";
-export type StaffRole = "owner" | "staff";
+export type ChannelStatus = "disconnected" | "connecting" | "ready";
+/** Mã vai trò lấy từ bảng `roles` / catalog — không hardcode enum UI. */
+export type StaffRole = string;
 export type ConversationTag = "new" | "consulting" | "closed" | "spam";
 export type OrderStatus = "new" | "confirmed" | "shipping" | "done" | "cancelled";
 export type MessageSender = "customer" | "shop";
+
+export type ChannelAccount = {
+  id: string;
+  channel: Channel;
+  name: string;
+  status: ChannelStatus;
+  note: string;
+  appId?: string | null;
+  appSecret?: string | null;
+  pageId?: string | null;
+  webhookSecret?: string | null;
+  oaId?: string | null;
+  accessToken?: string | null;
+  refreshToken?: string | null;
+  displayName?: string | null;
+  expiresAt?: string | null;
+};
 
 export type Customer = {
   id: string;
   name: string;
   phone?: string;
+  email?: string;
+  address?: string;
   note?: string;
+};
+
+export type Product = {
+  id: string;
+  name: string;
+  sku?: string;
+  price: number;
+  inStock: boolean;
 };
 
 export type Message = {
@@ -30,6 +60,7 @@ export type Conversation = {
 };
 
 export type OrderItem = {
+  productId?: string;
   name: string;
   qty: number;
   price: number;

@@ -1,29 +1,41 @@
-import Link from "next/link";
-import { SHOP } from "@/lib/mock";
+import { LoginForm } from "@/components/auth/LoginForm";
+import { prisma } from "@/backend/prisma";
+import { getGoogleOAuthConfig } from "@/backend/google-oauth";
+import { DEMO_SHOP_ID } from "@/lib/queries";
+import { safeInternalPath } from "@/backend/safe-path";
 
-export default function LoginPage() {
+type LoginPageProps = {
+  searchParams: Promise<{ next?: string; auth_error?: string; auth_message?: string }>;
+};
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const params = await searchParams;
+  const shop = await prisma.shop.findUnique({ where: { id: DEMO_SHOP_ID } });
+  const nextPath = safeInternalPath(params.next);
+
   return (
-    <main className="flex min-h-full items-center justify-center bg-slate-100 px-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm">
+    <main className="flex min-h-full items-center justify-center bg-gradient-to-br from-teal-50 via-background to-slate-100 px-4 py-10">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-surface p-8 shadow-elevated">
         <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-teal-500 text-lg font-bold text-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-teal-600 text-lg font-bold text-white shadow-sm">
             S
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">ShopInbox</h1>
+            <h1 className="text-xl font-semibold tracking-tight text-slate-900">ShopInbox</h1>
             <p className="text-sm text-slate-500">Inbox đa kênh cho cửa hàng</p>
           </div>
         </div>
-        <p className="text-sm leading-6 text-slate-600">
-          Bản Lát 1 dùng cửa hàng mẫu <strong>{SHOP.name}</strong>. Chưa cần mật khẩu
-          thật — bấm vào để xem khung 3 cột.
+        <p className="rounded-lg bg-surface-muted px-4 py-3 text-sm leading-6 text-slate-600">
+          Đăng nhập bằng email/mật khẩu hoặc Google. Mật khẩu được mã hóa (bcrypt), không lưu plain
+          text.
         </p>
-        <Link
-          href="/inbox"
-          className="mt-6 flex h-11 items-center justify-center rounded-lg bg-teal-600 text-sm font-semibold text-white hover:bg-teal-700"
-        >
-          Vào cửa hàng demo
-        </Link>
+        <LoginForm
+          shopName={shop?.name ?? "ShopInbox"}
+          nextPath={nextPath}
+          googleOAuthConfigured={Boolean(getGoogleOAuthConfig())}
+          authError={params.auth_error}
+          authMessage={params.auth_message}
+        />
       </div>
     </main>
   );

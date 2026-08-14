@@ -1,37 +1,52 @@
-const CHANNELS = [
-  { id: "facebook", name: "Facebook Messenger", status: "Chưa nối", note: "Cần app Meta — làm sau khi duyệt UI" },
-  { id: "zalo", name: "Zalo OA", status: "Chưa nối", note: "Cần Official Account — làm sau" },
-  { id: "instagram", name: "Instagram DM", status: "Chưa nối", note: "Đi cùng Meta app" },
-  { id: "web", name: "Chat website", status: "Sẵn sàng (Lát 4)", note: "Widget sẽ chạy thật, không cần duyệt MXH" },
-];
+import {
+  getMetaOAuthConfig,
+  getMetaWebhookUrl,
+  getZaloOAuthConfig,
+  getZaloWebhookUrl,
+} from "@/backend/oauth-config";
+import { getPendingMetaPages } from "@/app/(app)/settings/actions";
+import { getShopContext, getChannelAccounts } from "@/lib/queries";
+import { SettingsWorkspace } from "@/components/settings/SettingsWorkspace";
+import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 
-export default function SettingsPage() {
+type SettingsPageProps = {
+  searchParams: Promise<{
+    oauth_success?: string;
+    oauth_error?: string;
+    oauth_message?: string;
+    oauth_pick?: string;
+  }>;
+};
+
+export default async function SettingsPage({ searchParams }: SettingsPageProps) {
+  const params = await searchParams;
+  const [channels, shop, pendingMetaPages] = await Promise.all([
+    getChannelAccounts(),
+    getShopContext(),
+    getPendingMetaPages(),
+  ]);
+
+  const metaConfig = getMetaOAuthConfig();
+  const zaloConfig = getZaloOAuthConfig();
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="border-b border-slate-200 bg-white px-6 py-4">
-        <h1 className="text-lg font-semibold text-slate-900">Cài đặt kênh</h1>
-        <p className="text-sm text-slate-500">Bốn kênh đã có chỗ trên UI. Facebook / Zalo / Instagram chưa nối API thật.</p>
-      </header>
-      <div className="grid gap-4 p-6 md:grid-cols-2">
-        {CHANNELS.map((channel) => (
-          <article key={channel.id} className="rounded-xl bg-white p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <h2 className="font-semibold text-slate-900">{channel.name}</h2>
-              <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                {channel.status}
-              </span>
-            </div>
-            <p className="mt-2 text-sm leading-6 text-slate-500">{channel.note}</p>
-            <button
-              type="button"
-              disabled
-              className="mt-4 h-9 rounded-lg border border-slate-200 px-3 text-sm text-slate-400"
-            >
-              Kết nối (chưa mở)
-            </button>
-          </article>
-        ))}
-      </div>
+      <SettingsWorkspace
+        channels={channels}
+        canConnect={shop.permissions.includes(PERMISSION_CODES.channelsConnect)}
+        metaOAuthConfigured={Boolean(metaConfig)}
+        zaloOAuthConfigured={Boolean(zaloConfig)}
+        metaWebhookUrl={getMetaWebhookUrl()}
+        zaloWebhookUrl={getZaloWebhookUrl()}
+        metaWebhookVerifyToken={metaConfig?.webhookVerifyToken ?? ""}
+        pendingMetaPages={pendingMetaPages}
+        oauthFlash={{
+          success: params.oauth_success,
+          error: params.oauth_error,
+          errorMessage: params.oauth_message,
+          pickChannel: params.oauth_pick,
+        }}
+      />
     </div>
   );
 }

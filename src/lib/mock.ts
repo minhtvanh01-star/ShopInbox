@@ -1,27 +1,102 @@
+/** Seed/demo data cho Prisma seed — không phải API runtime. */
 import type {
+  ChannelAccount,
   Conversation,
   Customer,
   Message,
   Order,
+  Product,
   QuickReply,
 } from "./types";
 
 export const SHOP = {
+  id: "shop1",
   name: "Lily Boutique",
+  staffId: "staff1",
   staffName: "Minh",
+  staffEmail: "admin@lily.vn",
+  staffPassword: "Admin@123",
+  role: "owner" as const,
   roleLabel: "Chủ shop",
 };
 
+export const EXTRA_STAFF = [
+  {
+    id: "staff2",
+    name: "Lan",
+    email: "nhanvien@lily.vn",
+    password: "Staff@123",
+    role: "staff" as const,
+  },
+];
+
+
+export const channelAccounts: ChannelAccount[] = [
+  {
+    id: "ch-facebook",
+    channel: "facebook",
+    name: "Facebook Messenger",
+    status: "disconnected",
+    note: "Cần app Meta — làm sau khi duyệt UI",
+  },
+  {
+    id: "ch-zalo",
+    channel: "zalo",
+    name: "Zalo OA",
+    status: "disconnected",
+    note: "Cần Official Account — làm sau",
+  },
+  {
+    id: "ch-instagram",
+    channel: "instagram",
+    name: "Instagram DM",
+    status: "disconnected",
+    note: "Đi cùng Meta app",
+  },
+  {
+    id: "ch-web",
+    channel: "web",
+    name: "Chat website",
+    status: "ready",
+    note: "Widget sẽ chạy thật, không cần duyệt MXH",
+  },
+];
+
+export const products: Product[] = [
+  { id: "p1", name: "Áo sơ mi trắng", sku: "SM-TRANG", price: 290000, inStock: true },
+  { id: "p2", name: "Đầm hoa midi", sku: "DAM-HOA", price: 450000, inStock: true },
+  { id: "p3", name: "Áo croptop be", sku: "CROP-BE", price: 220000, inStock: true },
+  { id: "p4", name: "Đầm hoa", sku: "DAM-HOA-NHO", price: 390000, inStock: true },
+];
+
 export const customers: Customer[] = [
   { id: "c1", name: "Nguyễn An", phone: "0901 234 567", note: "Hay mua đầm. Size M." },
-  { id: "c2", name: "Trần Bình", phone: "0912 888 333", note: "Ở Hà Nội, thích freeship." },
+  { id: "c2", name: "Trần Bình", phone: "0912 888 333", address: "Cầu Giấy, Hà Nội", note: "Ở Hà Nội, thích freeship." },
   { id: "c3", name: "Lê Chi", phone: "0987 111 222", note: "Follow Instagram, thích màu be." },
   { id: "c4", name: "Phạm Dung", phone: "0933 444 555", note: "Khách web mới." },
-  { id: "c5", name: "Hoàng Em", phone: "0976 222 111", note: "Đã chốt 2 áo sơ mi." },
-  { id: "c6", name: "Vũ Giang", phone: "0908 777 666", note: "Khiếu nại chậm giao." },
+  {
+    id: "c5",
+    name: "Hoàng Em",
+    phone: "0976 222 111",
+    address: "22 Nguyễn Trãi, Thanh Xuân, Hà Nội",
+    note: "Đã chốt 2 áo sơ mi.",
+  },
+  {
+    id: "c6",
+    name: "Vũ Giang",
+    phone: "0908 777 666",
+    address: "15 Trần Phú, Hải Châu, Đà Nẵng",
+    note: "Khiếu nại chậm giao.",
+  },
   { id: "c7", name: "Đỗ Hạnh", note: "Hỏi giá sỉ, chưa có SĐT." },
   { id: "c8", name: "Bùi Khoa", phone: "0965 121 212", note: "Vừa chat trên website." },
-  { id: "c9", name: "Ngô Lan", phone: "0944 909 808", note: "Đơn đã giao tuần trước." },
+  {
+    id: "c9",
+    name: "Ngô Lan",
+    phone: "0944 909 808",
+    address: "88 Lê Lợi, Q.1, TP.HCM",
+    note: "Đơn đã giao tuần trước.",
+  },
   { id: "c10", name: "Mai Oanh", phone: "0922 303 404", note: "Hay hỏi mã giảm giá." },
 ];
 
@@ -155,7 +230,7 @@ export const orders: Order[] = [
     code: "DH00012",
     customerId: "c5",
     conversationId: "cv5",
-    items: [{ name: "Áo sơ mi trắng", qty: 2, price: 290000 }],
+    items: [{ productId: "p1", name: "Áo sơ mi trắng", qty: 2, price: 290000 }],
     address: "22 Nguyễn Trãi, Thanh Xuân, Hà Nội",
     status: "confirmed",
     createdAt: "2026-08-13T13:08:00+07:00",
@@ -165,7 +240,7 @@ export const orders: Order[] = [
     code: "DH00011",
     customerId: "c9",
     conversationId: "cv9",
-    items: [{ name: "Đầm hoa midi", qty: 1, price: 450000 }],
+    items: [{ productId: "p2", name: "Đầm hoa midi", qty: 1, price: 450000 }],
     address: "88 Lê Lợi, Q.1, TP.HCM",
     status: "done",
     createdAt: "2026-08-10T09:20:00+07:00",
@@ -175,7 +250,7 @@ export const orders: Order[] = [
     code: "DH00010",
     customerId: "c6",
     conversationId: "cv6",
-    items: [{ name: "Áo croptop be", qty: 1, price: 220000 }],
+    items: [{ productId: "p3", name: "Áo croptop be", qty: 1, price: 220000 }],
     address: "15 Trần Phú, Hải Châu, Đà Nẵng",
     status: "shipping",
     createdAt: "2026-08-11T16:40:00+07:00",
@@ -188,14 +263,14 @@ export const quickReplies: QuickReply[] = [
   { id: "q3", title: "Ship trong ngày", text: "Shop gửi trong ngày, 1-2 ngày nhận ạ." },
 ];
 
-export function customerById(id: string) {
+export function getCustomerById(id: string) {
   return customers.find((item) => item.id === id);
 }
 
-export function ordersByCustomer(customerId: string) {
+export function getOrdersByCustomer(customerId: string) {
   return orders.filter((item) => item.customerId === customerId);
 }
 
-export function messagesByConversation(conversationId: string) {
+export function getMessagesByConversation(conversationId: string) {
   return messages.filter((item) => item.conversationId === conversationId);
 }
