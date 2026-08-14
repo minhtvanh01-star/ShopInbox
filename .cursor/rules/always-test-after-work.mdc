@@ -1,0 +1,28 @@
+---
+description: Always run tests after finishing implementation or fixes
+alwaysApply: true
+---
+
+# Always verify after work / Luôn kiểm tra sau khi xong việc
+
+Sau khi implement feature, fix bug, hoặc refactor: **ALWAYS chạy verification trước khi báo user là xong**. Không bỏ qua vì thay đổi "nhỏ".
+
+## Lệnh mặc định
+
+1. `npm test`
+2. `npx tsc --noEmit`
+
+## Theo loại thay đổi
+
+- **UI / pages**: thêm `npm run lint` trên file đã sửa (nếu script/tool hỗ trợ path).
+- **Prisma schema / migrations**: `npx prisma validate`, hoặc đảm bảo `prisma generate` thành công.
+
+## Khi fail
+
+- Sửa lỗi rồi chạy lại lệnh fail.
+- **Không** claim done khi test/tsc còn fail.
+- Nếu fail vì thiếu `DATABASE_URL` / Postgres: `docker compose up -d` (port 5433), rồi retry.
+
+## Báo cáo
+
+Trong summary cuối: ghi rõ pass/fail counts (vd. `42 passed`, `tsc OK`) và mọi failure thực sự đã gặp/đã fix.
