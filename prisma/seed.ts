@@ -13,7 +13,7 @@ import {
   products,
   quickReplies,
 } from "../src/lib/mock";
-import { resolveSeedMode } from "../src/backend/db-seed-policy";
+import { resolveSeedMode, resolveSeedScope } from "../src/backend/db-seed-policy";
 import {
   PERMISSIONS,
   ROLE_PERMISSIONS,
@@ -80,6 +80,7 @@ async function syncRbacCatalog() {
 async function main() {
   const shopCount = await prisma.shop.count();
   const mode = resolveSeedMode(process.env, shopCount);
+  const scope = resolveSeedScope(process.env, process.argv);
 
   await syncRbacCatalog();
 
@@ -103,7 +104,13 @@ async function main() {
     await prisma.shop.deleteMany();
   }
 
-  console.log(mode === "insert" ? "Seed: DB trống, ghi dữ liệu demo." : "Seed: ghi đè dữ liệu demo.");
+  console.log(
+    scope === "staff"
+      ? "Seed: chỉ shop + 2 nhân viên."
+      : mode === "insert"
+        ? "Seed: DB trống, ghi dữ liệu demo."
+        : "Seed: ghi đè dữ liệu demo.",
+  );
 
   await prisma.shop.create({
     data: {
@@ -135,6 +142,11 @@ async function main() {
       },
     });
   }
+
+  if (scope === "staff") {
+    return;
+  }
+
   await prisma.channelAccount.createMany({
     data: channelAccounts.map((account) => ({
       id: account.id,

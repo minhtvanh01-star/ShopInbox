@@ -44,8 +44,21 @@ Mở `/login` → bấm **Đăng nhập với Google**.
 
 Đã đăng nhập bằng email/mật khẩu → **Hồ sơ cá nhân** → **Liên kết Google**.
 
+## 5. Đăng ký email / mật khẩu
+
+Trang `/register` (link **Chưa có tài khoản? Đăng ký** trên `/login`):
+
+- Validate: họ tên bắt buộc, email hợp lệ, mật khẩu ≥ 8 ký tự, xác nhận khớp.
+- Email đã tồn tại (kể cả tài khoản chỉ Google) → từ chối.
+- **User đầu tiên** trong DB → vai trò `admin`; tạo shop `shop1` nếu chưa có.
+- **User sau** → vai trò `staff`, gia nhập shop mặc định `shop1` (giống Google signup mở).
+- Sau đăng ký: set cookie session và chuyển `/inbox`.
+- Audit: `auth.register`.
+
+**Hạn chế:** đăng ký mở không chọn shop; không tự tạo thêm `admin` sau user đầu tiên. Mời nhân viên có kiểm soát vẫn dùng menu **Nhân viên**.
+
 ## Lưu ý
 
 - Tài khoản chỉ Google không có mật khẩu local — đổi mật khẩu bị ẩn trên form hồ sơ.
 - Menu **Nhân viên** vẫn chỉ dành cho **owner**.
-- App chưa hỗ trợ mời user vào shop cụ thể — user Google mới gia nhập shop demo mặc định (`shop1`).
+- App chưa hỗ trợ mời user vào shop cụ thể — user Google / đăng ký mở mới gia nhập shop demo mặc định (`shop1`).

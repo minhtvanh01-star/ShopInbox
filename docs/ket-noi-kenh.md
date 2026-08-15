@@ -1,6 +1,8 @@
 # Hướng dẫn kết nối kênh (OAuth)
 
-ShopInbox hỗ trợ **kết nối OAuth** cho Facebook Messenger, Instagram DM và Zalo OA. Chủ shop vào **Cài đặt → Thêm kết nối**, bấm **Kết nối với Facebook / Instagram / Zalo** — không cần dán App Secret trên giao diện.
+ShopInbox hỗ trợ **kết nối OAuth** cho Facebook Messenger, Instagram DM và Zalo OA. Chủ shop (quyền `channels.connect`) vào **Cài đặt → Thêm kết nối**, chọn kênh, bấm **Kết nối với Facebook / Instagram / Zalo** — không cần dán App Secret trên giao diện.
+
+Nếu shop chưa có dòng `channel_accounts` cho kênh đó, nút OAuth vẫn hiện; lần bấm đầu server sẽ tạo nháp kênh. Nút chỉ hoạt động khi `.env` đã đủ biến Meta/Zalo (xem mục dưới và `.env.example`); thiếu biến thì nút bị khóa và liệt kê tên biến còn thiếu.
 
 ## Tổng quan
 

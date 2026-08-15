@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveSeedMode } from "@/backend/db-seed-policy";
+import { resolveSeedMode, resolveSeedScope } from "@/backend/db-seed-policy";
 
 describe("resolveSeedMode", () => {
   it("replaces local data by default", () => {
@@ -18,5 +18,22 @@ describe("resolveSeedMode", () => {
 
   it("SEED_FORCE always replaces", () => {
     expect(resolveSeedMode({ NODE_ENV: "production", SEED_FORCE: "1" }, 4)).toBe("replace");
+  });
+});
+
+describe("resolveSeedScope", () => {
+  it("uses full demo inbox for local seed", () => {
+    expect(resolveSeedScope({})).toBe("full");
+  });
+
+  it("uses staff-only on Railway/production", () => {
+    expect(resolveSeedScope({ NODE_ENV: "production" })).toBe("staff");
+    expect(resolveSeedScope({ RAILWAY_ENVIRONMENT: "production" })).toBe("staff");
+  });
+
+  it("honors SEED_SCOPE and CLI flags", () => {
+    expect(resolveSeedScope({ NODE_ENV: "production", SEED_SCOPE: "full" })).toBe("full");
+    expect(resolveSeedScope({}, ["--staff"])).toBe("staff");
+    expect(resolveSeedScope({ NODE_ENV: "production" }, ["--full"])).toBe("full");
   });
 });

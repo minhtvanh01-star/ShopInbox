@@ -52,6 +52,7 @@ Mở [http://localhost:3000](http://localhost:3000) → trang đăng nhập.
 
 - Mật khẩu lưu **bcrypt hash** trong bảng `staff` (không lưu plain text).
 - Admin vào menu **Nhân viên** để thêm tài khoản mới.
+- **Đăng ký mở** tại `/register` (link **Đăng ký** trên `/login`): user đầu tiên → `admin`; user sau → `staff` vào shop mặc định `shop1` (chưa hỗ trợ chọn shop). Chi tiết: [docs/dang-nhap-google.md](docs/dang-nhap-google.md) mục đăng ký.
 - **Hồ sơ cá nhân** (`/settings/profile`): cập nhật tên, SĐT, ảnh; liên kết Google; đổi mật khẩu (tài khoản email).
 - **Đăng nhập với Google** trên trang `/login` khi đã cấu hình OAuth — xem [docs/dang-nhap-google.md](docs/dang-nhap-google.md).
 - Đăng xuất xóa cookie session.
@@ -108,7 +109,7 @@ Next.js **giữ** `src/app` (App Router) và `src/middleware.ts` đúng chỗ. T
 src/
   app/            # Routes (page.tsx, layout.tsx) + server actions cạnh từng trang
   components/     # React UI — đây là frontend
-    auth/         # LoginForm
+    auth/         # LoginForm, RegisterForm
     inbox/        # InboxWorkspace, CreateOrderForm
     staff/        # StaffManager
     settings/     # kết nối kênh

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { loginAction, type AuthActionState } from "@/app/login/actions";
 
@@ -102,6 +103,16 @@ export function LoginForm({
           Đăng nhập Google chưa bật — cần cấu hình GOOGLE_CLIENT_ID trên server.
         </p>
       )}
+
+      <p className="mt-6 text-center text-sm text-slate-500">
+        Chưa có tài khoản?{" "}
+        <Link
+          href={`/register?next=${encodeURIComponent(nextPath)}`}
+          className="font-medium text-teal-700 hover:text-teal-800 hover:underline"
+        >
+          Đăng ký
+        </Link>
+      </p>
 
       <div className="mt-6 rounded-lg border border-border bg-surface-muted px-4 py-3 text-xs leading-5 text-slate-500">
         <p className="font-medium text-slate-600">Tài khoản demo</p>
