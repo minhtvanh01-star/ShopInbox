@@ -110,16 +110,24 @@ export function InboxWorkspace({
     STORAGE_KEYS.inboxCustomerPanel,
     true,
   );
-  const [isPending, startTransition] = useTransition();
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  /** Chỉ khóa composer khi user đang claim/gửi — không dùng cho poll/mark-read/heartbeat. */
+  const [actionPending, startAction] = useTransition();
+  const [, startBackground] = useTransition();
+  /** null đến khi mount — tránh hydration mismatch từ đồng hồ client. */
+  const [nowMs, setNowMs] = useState<number | null>(null);
   const [pendingNewCount, setPendingNewCount] = useState(0);
   const [stickToBottom, setStickToBottom] = useState(true);
   const lastClaimTouchRef = useRef(0);
+  const readMarkedRef = useRef(new Set<string>());
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const [trackedSelectedId, setTrackedSelectedId] = useState(selectedId);
+  const initialThreadId = initialConversationId || conversations[0]?.id || "";
+  const initialThreadLen = initialThreadId
+    ? messages.filter((item) => item.conversationId === initialThreadId).length
+    : 0;
   const [trackedThreadKey, setTrackedThreadKey] = useState(
-    `${initialConversationId || conversations[0]?.id || ""}:0`,
+    `${initialThreadId}:${initialThreadLen}`,
   );
   const [prevInitialConversationId, setPrevInitialConversationId] = useState(initialConversationId);
   const [optimisticMessages, addOptimisticMessage] = useOptimistic(
@@ -175,18 +183,26 @@ export function InboxWorkspace({
     ? orders.filter((item) => item.customerId === customer.id)
     : [];
 
-  const claimRemainingMs = selected?.replyClaimedAt
-    ? replyClaimRemainingMs(selected.replyClaimedAt, nowMs)
-    : 0;
-  const claimActive = Boolean(selected?.replyStaffId) && claimRemainingMs > 0;
+  const claimRemainingMs =
+    nowMs !== null && selected?.replyClaimedAt
+      ? replyClaimRemainingMs(selected.replyClaimedAt, nowMs)
+      : 0;
+  /** Trước khi mount: tin server (đã lọc TTL). Sau mount: đếm theo đồng hồ client. */
+  const claimActive =
+    nowMs === null
+      ? Boolean(selected?.replyStaffId && selected?.replyClaimedAt)
+      : Boolean(selected?.replyStaffId) && claimRemainingMs > 0;
   const replyLockedByOther = Boolean(
     claimActive && selected?.replyStaffId && selected.replyStaffId !== currentStaffId,
   );
   const replyIsMine = Boolean(
     claimActive && selected?.replyStaffId && selected.replyStaffId === currentStaffId,
   );
-  const canCompose = replyIsMine && !isPending;
-  const claimCountdown = claimActive ? formatReplyClaimCountdown(claimRemainingMs) : null;
+  const canCompose = replyIsMine && !actionPending;
+  const claimCountdown =
+    nowMs !== null && claimActive && claimRemainingMs > 0
+      ? formatReplyClaimCountdown(claimRemainingMs)
+      : null;
 
   if (initialConversationId && initialConversationId !== prevInitialConversationId) {
     setPrevInitialConversationId(initialConversationId);
@@ -215,6 +231,13 @@ export function InboxWorkspace({
       }
     }
   }
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setNowMs(Date.now());
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   useEffect(() => {
     if (!stickToBottom || pendingNewCount > 0) {
@@ -252,6 +275,9 @@ export function InboxWorkspace({
   }, [optimisticConversations]);
 
   useEffect(() => {
+    if (nowMs === null) {
+      return;
+    }
     if (!selected?.replyStaffId || !selected.replyClaimedAt) {
       return;
     }
@@ -260,7 +286,7 @@ export function InboxWorkspace({
     }
     const id = selected.id;
     const wasMine = selected.replyStaffId === currentStaffId;
-    startTransition(() => {
+    startBackground(() => {
       patchOptimisticConversation({
         id,
         replyStaffId: null,
@@ -274,13 +300,14 @@ export function InboxWorkspace({
       });
     }
   }, [
+    nowMs,
     claimRemainingMs,
     selected?.id,
     selected?.replyStaffId,
     selected?.replyClaimedAt,
     currentStaffId,
     patchOptimisticConversation,
-    startTransition,
+    startBackground,
   ]);
 
   useEffect(() => {
@@ -289,22 +316,30 @@ export function InboxWorkspace({
     if (!id || unread <= 0) {
       return;
     }
-    startTransition(() => {
+    if (readMarkedRef.current.has(id)) {
+      return;
+    }
+    readMarkedRef.current.add(id);
+    startBackground(() => {
       patchOptimisticConversation({ id, unread: 0 });
     });
     void markConversationRead(id).catch((err) => {
+      readMarkedRef.current.delete(id);
       setError(err instanceof Error ? err.message : "Không đánh dấu đã đọc được");
     });
-  }, [selected?.id, selected?.unread, patchOptimisticConversation, startTransition]);
+  }, [selected?.id, selected?.unread, patchOptimisticConversation, startBackground]);
 
   function renewClaimActivity(conversationId: string, options?: { force?: boolean; atMs?: number }) {
-    const at = options?.atMs ?? nowMs;
+    if (nowMs === null && options?.atMs === undefined) {
+      return;
+    }
+    const at = options?.atMs ?? nowMs!;
     if (!options?.force && at - lastClaimTouchRef.current < CLAIM_TOUCH_MIN_INTERVAL_MS) {
       return;
     }
     lastClaimTouchRef.current = at;
     const claimedAt = new Date(at).toISOString();
-    startTransition(() => {
+    startBackground(() => {
       patchOptimisticConversation({
         id: conversationId,
         replyStaffId: currentStaffId,
@@ -314,7 +349,7 @@ export function InboxWorkspace({
     });
     void touchConversationClaim(conversationId)
       .then((result) => {
-        startTransition(() => {
+        startBackground(() => {
           patchOptimisticConversation({
             id: conversationId,
             replyClaimedAt: result.claimedAt,
@@ -365,9 +400,9 @@ export function InboxWorkspace({
   }
 
   function changeTag(tag: ConversationTag) {
-    if (!selected || selected.tag === tag || isPending) return;
+    if (!selected || selected.tag === tag || actionPending) return;
 
-    startTransition(async () => {
+    startAction(async () => {
       patchOptimisticConversation({ id: selected.id, tag });
       try {
         await updateConversationTag(selected.id, tag);
@@ -378,9 +413,9 @@ export function InboxWorkspace({
   }
 
   function claimReply() {
-    if (!selected || isPending || replyLockedByOther) return;
+    if (!selected || actionPending || replyLockedByOther || nowMs === null) return;
     const claimedAt = new Date(nowMs).toISOString();
-    startTransition(async () => {
+    startAction(async () => {
       patchOptimisticConversation({
         id: selected.id,
         replyStaffId: currentStaffId,
@@ -402,8 +437,8 @@ export function InboxWorkspace({
   }
 
   function releaseReply() {
-    if (!selected || isPending || !replyIsMine) return;
-    startTransition(async () => {
+    if (!selected || actionPending || !replyIsMine) return;
+    startAction(async () => {
       patchOptimisticConversation({
         id: selected.id,
         replyStaffId: null,
@@ -427,7 +462,7 @@ export function InboxWorkspace({
   }
 
   function send(text: string) {
-    if (!selected || !text.trim() || isPending || !replyIsMine) return;
+    if (!selected || !text.trim() || actionPending || !replyIsMine || nowMs === null) return;
 
     const body = text.trim();
     const tempId = `temp-${crypto.randomUUID()}`;
@@ -444,7 +479,7 @@ export function InboxWorkspace({
     setDraft("");
     lastClaimTouchRef.current = nowMs;
 
-    startTransition(async () => {
+    startAction(async () => {
       addOptimisticMessage(optimistic);
       patchOptimisticConversation({
         id: selected.id,
@@ -505,8 +540,10 @@ export function InboxWorkspace({
             const person = customerById(item.customerId);
             const active = selected?.id === item.id;
             const itemClaimActive =
-              Boolean(item.replyStaffId) &&
-              replyClaimRemainingMs(item.replyClaimedAt, nowMs) > 0;
+              nowMs === null
+                ? Boolean(item.replyStaffId && item.replyClaimedAt)
+                : Boolean(item.replyStaffId) &&
+                  replyClaimRemainingMs(item.replyClaimedAt, nowMs) > 0;
             return (
               <li key={item.id}>
                 <button
@@ -595,7 +632,7 @@ export function InboxWorkspace({
                     <span className="sr-only">Nhãn hội thoại</span>
                     <select
                       value={selected.tag}
-                      disabled={isPending}
+                      disabled={actionPending}
                       onChange={(event) => changeTag(event.target.value as ConversationTag)}
                       className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-slate-700 outline-none focus:border-teal-500"
                     >
@@ -612,7 +649,7 @@ export function InboxWorkspace({
                 {!claimActive ? (
                   <button
                     type="button"
-                    disabled={isPending}
+                    disabled={actionPending}
                     onClick={claimReply}
                     className="btn-primary-sm"
                   >
@@ -627,7 +664,7 @@ export function InboxWorkspace({
                     ) : null}
                     <button
                       type="button"
-                      disabled={isPending}
+                      disabled={actionPending}
                       onClick={releaseReply}
                       className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-surface-muted disabled:opacity-50"
                     >
@@ -732,9 +769,8 @@ export function InboxWorkspace({
                   <span>
                     Bạn đang trả lời
                     {claimCountdown
-                      ? ` · tự nhả sau ${claimCountdown} nếu không hoạt động (${REPLY_CLAIM_TTL_MINUTES} phút)`
-                      : ""}
-                    .
+                      ? ` · tự nhả sau ${claimCountdown} nếu không hoạt động (${REPLY_CLAIM_TTL_MINUTES} phút).`
+                      : "."}
                   </span>
                 </p>
               ) : (

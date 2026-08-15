@@ -2,15 +2,18 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   generateEmailOtpCode,
   hashEmailOtpCode,
+  parsePasswordResetOtpPayload,
   parseRegisterOtpPayload,
   EMAIL_OTP_CODE_LENGTH,
 } from "@/backend/email-otp-code";
 import {
+  buildPasswordResetOtpEmail,
   buildRegisterOtpEmail,
   canSendRegisterOtp,
   getSmtpConfig,
   normalizeSmtpSecret,
 } from "@/backend/email";
+import { validatePasswordResetInput } from "@/backend/register";
 
 describe("email OTP helpers", () => {
   it("generates a fixed-length numeric code", () => {
@@ -31,6 +34,13 @@ describe("email OTP helpers", () => {
     expect(parseRegisterOtpPayload("{}")).toBeNull();
   });
 
+  it("parses password reset payload", () => {
+    expect(parsePasswordResetOtpPayload(JSON.stringify({ passwordHash: "hash" }))).toEqual({
+      passwordHash: "hash",
+    });
+    expect(parsePasswordResetOtpPayload("{}")).toBeNull();
+  });
+
   it("builds OTP email content", () => {
     const mail = buildRegisterOtpEmail("482913");
     expect(mail.subject).toContain("ShopInbox");
@@ -38,9 +48,39 @@ describe("email OTP helpers", () => {
     expect(mail.html).toContain("482913");
   });
 
+  it("builds password reset OTP email content", () => {
+    const mail = buildPasswordResetOtpEmail("119922");
+    expect(mail.subject).toContain("đổi mật khẩu");
+    expect(mail.text).toContain("119922");
+    expect(mail.html).toContain("119922");
+  });
+
   it("strips spaces from SMTP / App Password secrets", () => {
     expect(normalizeSmtpSecret("abcd efgh ijkl mnop")).toBe("abcdefghijklmnop");
     expect(normalizeSmtpSecret("  x y  ")).toBe("xy");
+  });
+});
+
+describe("validatePasswordResetInput", () => {
+  it("accepts valid email and matching passwords", () => {
+    const result = validatePasswordResetInput({
+      email: " Admin@Lily.vn ",
+      password: "NewPass@12",
+      confirmPassword: "NewPass@12",
+    });
+    expect(result).toEqual({
+      ok: true,
+      data: { email: "admin@lily.vn", password: "NewPass@12" },
+    });
+  });
+
+  it("rejects mismatched confirm password", () => {
+    const result = validatePasswordResetInput({
+      email: "admin@lily.vn",
+      password: "NewPass@12",
+      confirmPassword: "other",
+    });
+    expect(result.ok).toBe(false);
   });
 });
 

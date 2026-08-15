@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/backend/session-token";
 import { absoluteAppUrl } from "@/backend/public-url";
 
-const PUBLIC_PATHS = ["/login", "/register"];
+const PUBLIC_PATHS = ["/login", "/register", "/forgot-password"];
 const PUBLIC_PREFIXES = ["/api/webhooks/", "/api/auth/google/"];
 
 export async function middleware(request: NextRequest) {
@@ -24,7 +24,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (session && (pathname === "/login" || pathname === "/register" || pathname === "/")) {
+  if (
+    session &&
+    (pathname === "/login" ||
+      pathname === "/register" ||
+      pathname === "/forgot-password" ||
+      pathname === "/")
+  ) {
     return NextResponse.redirect(absoluteAppUrl(request, "/inbox"));
   }
 

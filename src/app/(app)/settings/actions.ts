@@ -5,7 +5,11 @@ import { revalidatePath } from "next/cache";
 import { writeAudit } from "@/backend/audit";
 import { hasPermission, requirePermission } from "@/backend/rbac";
 import { getSession } from "@/backend/session";
-import { disconnectChannel, saveOAuthConnection } from "@/backend/channel-connect";
+import {
+  disconnectChannel,
+  saveOAuthConnection,
+  syncConnectedMetaInbox,
+} from "@/backend/channel-connect";
 import { pickMetaPageForChannel } from "@/backend/meta-oauth";
 import {
   OAUTH_PAGES_COOKIE,
@@ -219,6 +223,36 @@ export async function disconnectChannelAction(
     return { success: "Đã ngắt kết nối kênh." };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Không ngắt được kết nối." };
+  }
+}
+
+export type SyncMetaChannelState = {
+  error?: string;
+  success?: string;
+};
+
+export async function syncMetaChannelAction(
+  _prev: SyncMetaChannelState,
+  formData: FormData,
+): Promise<SyncMetaChannelState> {
+  const session = await requirePermission(PERMISSION_CODES.channelsConnect);
+  const channel = formData.get("channel");
+  if (channel !== "facebook" && channel !== "instagram") {
+    return { error: "Chỉ đồng bộ được Facebook hoặc Instagram." };
+  }
+
+  try {
+    const result = await syncConnectedMetaInbox(session.shopId, channel);
+    revalidatePath("/settings");
+    revalidatePath("/inbox");
+    return {
+      success:
+        result.ingested > 0
+          ? `Đã kéo ${result.ingested} tin nhắn vào Inbox. Gửi thêm tin mới để kiểm tra webhook.`
+          : "Đã thử đăng ký webhook. Inbox chưa có tin khách — nhắn thử từ nick đã thêm làm Tester trên Meta app.",
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không đồng bộ được tin nhắn Meta." };
   }
 }
 

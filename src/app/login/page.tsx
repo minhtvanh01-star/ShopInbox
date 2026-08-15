@@ -5,7 +5,12 @@ import { DEMO_SHOP_ID } from "@/lib/queries";
 import { safeInternalPath } from "@/backend/safe-path";
 
 type LoginPageProps = {
-  searchParams: Promise<{ next?: string; auth_error?: string; auth_message?: string }>;
+  searchParams: Promise<{
+    next?: string;
+    auth_error?: string;
+    auth_message?: string;
+    reset?: string;
+  }>;
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
@@ -35,6 +40,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           googleOAuthConfigured={Boolean(getGoogleOAuthConfig())}
           authError={params.auth_error}
           authMessage={params.auth_message}
+          resetSuccess={params.reset === "1"}
         />
       </div>
     </main>

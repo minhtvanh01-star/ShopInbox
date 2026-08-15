@@ -9,7 +9,7 @@ import {
   OAUTH_ERROR_MESSAGES,
   type ChannelAccountView,
 } from "./AddConnectionModal";
-import { disconnectChannelAction } from "@/app/(app)/settings/actions";
+import { disconnectChannelAction, syncMetaChannelAction } from "@/app/(app)/settings/actions";
 import type { PendingMetaPages } from "@/lib/oauth-types";
 
 type SettingsWorkspaceProps = {
@@ -39,6 +39,26 @@ function statusBadgeClass(status: ChannelAccountView["status"]) {
     return "bg-sky-50 text-sky-700 ring-sky-200";
   }
   return "bg-amber-50 text-amber-700 ring-amber-200";
+}
+
+function CopyButton({ value, label }: { value: string; label?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <button type="button" onClick={copy} className="btn-ghost shrink-0 px-2 py-1 text-xs">
+      {copied ? "Đã copy!" : label ?? "Copy"}
+    </button>
+  );
 }
 
 function PlatformIcon({ channel }: { channel: ChannelAccountView["channel"] }) {
@@ -74,6 +94,10 @@ export function SettingsWorkspace({
     oauthFlash?.pickChannel ?? oauthFlash?.success,
   );
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState<string | null>(null);
+  const [syncFlash, setSyncFlash] = useState<{ channel: string; ok: boolean; text: string } | null>(
+    null,
+  );
   const router = useRouter();
 
   const connectedCount = channels.filter((item) => item.status === "ready").length;
@@ -113,6 +137,22 @@ export function SettingsWorkspace({
     formData.set("channel", channel);
     await disconnectChannelAction({}, formData);
     setDisconnecting(null);
+    router.refresh();
+  }
+
+  async function handleSyncMeta(channel: ChannelAccountView["channel"]) {
+    if (!canConnect || syncing || (channel !== "facebook" && channel !== "instagram")) return;
+
+    setSyncing(channel);
+    const formData = new FormData();
+    formData.set("channel", channel);
+    const result = await syncMetaChannelAction({}, formData);
+    setSyncing(null);
+    setSyncFlash({
+      channel,
+      ok: Boolean(result.success),
+      text: result.success ?? result.error ?? "Không đồng bộ được.",
+    });
     router.refresh();
   }
 
@@ -211,8 +251,44 @@ export function SettingsWorkspace({
                       Webhook gần nhất: {formatDateTime(channel.lastWebhookAt)}
                     </p>
                   ) : channel.status === "ready" ? (
-                    <p className="mt-1 text-xs text-amber-600">
-                      Chưa nhận webhook — đăng ký URL trong Meta/Zalo dashboard
+                    <div className="mt-2 space-y-2">
+                      <p className="text-xs text-amber-700">
+                        OAuth đã nối, nhưng Inbox chỉ có tin khi webhook chạy hoặc khi bấm đồng bộ.
+                        Tin trên Meta Business Suite không tự chảy sang ShopInbox.
+                      </p>
+                      {(channel.channel === "facebook" || channel.channel === "instagram") &&
+                      metaWebhookUrl ? (
+                        <div className="rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-amber-200">
+                          <p className="text-[11px] font-medium text-amber-900">
+                            Webhook URL (Meta Developers → Messenger → Webhooks)
+                          </p>
+                          <div className="mt-1 flex items-start gap-2">
+                            <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-slate-700">
+                              {metaWebhookUrl}
+                            </code>
+                            <CopyButton value={metaWebhookUrl} />
+                          </div>
+                          {metaWebhookVerifyToken ? (
+                            <div className="mt-2">
+                              <p className="text-[11px] text-amber-800">Verify token</p>
+                              <div className="mt-1 flex items-start gap-2">
+                                <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-slate-700">
+                                  {metaWebhookVerifyToken}
+                                </code>
+                                <CopyButton value={metaWebhookVerifyToken} label="Copy token" />
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  {syncFlash?.channel === channel.channel ? (
+                    <p
+                      className={`mt-2 text-xs ${syncFlash.ok ? "text-emerald-600" : "text-amber-700"}`}
+                    >
+                      {syncFlash.text}
                     </p>
                   ) : null}
 
@@ -224,6 +300,19 @@ export function SettingsWorkspace({
                     >
                       {channel.status === "ready" ? "Xem kết nối" : "Kết nối kênh"}
                     </button>
+                    {canConnect &&
+                    channel.status === "ready" &&
+                    channel.hasOAuthToken &&
+                    (channel.channel === "facebook" || channel.channel === "instagram") ? (
+                      <button
+                        type="button"
+                        onClick={() => handleSyncMeta(channel.channel)}
+                        disabled={syncing === channel.channel}
+                        className="btn-secondary"
+                      >
+                        {syncing === channel.channel ? "Đang đồng bộ..." : "Đồng bộ tin nhắn"}
+                      </button>
+                    ) : null}
                     {canConnect && channel.status === "ready" && channel.hasOAuthToken ? (
                       <button
                         type="button"

@@ -113,6 +113,13 @@ export function Sidebar({
   const iconOnly = collapsed;
   const unreadBadge =
     summary.unreadTotal > 99 ? "99+" : summary.unreadTotal > 0 ? String(summary.unreadTotal) : null;
+  // Khớp prefix dài nhất — tránh `/settings/profile` sáng cả `/settings`.
+  const activeHref = items
+    .filter(
+      (candidate) =>
+        pathname === candidate.href || pathname.startsWith(`${candidate.href}/`),
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   return (
     <>
@@ -260,7 +267,7 @@ export function Sidebar({
 
         <nav className={`flex flex-1 flex-col gap-1 py-4 ${iconOnly ? "px-2" : "px-3"}`}>
           {items.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const active = item.href === activeHref;
             const showInboxBadge = item.href === "/inbox" && unreadBadge;
             return (
               <Link
