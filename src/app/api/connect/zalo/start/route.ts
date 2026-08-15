@@ -7,6 +7,7 @@ import {
   OAUTH_STATE_COOKIE,
   createOAuthStateToken,
 } from "@/backend/oauth-state";
+import { absoluteAppUrl } from "@/backend/public-url";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 
 export async function GET(request: Request) {
@@ -18,7 +19,7 @@ export async function GET(request: Request) {
   const config = getZaloOAuthConfig();
   if (!config) {
     return NextResponse.redirect(
-      new URL("/settings?oauth_error=zalo_not_configured", request.url),
+      absoluteAppUrl(request, "/settings?oauth_error=zalo_not_configured"),
     );
   }
 

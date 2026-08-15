@@ -1,7 +1,7 @@
 import { prisma } from "@/backend/prisma";
 import { requirePermission } from "@/backend/rbac";
 import { AuditLogTable, type AuditRow } from "@/components/audit/AuditLogTable";
-import { formatDateTime } from "@/lib/labels";
+import { formatDateTimeVN, parseVnDayEnd, parseVnDayStart } from "@/lib/labels";
 import { AUDIT_ACTION_LABEL, PERMISSION_CODES } from "@/lib/rbac-catalog";
 
 type AuditPageProps = {
@@ -13,25 +13,13 @@ type AuditPageProps = {
   }>;
 };
 
-function parseDayStart(value: string | undefined): Date | undefined {
-  if (!value) return undefined;
-  const date = new Date(`${value}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
-function parseDayEnd(value: string | undefined): Date | undefined {
-  if (!value) return undefined;
-  const date = new Date(`${value}T23:59:59.999`);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-}
-
 export default async function AuditPage({ searchParams }: AuditPageProps) {
   const session = await requirePermission(PERMISSION_CODES.auditRead);
   const params = await searchParams;
   const actorId = params.actorId?.trim() || undefined;
   const action = params.action?.trim() || undefined;
-  const from = parseDayStart(params.from);
-  const to = parseDayEnd(params.to);
+  const from = parseVnDayStart(params.from);
+  const to = parseVnDayEnd(params.to);
 
   const [actors, logs] = await Promise.all([
     prisma.staff.findMany({
@@ -60,7 +48,7 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
 
   const rows: AuditRow[] = logs.map((log) => ({
     id: log.id,
-    createdAt: formatDateTime(log.createdAt.toISOString()),
+    createdAt: formatDateTimeVN(log.createdAt),
     actorEmail: log.actorEmail,
     actorRole: log.actorRole,
     action: log.action,

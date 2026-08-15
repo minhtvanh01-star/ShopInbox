@@ -1,11 +1,11 @@
 # Cấu hình deploy trên Railway (UAT / production).
-# Pre-deploy chạy migrate trước khi app nhận traffic.
+# Pre-deploy: migrate schema, rồi seed demo nếu DB trống (không ghi đè data thật).
 
 [build]
 builder = "RAILPACK"
 
 [deploy]
 startCommand = "npm run start"
-preDeployCommand = "npx prisma migrate deploy"
+preDeployCommand = "npx prisma migrate deploy && npx prisma db seed"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3

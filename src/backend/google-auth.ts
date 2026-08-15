@@ -12,19 +12,21 @@ type StaffRecord = {
   avatarUrl: string | null;
 };
 
+export type GoogleAuthIntent = "login" | "register";
+
 export type GoogleAuthResolveInput = {
   googleUser: GoogleUserInfo;
   existingByGoogleId: StaffRecord | null;
   existingByEmail: StaffRecord | null;
   staffCount: number;
   shopExists: boolean;
+  intent: GoogleAuthIntent;
 };
 
 export type GoogleAuthResolveResult =
   | {
       action: "login";
       staffId: string;
-      linkGoogleId?: string;
       updateProfile?: { name?: string; avatarUrl?: string };
     }
   | {
@@ -40,7 +42,7 @@ export type GoogleAuthResolveResult =
   | { action: "error"; code: string; message: string };
 
 export function resolveGoogleAuthUser(input: GoogleAuthResolveInput): GoogleAuthResolveResult {
-  const { googleUser, existingByGoogleId, existingByEmail, staffCount, shopExists } = input;
+  const { googleUser, existingByGoogleId, existingByEmail, staffCount, shopExists, intent } = input;
 
   if (!googleUser.emailVerified) {
     return {
@@ -51,6 +53,14 @@ export function resolveGoogleAuthUser(input: GoogleAuthResolveInput): GoogleAuth
   }
 
   if (existingByGoogleId) {
+    if (intent === "register") {
+      return {
+        action: "error",
+        code: "google_already_registered",
+        message: "Tài khoản Google này đã tồn tại. Hãy đăng nhập.",
+      };
+    }
+
     return {
       action: "login",
       staffId: existingByGoogleId.id,
@@ -71,18 +81,22 @@ export function resolveGoogleAuthUser(input: GoogleAuthResolveInput): GoogleAuth
     }
 
     return {
-      action: "login",
-      staffId: existingByEmail.id,
-      linkGoogleId: googleUser.sub,
-      updateProfile: {
-        name: existingByEmail.name || googleUser.name,
-        avatarUrl: googleUser.picture ?? existingByEmail.avatarUrl ?? undefined,
-      },
+      action: "error",
+      code: "google_account_exists",
+      message:
+        "Email này đã đăng ký bằng mật khẩu. Đăng nhập bằng mật khẩu, rồi liên kết Google trong Hồ sơ.",
+    };
+  }
+
+  if (intent === "login") {
+    return {
+      action: "error",
+      code: "google_no_account",
+      message: "Chưa có tài khoản với Google này. Hãy đăng ký trước.",
     };
   }
 
   const role = roleCodeForNewStaff(staffCount);
-  const shopId = shopExists ? DEFAULT_SHOP_ID : DEFAULT_SHOP_ID;
 
   return {
     action: "create",
@@ -91,7 +105,7 @@ export function resolveGoogleAuthUser(input: GoogleAuthResolveInput): GoogleAuth
     googleId: googleUser.sub,
     avatarUrl: googleUser.picture,
     role,
-    shopId,
+    shopId: DEFAULT_SHOP_ID,
     createShop: shopExists
       ? undefined
       : {

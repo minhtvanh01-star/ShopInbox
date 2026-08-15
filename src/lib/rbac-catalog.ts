@@ -222,6 +222,7 @@ export function catalogHasPermission(roleCode: string, permission: string): bool
 export const AUDIT_ACTIONS = {
   authLogin: "auth.login",
   authLoginFail: "auth.login_fail",
+  authRegister: "auth.register",
   staffCreate: "staff.create",
   staffUpdate: "staff.update",
   staffDisable: "staff.disable",
@@ -233,6 +234,9 @@ export const AUDIT_ACTIONS = {
   profileUpdate: "profile.update",
   profilePasswordChange: "profile.password_change",
   messageSend: "message.send",
+  conversationTagChange: "conversation.tag_change",
+  conversationClaim: "conversation.claim",
+  conversationRelease: "conversation.release",
 } as const;
 
 export type AuditActionCode = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
@@ -240,6 +244,7 @@ export type AuditActionCode = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS]
 export const AUDIT_ACTION_LABEL: Record<string, string> = {
   [AUDIT_ACTIONS.authLogin]: "Đăng nhập",
   [AUDIT_ACTIONS.authLoginFail]: "Đăng nhập thất bại",
+  [AUDIT_ACTIONS.authRegister]: "Đăng ký tài khoản",
   [AUDIT_ACTIONS.staffCreate]: "Tạo nhân viên",
   [AUDIT_ACTIONS.staffUpdate]: "Cập nhật nhân viên",
   [AUDIT_ACTIONS.staffDisable]: "Vô hiệu hóa nhân viên",
@@ -251,6 +256,9 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   [AUDIT_ACTIONS.profileUpdate]: "Cập nhật hồ sơ",
   [AUDIT_ACTIONS.profilePasswordChange]: "Đổi mật khẩu",
   [AUDIT_ACTIONS.messageSend]: "Gửi tin nhắn",
+  [AUDIT_ACTIONS.conversationTagChange]: "Đổi nhãn hội thoại",
+  [AUDIT_ACTIONS.conversationClaim]: "Nhận trả lời hội thoại",
+  [AUDIT_ACTIONS.conversationRelease]: "Nhả hội thoại",
 };
 
 export const AUDIT_ENTITY_LABEL: Record<string, string> = {

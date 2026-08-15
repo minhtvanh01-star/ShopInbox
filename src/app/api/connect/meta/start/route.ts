@@ -7,6 +7,7 @@ import {
   OAUTH_STATE_COOKIE,
   createOAuthStateToken,
 } from "@/backend/oauth-state";
+import { absoluteAppUrl } from "@/backend/public-url";
 import type { Channel } from "@/lib/types";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
   const config = getMetaOAuthConfig();
   if (!config) {
     return NextResponse.redirect(
-      new URL("/settings?oauth_error=meta_not_configured", request.url),
+      absoluteAppUrl(request, "/settings?oauth_error=meta_not_configured"),
     );
   }
 
@@ -39,7 +40,9 @@ export async function GET(request: Request) {
     nonce: crypto.randomUUID(),
   });
 
-  const response = NextResponse.redirect(buildMetaOAuthUrl(config, state));
+  const response = NextResponse.redirect(
+    buildMetaOAuthUrl(config, state, channel as Channel),
+  );
   response.cookies.set(OAUTH_STATE_COOKIE, state, {
     httpOnly: true,
     sameSite: "lax",

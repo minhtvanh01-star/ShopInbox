@@ -17,6 +17,8 @@ type SettingsWorkspaceProps = {
   canConnect: boolean;
   metaOAuthConfigured: boolean;
   zaloOAuthConfigured: boolean;
+  metaMissingEnvVars: string[];
+  zaloMissingEnvVars: string[];
   metaWebhookUrl: string;
   zaloWebhookUrl: string;
   metaWebhookVerifyToken: string;
@@ -59,6 +61,8 @@ export function SettingsWorkspace({
   canConnect,
   metaOAuthConfigured,
   zaloOAuthConfigured,
+  metaMissingEnvVars,
+  zaloMissingEnvVars,
   metaWebhookUrl,
   zaloWebhookUrl,
   metaWebhookVerifyToken,
@@ -146,7 +150,12 @@ export function SettingsWorkspace({
           <span className="font-medium text-teal-800">docs/ket-noi-kenh.md</span>
           {!metaOAuthConfigured || !zaloOAuthConfigured ? (
             <span className="mt-1 block text-xs text-amber-700">
-              Một số biến OAuth chưa cấu hình trên server — nút kết nối sẽ hiện thông báo liên hệ admin.
+              Một số biến OAuth chưa cấu hình trên server
+              {[...metaMissingEnvVars, ...zaloMissingEnvVars].length > 0
+                ? `: ${[...metaMissingEnvVars, ...zaloMissingEnvVars].join(", ")}`
+                : ""}
+              . Nút kết nối sẽ bị khóa cho đến khi điền đủ trong{" "}
+              <code className="rounded bg-white/70 px-1">.env</code> rồi restart server.
             </span>
           ) : null}
         </p>
@@ -248,6 +257,8 @@ export function SettingsWorkspace({
           canConnect={canConnect}
           metaOAuthConfigured={metaOAuthConfigured}
           zaloOAuthConfigured={zaloOAuthConfigured}
+          metaMissingEnvVars={metaMissingEnvVars}
+          zaloMissingEnvVars={zaloMissingEnvVars}
           metaWebhookUrl={metaWebhookUrl}
           zaloWebhookUrl={zaloWebhookUrl}
           metaWebhookVerifyToken={metaWebhookVerifyToken}

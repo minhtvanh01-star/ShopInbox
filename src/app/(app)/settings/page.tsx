@@ -3,6 +3,8 @@ import {
   getMetaWebhookUrl,
   getZaloOAuthConfig,
   getZaloWebhookUrl,
+  listMissingMetaOAuthEnvVars,
+  listMissingZaloOAuthEnvVars,
 } from "@/backend/oauth-config";
 import { getPendingMetaPages } from "@/app/(app)/settings/actions";
 import { getShopContext, getChannelAccounts } from "@/lib/queries";
@@ -28,6 +30,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
   const metaConfig = getMetaOAuthConfig();
   const zaloConfig = getZaloOAuthConfig();
+  const metaMissingEnvVars = listMissingMetaOAuthEnvVars();
+  const zaloMissingEnvVars = listMissingZaloOAuthEnvVars();
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -36,9 +40,15 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         canConnect={shop.permissions.includes(PERMISSION_CODES.channelsConnect)}
         metaOAuthConfigured={Boolean(metaConfig)}
         zaloOAuthConfigured={Boolean(zaloConfig)}
+        metaMissingEnvVars={metaMissingEnvVars}
+        zaloMissingEnvVars={zaloMissingEnvVars}
         metaWebhookUrl={getMetaWebhookUrl()}
         zaloWebhookUrl={getZaloWebhookUrl()}
-        metaWebhookVerifyToken={metaConfig?.webhookVerifyToken ?? ""}
+        metaWebhookVerifyToken={
+          shop.permissions.includes(PERMISSION_CODES.channelsConnect)
+            ? (metaConfig?.webhookVerifyToken ?? "")
+            : ""
+        }
         pendingMetaPages={pendingMetaPages}
         oauthFlash={{
           success: params.oauth_success,

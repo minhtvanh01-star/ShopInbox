@@ -1,6 +1,10 @@
 # Hướng dẫn kết nối kênh (OAuth)
 
-ShopInbox hỗ trợ **kết nối OAuth** cho Facebook Messenger, Instagram DM và Zalo OA. Chủ shop vào **Cài đặt → Thêm kết nối**, bấm **Kết nối với Facebook / Instagram / Zalo** — không cần dán App Secret trên giao diện.
+ShopInbox hỗ trợ **kết nối OAuth** cho Facebook Messenger, Instagram DM và Zalo OA. Chủ shop (quyền `channels.connect`) vào **Cài đặt → Thêm kết nối**, chọn kênh, bấm **Kết nối với Facebook / Instagram / Zalo** — không cần dán App Secret trên giao diện.
+
+Nếu shop chưa có dòng `channel_accounts` cho kênh đó, nút OAuth vẫn hiện; lần bấm đầu server sẽ tạo nháp kênh. Nút chỉ hoạt động khi `.env` đã đủ biến Meta/Zalo (xem mục dưới và `.env.example`); thiếu biến thì nút bị khóa và liệt kê tên biến còn thiếu.
+
+Checklist nhanh (local + biến phải dán thủ công): [env-checklist.md](./env-checklist.md).
 
 ## Tổng quan
 
@@ -48,27 +52,45 @@ Webhook:
 2. Thêm **Messenger** và **Instagram** messaging.
 3. **Settings → Basic**: copy **App ID**, **App Secret**.
 
+### Miền ứng dụng + Redirect (bắt buộc trên production)
+
+Lỗi Facebook *"Miền của URL này không được đưa vào miền của ứng dụng"* = chưa khai báo domain Railway trên Meta.
+
+Trên app **ShopInbox** → **Cài đặt ứng dụng → Thông tin cơ bản**:
+
+1. **Miền ứng dụng (App Domains)** — thêm (không có `https://`):
+   ```
+   shopinbox-production.up.railway.app
+   ```
+2. **Thêm nền tảng → Website** (nếu chưa có) → **URL trang web**:
+   ```
+   https://shopinbox-production.up.railway.app/
+   ```
+3. Bấm **Lưu thay đổi**.
+
 ### Redirect URI (OAuth)
 
-Trong app Meta → **Facebook Login → Settings → Valid OAuth Redirect URIs**:
+Trong app Meta → **Đăng nhập bằng Facebook → Cài đặt → Valid OAuth Redirect URIs**:
 
 ```
-https://your-domain/api/connect/meta/callback
+https://shopinbox-production.up.railway.app/api/connect/meta/callback
 ```
 
-Local qua ngrok: dùng URL ngrok tương ứng.
+Local qua ngrok: dùng URL ngrok tương ứng (và thêm miền ngrok vào App Domains nếu Meta yêu cầu).
 
-### Biến môi trường server
+### Biến môi trường server (Railway)
 
 ```env
 META_APP_ID=
 META_APP_SECRET=
-META_REDIRECT_URI=https://your-domain/api/connect/meta/callback
+META_REDIRECT_URI=https://shopinbox-production.up.railway.app/api/connect/meta/callback
 META_WEBHOOK_VERIFY_TOKEN=chuoi-bi-mat-tuy-chon
-NEXT_PUBLIC_APP_URL=https://your-domain
+NEXT_PUBLIC_APP_URL=https://shopinbox-production.up.railway.app
 ```
 
 `META_WEBHOOK_VERIFY_TOKEN` dùng khi Meta gọi GET verify webhook (`/api/webhooks/meta`).
+
+> **Railway:** không để redirect OAuth trỏ `localhost`. App lắng nghe cổng nội bộ `8080` — code dùng `NEXT_PUBLIC_APP_URL` để redirect về domain public (tránh nhảy `localhost:8080` sau login/OAuth).
 
 ### Webhook tin nhắn
 
@@ -78,9 +100,15 @@ NEXT_PUBLIC_APP_URL=https://your-domain
 
 ### Quyền OAuth (scopes)
 
-App yêu cầu: `pages_show_list`, `pages_messaging`, `pages_manage_metadata`, `instagram_basic`, `instagram_manage_messages`.
+Facebook / Instagram (qua Fanpage) xin quyền Page:
 
-Production cần **App Review** trước khi go-live.
+- `pages_show_list`
+- `pages_messaging`
+- `pages_manage_metadata`
+
+Không xin `instagram_basic` / `instagram_manage_messages` (Meta báo **Invalid Scopes** trên nhiều app). Instagram DM vẫn nối qua Page đã liên kết IG Business.
+
+Production cần **App Review** trước khi go-live cho khách ngoài tester.
 
 Tài liệu: [Messenger Platform](https://developers.facebook.com/docs/messenger-platform/), [Instagram Messaging](https://developers.facebook.com/docs/messenger-platform/instagram).
 

@@ -23,6 +23,7 @@ describe("resolveGoogleAuthUser", () => {
       existingByEmail: null,
       staffCount: 2,
       shopExists: true,
+      intent: "login",
     });
 
     expect(result.action).toBe("login");
@@ -31,7 +32,7 @@ describe("resolveGoogleAuthUser", () => {
     }
   });
 
-  it("links googleId when email account exists without google", () => {
+  it("rejects auto-link when email account exists without google", () => {
     const result = resolveGoogleAuthUser({
       googleUser,
       existingByGoogleId: null,
@@ -44,26 +45,85 @@ describe("resolveGoogleAuthUser", () => {
       },
       staffCount: 2,
       shopExists: true,
+      intent: "login",
     });
 
     expect(result).toEqual({
-      action: "login",
-      staffId: "staff-2",
-      linkGoogleId: "google-sub-1",
-      updateProfile: {
-        name: "Lan",
-        avatarUrl: "https://example.com/avatar.jpg",
-      },
+      action: "error",
+      code: "google_account_exists",
+      message:
+        "Email này đã đăng ký bằng mật khẩu. Đăng nhập bằng mật khẩu, rồi liên kết Google trong Hồ sơ.",
     });
   });
 
-  it("creates owner when no staff exists", () => {
+  it("rejects register when google account already exists", () => {
+    const result = resolveGoogleAuthUser({
+      googleUser,
+      existingByGoogleId: {
+        id: "staff-1",
+        name: "Old Name",
+        email: "user@gmail.com",
+        googleId: "google-sub-1",
+        avatarUrl: null,
+      },
+      existingByEmail: null,
+      staffCount: 2,
+      shopExists: true,
+      intent: "register",
+    });
+
+    expect(result.action).toBe("error");
+    if (result.action === "error") {
+      expect(result.code).toBe("google_already_registered");
+    }
+  });
+
+  it("rejects login when no shop account exists", () => {
+    const result = resolveGoogleAuthUser({
+      googleUser,
+      existingByGoogleId: null,
+      existingByEmail: null,
+      staffCount: 2,
+      shopExists: true,
+      intent: "login",
+    });
+
+    expect(result.action).toBe("error");
+    if (result.action === "error") {
+      expect(result.code).toBe("google_no_account");
+    }
+  });
+
+  it("rejects email already linked to another google id", () => {
+    const result = resolveGoogleAuthUser({
+      googleUser,
+      existingByGoogleId: null,
+      existingByEmail: {
+        id: "staff-3",
+        name: "Other",
+        email: "user@gmail.com",
+        googleId: "google-sub-other",
+        avatarUrl: null,
+      },
+      staffCount: 2,
+      shopExists: true,
+      intent: "register",
+    });
+
+    expect(result.action).toBe("error");
+    if (result.action === "error") {
+      expect(result.code).toBe("google_email_linked_other");
+    }
+  });
+
+  it("creates owner when registering and no staff exists", () => {
     const result = resolveGoogleAuthUser({
       googleUser,
       existingByGoogleId: null,
       existingByEmail: null,
       staffCount: 0,
       shopExists: false,
+      intent: "register",
     });
 
     expect(result.action).toBe("create");
@@ -73,13 +133,14 @@ describe("resolveGoogleAuthUser", () => {
     }
   });
 
-  it("creates staff when shop already has users", () => {
+  it("creates staff when registering into an existing shop", () => {
     const result = resolveGoogleAuthUser({
       googleUser,
       existingByGoogleId: null,
       existingByEmail: null,
       staffCount: 3,
       shopExists: true,
+      intent: "register",
     });
 
     expect(result.action).toBe("create");
@@ -96,6 +157,7 @@ describe("resolveGoogleAuthUser", () => {
       existingByEmail: null,
       staffCount: 1,
       shopExists: true,
+      intent: "register",
     });
 
     expect(result.action).toBe("error");

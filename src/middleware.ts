@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySessionToken } from "@/backend/session-token";
+import { absoluteAppUrl } from "@/backend/public-url";
 
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/register"];
 const PUBLIC_PREFIXES = ["/api/webhooks/", "/api/auth/google/"];
 
 export async function middleware(request: NextRequest) {
@@ -18,16 +19,13 @@ export async function middleware(request: NextRequest) {
   const session = token ? await verifySessionToken(token) : null;
 
   if (!session && !isPublic && pathname !== "/") {
-    const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/login";
+    const loginUrl = absoluteAppUrl(request, "/login");
     loginUrl.searchParams.set("next", pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  if (session && (pathname === "/login" || pathname === "/")) {
-    const inboxUrl = request.nextUrl.clone();
-    inboxUrl.pathname = "/inbox";
-    return NextResponse.redirect(inboxUrl);
+  if (session && (pathname === "/login" || pathname === "/register" || pathname === "/")) {
+    return NextResponse.redirect(absoluteAppUrl(request, "/inbox"));
   }
 
   return NextResponse.next();

@@ -115,6 +115,23 @@ model Staff {
   @@map("staff")
 }
 
+/** OTP email (đăng ký…) — mã đã hash, payload tạm (tên + passwordHash). */
+model EmailOtpChallenge {
+  id          String   @id @default(cuid())
+  email       String
+  purpose     String
+  codeHash    String
+  payloadJson String
+  expiresAt   DateTime
+  attempts    Int      @default(0)
+  lastSentAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@index([email, purpose])
+  @@index([expiresAt])
+  @@map("email_otp_challenges")
+}
+
 model AuditLog {
   id         String   @id @default(cuid())
   createdAt  DateTime @default(now())
@@ -200,8 +217,10 @@ model Conversation {
   shop       Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
   customerId String
   customer   Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  /** Nhân viên đang nhận trả lời (claim) — người khác không gửi được khi claim còn hiệu lực. */
   staffId    String?
   staff      Staff?           @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  replyClaimedAt DateTime?
   channel    Channel
   lastMessage String          @default("")
   lastAt     DateTime
