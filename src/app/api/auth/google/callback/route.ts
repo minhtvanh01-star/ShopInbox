@@ -18,6 +18,7 @@ import { prisma } from "@/backend/prisma";
 import { loadStaffSession } from "@/backend/auth";
 import { getSession, setSessionCookie } from "@/backend/session";
 import { auditMetaFromRequest, writeAudit } from "@/backend/audit";
+import { absoluteAppUrl } from "@/backend/public-url";
 import { safeInternalPath } from "@/backend/safe-path";
 import { AUDIT_ACTIONS, normalizeRoleCode } from "@/lib/rbac-catalog";
 
@@ -26,7 +27,7 @@ function authPageUrl(
   path: "/login" | "/register",
   params: Record<string, string>,
 ) {
-  const url = new URL(path, request.url);
+  const url = absoluteAppUrl(request, path);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
@@ -51,7 +52,7 @@ function redirectWithError(
 }
 
 function profileRedirect(request: Request, params: Record<string, string>) {
-  const url = new URL("/settings/profile", request.url);
+  const url = absoluteAppUrl(request, "/settings/profile");
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
@@ -109,7 +110,7 @@ export async function GET(request: Request) {
     const session = await getSession();
     if (!session || session.staffId !== statePayload.staffId) {
       return clearGoogleAuthCookies(
-        NextResponse.redirect(new URL("/login?next=/settings/profile", request.url)),
+        NextResponse.redirect(absoluteAppUrl(request, "/login?next=/settings/profile")),
       );
     }
   }
@@ -150,7 +151,7 @@ export async function GET(request: Request) {
       const session = await getSession();
       if (!session) {
         return clearGoogleAuthCookies(
-          NextResponse.redirect(new URL("/login?next=/settings/profile", request.url)),
+          NextResponse.redirect(absoluteAppUrl(request, "/login?next=/settings/profile")),
         );
       }
 
@@ -251,7 +252,7 @@ export async function GET(request: Request) {
         metadata: { method: "google" },
       });
 
-      return clearGoogleAuthCookies(NextResponse.redirect(new URL(nextPath, request.url)));
+      return clearGoogleAuthCookies(NextResponse.redirect(absoluteAppUrl(request, nextPath)));
     }
 
     if (resolved.createShop) {
@@ -294,7 +295,7 @@ export async function GET(request: Request) {
       metadata: { method: "google", bootstrap: Boolean(resolved.createShop) },
     });
 
-    return clearGoogleAuthCookies(NextResponse.redirect(new URL(nextPath, request.url)));
+    return clearGoogleAuthCookies(NextResponse.redirect(absoluteAppUrl(request, nextPath)));
   } catch (err) {
     const message = err instanceof Error ? err.message : "google_failed";
     await writeAudit({

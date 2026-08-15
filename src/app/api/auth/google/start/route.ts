@@ -15,9 +15,10 @@ import {
   googleAuthCookieOptions,
   type GoogleAuthMode,
 } from "@/backend/google-auth-state";
+import { absoluteAppUrl } from "@/backend/public-url";
 
 function authPageUrl(request: Request, path: "/login" | "/register", params: Record<string, string>) {
-  const url = new URL(path, request.url);
+  const url = absoluteAppUrl(request, path);
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }

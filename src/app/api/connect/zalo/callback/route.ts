@@ -6,11 +6,12 @@ import { auditMetaFromRequest, writeAudit } from "@/backend/audit";
 import { saveOAuthConnection } from "@/backend/channel-connect";
 import { getZaloOAuthConfig } from "@/backend/oauth-config";
 import { OAUTH_STATE_COOKIE, verifyOAuthStateToken } from "@/backend/oauth-state";
+import { absoluteAppUrl } from "@/backend/public-url";
 import { exchangeZaloCode, fetchZaloOaInfo } from "@/backend/zalo-oauth";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
 
 function settingsUrl(request: Request, params: Record<string, string>) {
-  const url = new URL("/settings", request.url);
+  const url = absoluteAppUrl(request, "/settings");
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, value);
   }
@@ -20,7 +21,7 @@ function settingsUrl(request: Request, params: Record<string, string>) {
 export async function GET(request: Request) {
   const session = await getSession();
   if (!session || !(await hasPermission(session, PERMISSION_CODES.channelsConnect))) {
-    return NextResponse.redirect(new URL("/login?next=/settings", request.url));
+    return NextResponse.redirect(absoluteAppUrl(request, "/login?next=/settings"));
   }
 
   const config = getZaloOAuthConfig();
