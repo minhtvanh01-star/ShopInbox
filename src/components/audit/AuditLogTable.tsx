@@ -20,6 +20,15 @@ function metadataText(metadata: unknown): string | null {
   }
 }
 
+/** Nhãn phụ cột Đối tượng — phiên đăng nhập dùng email, không hiện staff id thô. */
+function entitySubLabel(row: AuditRow): { text: string; mono: boolean } | null {
+  if (row.entityType === "Session") {
+    return { text: row.actorEmail ?? "—", mono: false };
+  }
+  if (!row.entityId) return null;
+  return { text: row.entityId, mono: true };
+}
+
 export function AuditLogTable({ rows }: { rows: AuditRow[] }) {
   if (rows.length === 0) {
     return (
@@ -45,6 +54,7 @@ export function AuditLogTable({ rows }: { rows: AuditRow[] }) {
         <tbody>
           {rows.map((row, index) => {
             const details = metadataText(row.metadata);
+            const sub = entitySubLabel(row);
             return (
               <tr
                 key={row.id}
@@ -60,8 +70,14 @@ export function AuditLogTable({ rows }: { rows: AuditRow[] }) {
                 <td className="px-4 py-3.5 font-medium text-slate-800">{auditActionLabel(row.action)}</td>
                 <td className="px-4 py-3.5 text-slate-700">
                   <p>{auditEntityLabel(row.entityType)}</p>
-                  {row.entityId ? (
-                    <p className="mt-0.5 max-w-[180px] truncate font-mono text-[11px] text-slate-400">{row.entityId}</p>
+                  {sub ? (
+                    <p
+                      className={`mt-0.5 max-w-[180px] truncate text-[11px] text-slate-400 ${
+                        sub.mono ? "font-mono" : ""
+                      }`}
+                    >
+                      {sub.text}
+                    </p>
                   ) : null}
                 </td>
                 <td className="px-4 py-3.5 text-slate-600">

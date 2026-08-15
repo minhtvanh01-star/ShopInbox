@@ -4,6 +4,8 @@ ShopInbox hỗ trợ **kết nối OAuth** cho Facebook Messenger, Instagram DM 
 
 Nếu shop chưa có dòng `channel_accounts` cho kênh đó, nút OAuth vẫn hiện; lần bấm đầu server sẽ tạo nháp kênh. Nút chỉ hoạt động khi `.env` đã đủ biến Meta/Zalo (xem mục dưới và `.env.example`); thiếu biến thì nút bị khóa và liệt kê tên biến còn thiếu.
 
+Checklist nhanh (local + biến phải dán thủ công): [env-checklist.md](./env-checklist.md).
+
 ## Tổng quan
 
 | Kênh | OAuth | Webhook HTTPS | Ghi chú |

@@ -18,7 +18,7 @@ Hướng dẫn cấu hình **Đăng nhập với Google** cho ShopInbox.
 
 ## 2. Biến môi trường
 
-Thêm vào `.env` (xem `.env.example`):
+Checklist tổng hợp: [env-checklist.md](./env-checklist.md). Thêm vào `.env` (xem `.env.example`):
 
 ```
 GOOGLE_CLIENT_ID=<client-id>

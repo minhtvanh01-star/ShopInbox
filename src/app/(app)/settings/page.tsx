@@ -44,7 +44,11 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         zaloMissingEnvVars={zaloMissingEnvVars}
         metaWebhookUrl={getMetaWebhookUrl()}
         zaloWebhookUrl={getZaloWebhookUrl()}
-        metaWebhookVerifyToken={metaConfig?.webhookVerifyToken ?? ""}
+        metaWebhookVerifyToken={
+          shop.permissions.includes(PERMISSION_CODES.channelsConnect)
+            ? (metaConfig?.webhookVerifyToken ?? "")
+            : ""
+        }
         pendingMetaPages={pendingMetaPages}
         oauthFlash={{
           success: params.oauth_success,

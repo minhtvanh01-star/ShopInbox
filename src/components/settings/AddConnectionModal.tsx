@@ -18,7 +18,7 @@ import {
 import { CHANNEL_STATUS_LABEL, formatDateTime } from "@/lib/labels";
 import { LAYOUT_CLASS } from "@/lib/ui-layout";
 import type { Channel, ChannelStatus } from "@/lib/types";
-import type { MetaPageOption } from "@/lib/oauth-types";
+import type { MetaPagePickerOption } from "@/lib/oauth-types";
 
 export type ChannelAccountView = {
   id: string;
@@ -48,7 +48,7 @@ type AddConnectionModalProps = {
   metaWebhookUrl: string;
   zaloWebhookUrl: string;
   metaWebhookVerifyToken: string;
-  pendingMetaPages: { channel: Channel; pages: MetaPageOption[] } | null;
+  pendingMetaPages: { channel: Channel; pages: MetaPagePickerOption[] } | null;
   initialPlatformId?: string;
   onClose: () => void;
 };
