@@ -39,6 +39,11 @@ export function canSendRegisterOtp() {
   return isEmailConfigured() || process.env.EMAIL_OTP_DEV_LOG === "1";
 }
 
+/** Alias — dùng chung cho đăng ký và quên mật khẩu. */
+export function canSendEmailOtp() {
+  return canSendRegisterOtp();
+}
+
 export async function sendEmail(input: {
   to: string;
   subject: string;
@@ -76,6 +81,17 @@ export function buildRegisterOtpEmail(code: string) {
     <p>Mã xác thực đăng ký <strong>ShopInbox</strong> của bạn là:</p>
     <p style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</p>
     <p>Mã có hiệu lực <strong>10 phút</strong>. Nếu bạn không yêu cầu đăng ký, hãy bỏ qua email này.</p>
+  `;
+  return { subject, text, html };
+}
+
+export function buildPasswordResetOtpEmail(code: string) {
+  const subject = "Mã xác minh đổi mật khẩu ShopInbox";
+  const text = `Mã xác minh đổi mật khẩu ShopInbox của bạn là: ${code}\n\nMã có hiệu lực 10 phút. Nếu bạn không yêu cầu đổi mật khẩu, hãy bỏ qua email này.`;
+  const html = `
+    <p>Mã xác minh đổi mật khẩu <strong>ShopInbox</strong> của bạn là:</p>
+    <p style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</p>
+    <p>Mã có hiệu lực <strong>10 phút</strong>. Nếu bạn không yêu cầu đổi mật khẩu, hãy bỏ qua email này.</p>
   `;
   return { subject, text, html };
 }

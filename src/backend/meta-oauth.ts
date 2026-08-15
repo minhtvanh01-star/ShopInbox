@@ -158,6 +158,13 @@ export function pickMetaPageForChannel(channel: Channel, page: MetaPageOption) {
   };
 }
 
+const META_PAGE_WEBHOOK_FIELDS = [
+  "messages",
+  "messaging_postbacks",
+  "message_deliveries",
+  "message_reads",
+] as const;
+
 export async function subscribeMetaPageWebhook(pageId: string, pageAccessToken: string) {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/subscribed_apps`);
   url.searchParams.set("access_token", pageAccessToken);
@@ -166,17 +173,110 @@ export async function subscribeMetaPageWebhook(pageId: string, pageAccessToken: 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      subscribed_fields: [
-        "messages",
-        "messaging_postbacks",
-        "message_deliveries",
-        "message_reads",
-      ],
+      subscribed_fields: [...META_PAGE_WEBHOOK_FIELDS],
     }),
   });
 
   const data = await readJson<{ success?: boolean }>(response);
   return Boolean(data.success);
+}
+
+/**
+ * Đăng ký callback URL cấp app (Graph `{app-id}/subscriptions`).
+ * `subscribed_apps` trên Page chỉ gửi event tới app — thiếu bước này thì Inbox không nhận tin.
+ */
+export async function subscribeMetaAppWebhook(config: MetaOAuthConfig, callbackUrl: string) {
+  if (!config.webhookVerifyToken) {
+    return false;
+  }
+
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${config.appId}/subscriptions`);
+  url.searchParams.set("access_token", `${config.appId}|${config.appSecret}`);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      object: "page",
+      callback_url: callbackUrl,
+      fields: META_PAGE_WEBHOOK_FIELDS.join(","),
+      verify_token: config.webhookVerifyToken,
+    }),
+  });
+
+  const data = await readJson<{ success?: boolean }>(response);
+  return Boolean(data.success);
+}
+
+export type MetaConversation = {
+  id?: string;
+  messages?: {
+    data?: Array<{
+      id?: string;
+      message?: string;
+      created_time?: string;
+      from?: { id?: string; name?: string };
+    }>;
+  };
+};
+
+type MetaConversationsResponse = {
+  data?: MetaConversation[];
+  error?: { message: string };
+};
+
+export type MetaInboundHistoryMessage = {
+  senderExternalId: string;
+  senderName?: string;
+  text: string;
+  externalMessageId?: string;
+  sentAt?: Date;
+};
+
+export function inboundMessagesFromMetaConversations(
+  conversations: MetaConversation[],
+  pageIdsToSkip: Array<string | null | undefined>,
+): MetaInboundHistoryMessage[] {
+  const skip = new Set(pageIdsToSkip.filter((id): id is string => Boolean(id)));
+  const inbound: MetaInboundHistoryMessage[] = [];
+
+  for (const conversation of conversations) {
+    const chronological = [...(conversation.messages?.data ?? [])].reverse();
+    for (const message of chronological) {
+      const fromId = message.from?.id;
+      const text = message.message?.trim();
+      if (!fromId || !text || skip.has(fromId)) continue;
+
+      inbound.push({
+        senderExternalId: fromId,
+        senderName: message.from?.name,
+        text,
+        externalMessageId: message.id,
+        sentAt: message.created_time ? new Date(message.created_time) : undefined,
+      });
+    }
+  }
+
+  return inbound;
+}
+
+export async function fetchRecentMetaConversations(
+  pageId: string,
+  pageAccessToken: string,
+  options?: { platform?: "MESSENGER" | "instagram"; limit?: number },
+) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/conversations`);
+  url.searchParams.set("platform", options?.platform ?? "MESSENGER");
+  url.searchParams.set("limit", String(options?.limit ?? 15));
+  url.searchParams.set(
+    "fields",
+    "participants,updated_time,messages.limit(20){id,message,from,created_time}",
+  );
+  url.searchParams.set("access_token", pageAccessToken);
+
+  const response = await fetch(url.toString());
+  const data = await readJson<MetaConversationsResponse>(response);
+  return data.data ?? [];
 }
 
 type MetaSendResponse = {

@@ -7,6 +7,7 @@ import {
   completeMetaPageAction,
   disconnectChannelAction,
   saveChannelCredentialsAction,
+  syncMetaChannelAction,
   type CompleteMetaPageState,
   type SaveChannelCredentialsState,
 } from "@/app/(app)/settings/actions";
@@ -188,6 +189,8 @@ export function AddConnectionModal({
   const [search, setSearch] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const router = useRouter();
   const [saveState, saveAction, savePending] = useActionState(
     saveChannelCredentialsAction,
@@ -263,6 +266,22 @@ export function AddConnectionModal({
     formData.set("channel", account.channel);
     await disconnectChannelAction({}, formData);
     setDisconnecting(false);
+    router.refresh();
+  }
+
+  async function handleSyncMeta() {
+    if (!account || !canConnect || syncing) return;
+    if (account.channel !== "facebook" && account.channel !== "instagram") return;
+
+    setSyncing(true);
+    const formData = new FormData();
+    formData.set("channel", account.channel);
+    const result = await syncMetaChannelAction({}, formData);
+    setSyncing(false);
+    setSyncMessage({
+      ok: Boolean(result.success),
+      text: result.success ?? result.error ?? "Không đồng bộ được.",
+    });
     router.refresh();
   }
 
@@ -572,6 +591,31 @@ export function AddConnectionModal({
                           <p className="mt-2 text-xs text-teal-700">
                             Facebook: app tự thử đăng ký webhook page sau OAuth (nếu token cho phép).
                           </p>
+                        ) : null}
+                        {(selected.channel === "facebook" || selected.channel === "instagram") &&
+                        account.hasOAuthToken ? (
+                          <div className="mt-3 space-y-2">
+                            <button
+                              type="button"
+                              onClick={handleSyncMeta}
+                              disabled={!canConnect || syncing}
+                              className="btn-secondary"
+                            >
+                              {syncing ? "Đang đồng bộ..." : "Đồng bộ tin nhắn gần đây"}
+                            </button>
+                            {syncMessage ? (
+                              <p
+                                className={`text-xs ${syncMessage.ok ? "text-emerald-600" : "text-amber-700"}`}
+                              >
+                                {syncMessage.text}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-slate-500">
+                                OAuth không kéo tin cũ. Bấm đồng bộ để lấy hội thoại gần đây từ
+                                Facebook, rồi nhắn thử để kiểm tra webhook.
+                              </p>
+                            )}
+                          </div>
                         ) : null}
                       </div>
                     ) : null}

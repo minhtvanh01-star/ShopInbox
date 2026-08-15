@@ -14,6 +14,7 @@ type LoginFormProps = {
   googleOAuthConfigured: boolean;
   authError?: string;
   authMessage?: string;
+  resetSuccess?: boolean;
 };
 
 export function LoginForm({
@@ -22,6 +23,7 @@ export function LoginForm({
   googleOAuthConfigured,
   authError,
   authMessage,
+  resetSuccess,
 }: LoginFormProps) {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
 
@@ -31,7 +33,12 @@ export function LoginForm({
 
   return (
     <>
-      <form action={formAction} className="mt-6 space-y-5">
+      {resetSuccess ? (
+        <p className="mt-6 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+          Đã đổi mật khẩu. Đăng nhập bằng mật khẩu mới.
+        </p>
+      ) : null}
+      <form action={formAction} className={`${resetSuccess ? "mt-4" : "mt-6"} space-y-5`}>
         <input type="hidden" name="next" value={nextPath} />
         <div className="field-group">
           <label htmlFor="email" className="label mb-0">
@@ -48,9 +55,17 @@ export function LoginForm({
           />
         </div>
         <div className="field-group">
-          <label htmlFor="password" className="label mb-0">
-            Mật khẩu
-          </label>
+          <div className="mb-0 flex items-center justify-between gap-2">
+            <label htmlFor="password" className="label mb-0">
+              Mật khẩu
+            </label>
+            <Link
+              href="/forgot-password"
+              className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
+            >
+              Quên mật khẩu?
+            </Link>
+          </div>
           <input
             id="password"
             name="password"

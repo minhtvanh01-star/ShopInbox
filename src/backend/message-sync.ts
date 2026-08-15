@@ -1,3 +1,7 @@
+import {
+  inboundMessagesFromMetaConversations,
+  type MetaConversation,
+} from "@/backend/meta-oauth";
 import { prisma } from "@/backend/prisma";
 import type { Channel } from "@/lib/types";
 
@@ -9,6 +13,7 @@ export type InboundMessageInput = {
   text: string;
   externalMessageId?: string;
   sentAt?: Date;
+  touchWebhook?: boolean;
 };
 
 function shortId(value: string) {
@@ -166,10 +171,14 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
         tag: conversation.tag === "closed" ? "new" : conversation.tag,
       },
     }),
-    prisma.channelAccount.update({
-      where: { id: account.id },
-      data: { lastWebhookAt: new Date() },
-    }),
+    ...(input.touchWebhook === false
+      ? []
+      : [
+          prisma.channelAccount.update({
+            where: { id: account.id },
+            data: { lastWebhookAt: new Date() },
+          }),
+        ]),
   ]);
 
   return {
@@ -178,6 +187,34 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
     conversationId: conversation.id,
     shopId: account.shopId,
   };
+}
+
+export async function ingestRecentMetaMessages(input: {
+  channel: Channel;
+  externalAccountId: string;
+  pageIdsToSkip: Array<string | null | undefined>;
+  conversations: MetaConversation[];
+}) {
+  const inbound = inboundMessagesFromMetaConversations(input.conversations, input.pageIdsToSkip);
+  let ingested = 0;
+
+  for (const message of inbound) {
+    const result = await ingestInboundMessage({
+      channel: input.channel,
+      externalAccountId: input.externalAccountId,
+      senderExternalId: message.senderExternalId,
+      senderName: message.senderName,
+      text: message.text,
+      externalMessageId: message.externalMessageId,
+      sentAt: message.sentAt,
+      touchWebhook: false,
+    });
+    if (result.ok && !result.duplicate) {
+      ingested += 1;
+    }
+  }
+
+  return ingested;
 }
 
 export async function touchChannelWebhook(channel: Channel, externalAccountId: string) {
