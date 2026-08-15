@@ -40,6 +40,7 @@ const adminSession = {
   email: "admin@lily.vn",
   name: "Minh",
   role: "admin",
+  lastActiveAt: Date.now(),
 };
 
 const staffSession = {
@@ -48,6 +49,7 @@ const staffSession = {
   email: "nhanvien@lily.vn",
   name: "Lan",
   role: "staff",
+  lastActiveAt: Date.now(),
 };
 
 function mockStaffPerms(shopId: string, codes: string[]) {
@@ -136,5 +138,14 @@ describe("hasPermission / requirePermission", () => {
     } as never);
 
     expect(await hasPermission(adminSession, PERMISSION_CODES.channelsConnect)).toBe(false);
+  });
+});
+
+describe("isAdminSession", () => {
+  it("detects admin and owner alias", async () => {
+    const { isAdminSession } = await import("@/backend/rbac");
+    expect(isAdminSession({ role: "admin" })).toBe(true);
+    expect(isAdminSession({ role: "owner" })).toBe(true);
+    expect(isAdminSession({ role: "staff" })).toBe(false);
   });
 });

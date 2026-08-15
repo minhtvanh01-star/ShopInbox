@@ -15,5 +15,12 @@ export const GOOGLE_AUTH_ERROR_MESSAGES: Record<string, string> = {
   google_no_account: "Chưa có tài khoản với Google này. Hãy đăng ký trước.",
   google_id_token: "Không xác minh được token Google.",
   google_linked: "Đã liên kết Google thành công.",
-  inactive: "Tài khoản đã bị vô hiệu hóa. Liên hệ admin shop.",
+  inactive:
+    "Tài khoản chưa được kích hoạt hoặc đã bị tắt. Liên hệ quản trị viên để phê duyệt và phân quyền.",
+};
+
+/** Flash success trên /login sau đăng ký mở (email OTP / Google). */
+export const AUTH_SUCCESS_MESSAGES: Record<string, string> = {
+  pending_approval:
+    "Tài khoản đã tạo. Chờ quản trị viên phê duyệt và phân quyền trước khi đăng nhập.",
 };

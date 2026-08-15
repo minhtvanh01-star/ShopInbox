@@ -41,12 +41,23 @@ export type Product = {
   inStock: boolean;
 };
 
+export type MessageReactionSummary = {
+  emoji: string;
+  count: number;
+  reactedByMe: boolean;
+};
+
 export type Message = {
   id: string;
   conversationId: string;
   sender: MessageSender;
   text: string;
   createdAt: string;
+  attachmentType?: string | null;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  externalMessageId?: string | null;
+  reactions?: MessageReactionSummary[];
 };
 
 export type Conversation = {

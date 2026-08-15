@@ -23,7 +23,10 @@ export async function loadStaffSession(staffId: string): Promise<SessionPayload>
       roleCode: true,
     },
   });
-  return toSessionPayload(staff);
+  return {
+    ...toSessionPayload(staff),
+    lastActiveAt: Date.now(),
+  };
 }
 
 export { normalizeRoleCode };

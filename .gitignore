@@ -48,6 +48,10 @@ next-env.d.ts
 /backups/*
 !/backups/.gitkeep
 
+# Uploaded inbox images (local / volume)
+/storage/uploads/**
+!/storage/uploads/.gitkeep
+
 # Cursor / local editor (không commit)
 .cursor/
 

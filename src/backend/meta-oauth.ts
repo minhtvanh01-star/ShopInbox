@@ -163,6 +163,7 @@ const META_PAGE_WEBHOOK_FIELDS = [
   "messaging_postbacks",
   "message_deliveries",
   "message_reads",
+  "message_reactions",
 ] as const;
 
 export async function subscribeMetaPageWebhook(pageId: string, pageAccessToken: string) {
@@ -285,15 +286,43 @@ type MetaSendResponse = {
   error?: { message?: string; code?: number };
 };
 
+type MetaAttachmentUploadResponse = {
+  attachment_id?: string;
+  error?: { message?: string };
+};
+
 /** Gửi tin Messenger / Instagram DM qua Graph Send API (Page access token). */
 export async function sendMetaMessage(input: {
   pageId: string;
   accessToken: string;
   recipientId: string;
-  text: string;
+  text?: string;
+  attachmentId?: string;
+  imageUrl?: string;
 }) {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${input.pageId}/messages`);
   url.searchParams.set("access_token", input.accessToken);
+
+  let message: Record<string, unknown>;
+  if (input.attachmentId) {
+    message = {
+      attachment: {
+        type: "image",
+        payload: { attachment_id: input.attachmentId },
+      },
+    };
+  } else if (input.imageUrl) {
+    message = {
+      attachment: {
+        type: "image",
+        payload: { url: input.imageUrl, is_reusable: true },
+      },
+    };
+  } else if (input.text?.trim()) {
+    message = { text: input.text.trim() };
+  } else {
+    throw new Error("Thiếu nội dung tin nhắn Meta.");
+  }
 
   const response = await fetch(url.toString(), {
     method: "POST",
@@ -301,7 +330,7 @@ export async function sendMetaMessage(input: {
     body: JSON.stringify({
       recipient: { id: input.recipientId },
       messaging_type: "RESPONSE",
-      message: { text: input.text },
+      message,
     }),
   });
 
@@ -311,4 +340,97 @@ export async function sendMetaMessage(input: {
   }
 
   return { externalMessageId: data.message_id };
+}
+
+/** Upload ảnh lên Meta → attachment_id (không cần URL công khai khi gửi). */
+export async function uploadMetaImageAttachment(input: {
+  pageId: string;
+  accessToken: string;
+  bytes: Buffer;
+  mimeType: string;
+  fileName: string;
+}) {
+  const url = new URL(
+    `https://graph.facebook.com/${GRAPH_VERSION}/${input.pageId}/message_attachments`,
+  );
+  url.searchParams.set("access_token", input.accessToken);
+
+  const form = new FormData();
+  form.set(
+    "message",
+    JSON.stringify({
+      attachment: {
+        type: "image",
+        payload: { is_reusable: true },
+      },
+    }),
+  );
+  form.set(
+    "filedata",
+    new Blob([new Uint8Array(input.bytes)], { type: input.mimeType }),
+    input.fileName,
+  );
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    body: form,
+  });
+  const data = await readJson<MetaAttachmentUploadResponse>(response);
+  if (!data.attachment_id) {
+    throw new Error(data.error?.message ?? "Meta không trả về attachment_id");
+  }
+  return { attachmentId: data.attachment_id };
+}
+
+const META_REACTION_MAP: Record<string, string> = {
+  "👍": "like",
+  "❤️": "love",
+  "😂": "laugh",
+  "😮": "wow",
+  "😢": "sorry",
+  "🙏": "other",
+};
+
+export function metaReactionAction(emoji: string): string {
+  return META_REACTION_MAP[emoji] ?? "other";
+}
+
+/** Gửi / gỡ reaction trên tin Messenger (cần mid). */
+export async function sendMetaReaction(input: {
+  pageId: string;
+  accessToken: string;
+  recipientId: string;
+  messageId: string;
+  emoji: string | null;
+}) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${input.pageId}/messages`);
+  url.searchParams.set("access_token", input.accessToken);
+
+  const body =
+    input.emoji === null
+      ? {
+          recipient: { id: input.recipientId },
+          sender_action: "unreact",
+          payload: { message_id: input.messageId },
+        }
+      : {
+          recipient: { id: input.recipientId },
+          sender_action: "react",
+          payload: {
+            message_id: input.messageId,
+            reaction: metaReactionAction(input.emoji),
+          },
+        };
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const data = await readJson<{ recipient_id?: string; error?: { message?: string } }>(response);
+  if (data.error?.message) {
+    throw new Error(data.error.message);
+  }
+  return { ok: true as const };
 }

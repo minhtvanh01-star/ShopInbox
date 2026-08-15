@@ -94,11 +94,12 @@ describe("planOpenRegistration", () => {
       ok: true,
       role: "admin",
       shopId: REGISTER_DEFAULT_SHOP_ID,
+      isActive: true,
       createShop: { id: REGISTER_DEFAULT_SHOP_ID, name: "ShopInbox" },
     });
   });
 
-  it("assigns staff to existing default shop for later users", () => {
+  it("assigns inactive staff for later users pending admin approval", () => {
     const result = planOpenRegistration({
       staffCount: 2,
       shopExists: true,
@@ -108,6 +109,7 @@ describe("planOpenRegistration", () => {
       ok: true,
       role: "staff",
       shopId: REGISTER_DEFAULT_SHOP_ID,
+      isActive: false,
       createShop: undefined,
     });
   });

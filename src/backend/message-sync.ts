@@ -14,6 +14,9 @@ export type InboundMessageInput = {
   externalMessageId?: string;
   sentAt?: Date;
   touchWebhook?: boolean;
+  attachmentType?: string | null;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
 };
 
 function shortId(value: string) {
@@ -146,7 +149,7 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
   );
 
   const sentAt = input.sentAt ?? new Date();
-  const text = input.text.trim();
+  const text = input.text.trim() || (input.attachmentUrl ? "[Ảnh]" : "");
   if (!text) {
     return { ok: false as const, reason: "empty_text" as const };
   }
@@ -158,6 +161,9 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
         conversationId: conversation.id,
         sender: "customer",
         text,
+        attachmentType: input.attachmentType ?? null,
+        attachmentUrl: input.attachmentUrl ?? null,
+        attachmentName: input.attachmentName ?? null,
         externalMessageId: input.externalMessageId ?? null,
         createdAt: sentAt,
       },
@@ -234,4 +240,38 @@ export async function touchChannelWebhook(channel: Channel, externalAccountId: s
     data: { lastWebhookAt: new Date() },
   });
   return result.count;
+}
+
+export async function upsertMessageReaction(input: {
+  shopId: string;
+  messageId: string;
+  reactorKey: string;
+  emoji: string;
+  staffId?: string | null;
+}) {
+  return prisma.messageReaction.upsert({
+    where: {
+      messageId_reactorKey: {
+        messageId: input.messageId,
+        reactorKey: input.reactorKey,
+      },
+    },
+    create: {
+      shopId: input.shopId,
+      messageId: input.messageId,
+      reactorKey: input.reactorKey,
+      emoji: input.emoji,
+      staffId: input.staffId ?? null,
+    },
+    update: {
+      emoji: input.emoji,
+      staffId: input.staffId ?? null,
+    },
+  });
+}
+
+export async function removeMessageReaction(messageId: string, reactorKey: string) {
+  await prisma.messageReaction.deleteMany({
+    where: { messageId, reactorKey },
+  });
 }

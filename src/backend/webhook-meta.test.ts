@@ -3,6 +3,15 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 vi.mock("@/backend/message-sync", () => ({
   ingestInboundMessage: vi.fn(),
   touchChannelWebhook: vi.fn(),
+  upsertMessageReaction: vi.fn(),
+  removeMessageReaction: vi.fn(),
+}));
+
+vi.mock("@/backend/prisma", () => ({
+  prisma: {
+    channelAccount: { findFirst: vi.fn() },
+    message: { findFirst: vi.fn() },
+  },
 }));
 
 import { ingestInboundMessage, touchChannelWebhook } from "@/backend/message-sync";
@@ -152,6 +161,41 @@ describe("processMetaWebhook", () => {
       expect.objectContaining({
         channel: "instagram",
         text: "[Postback] Bắt đầu chat",
+      }),
+    );
+  });
+
+  it("nhận ảnh inbound từ attachments", async () => {
+    await processMetaWebhook({
+      object: "page",
+      entry: [
+        {
+          id: "page-1",
+          messaging: [
+            {
+              sender: { id: "user-1" },
+              recipient: { id: "page-1" },
+              message: {
+                mid: "m-img",
+                attachments: [
+                  {
+                    type: "image",
+                    payload: { url: "https://cdn.example/a.jpg" },
+                  },
+                ],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(ingestInboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "[Ảnh]",
+        attachmentType: "image",
+        attachmentUrl: "https://cdn.example/a.jpg",
+        externalMessageId: "m-img",
       }),
     );
   });

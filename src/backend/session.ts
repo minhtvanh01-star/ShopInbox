@@ -2,23 +2,27 @@ import { cookies } from "next/headers";
 import {
   SESSION_COOKIE,
   createSessionToken,
+  sessionCookieOptions,
   verifySessionToken,
   type SessionPayload,
 } from "@/backend/session-token";
 
 export { SESSION_COOKIE, type SessionPayload };
-export { verifySessionToken } from "@/backend/session-token";
+export {
+  SESSION_IDLE_MINUTES,
+  SESSION_IDLE_MS,
+  verifySessionToken,
+} from "@/backend/session-token";
 
-export async function setSessionCookie(payload: SessionPayload) {
-  const token = await createSessionToken(payload);
-  const jar = await cookies();
-  jar.set(SESSION_COOKIE, token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
+export async function setSessionCookie(
+  payload: Omit<SessionPayload, "lastActiveAt"> & { lastActiveAt?: number },
+) {
+  const token = await createSessionToken({
+    ...payload,
+    lastActiveAt: payload.lastActiveAt ?? Date.now(),
   });
+  const jar = await cookies();
+  jar.set(SESSION_COOKIE, token, sessionCookieOptions());
 }
 
 export async function clearSessionCookie() {

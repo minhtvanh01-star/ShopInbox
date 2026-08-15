@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { loginAction, type AuthActionState } from "@/app/login/actions";
 import { GoogleAuthButton } from "@/components/auth/GoogleAuthButton";
-import { GOOGLE_AUTH_ERROR_MESSAGES } from "@/lib/google-auth-errors";
+import {
+  AUTH_SUCCESS_MESSAGES,
+  GOOGLE_AUTH_ERROR_MESSAGES,
+} from "@/lib/google-auth-errors";
 
 const initialState: AuthActionState = {};
 
@@ -14,7 +17,9 @@ type LoginFormProps = {
   googleOAuthConfigured: boolean;
   authError?: string;
   authMessage?: string;
+  authSuccess?: string;
   resetSuccess?: boolean;
+  idleTimeout?: boolean;
 };
 
 export function LoginForm({
@@ -23,22 +28,43 @@ export function LoginForm({
   googleOAuthConfigured,
   authError,
   authMessage,
+  authSuccess,
   resetSuccess,
+  idleTimeout,
 }: LoginFormProps) {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
 
   const oauthErrorText = authError
     ? (GOOGLE_AUTH_ERROR_MESSAGES[authError] ?? "Đăng nhập Google thất bại.")
     : null;
+  const successText = authSuccess ? (AUTH_SUCCESS_MESSAGES[authSuccess] ?? null) : null;
+  const hasBanner = Boolean(idleTimeout || resetSuccess || successText);
 
   return (
     <>
+      {idleTimeout ? (
+        <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Phiên đăng nhập đã hết vì không hoạt động quá 30 phút. Vui lòng đăng nhập lại.
+        </p>
+      ) : null}
       {resetSuccess ? (
-        <p className="mt-6 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800">
+        <p
+          className={`${idleTimeout ? "mt-4" : "mt-6"} rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800`}
+        >
           Đã đổi mật khẩu. Đăng nhập bằng mật khẩu mới.
         </p>
       ) : null}
-      <form action={formAction} className={`${resetSuccess ? "mt-4" : "mt-6"} space-y-5`}>
+      {successText ? (
+        <p
+          className={`${idleTimeout || resetSuccess ? "mt-4" : "mt-6"} rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-800`}
+        >
+          {successText}
+        </p>
+      ) : null}
+      <form
+        action={formAction}
+        className={`${hasBanner ? "mt-4" : "mt-6"} space-y-5`}
+      >
         <input type="hidden" name="next" value={nextPath} />
         <div className="field-group">
           <label htmlFor="email" className="label mb-0">

@@ -9,7 +9,9 @@ type LoginPageProps = {
     next?: string;
     auth_error?: string;
     auth_message?: string;
+    auth_success?: string;
     reset?: string;
+    reason?: string;
   }>;
 };
 
@@ -31,8 +33,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </div>
         </div>
         <p className="rounded-lg bg-surface-muted px-4 py-3 text-sm leading-6 text-slate-600">
-          Đăng nhập bằng email/mật khẩu (bcrypt) hoặc Google đã liên kết. Tài khoản Google mới phải
-          đăng ký trước — không tự tạo hay tự gắn Google vào email mật khẩu.
+          Đăng nhập bằng email/mật khẩu hoặc Google đã liên kết. Tài khoản đăng ký mới (email hoặc
+          Google) cần quản trị viên phê duyệt và phân quyền trước khi dùng hệ thống.
         </p>
         <LoginForm
           shopName={shop?.name ?? "ShopInbox"}
@@ -40,7 +42,9 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           googleOAuthConfigured={Boolean(getGoogleOAuthConfig())}
           authError={params.auth_error}
           authMessage={params.auth_message}
+          authSuccess={params.auth_success}
           resetSuccess={params.reset === "1"}
+          idleTimeout={params.reason === "idle"}
         />
       </div>
     </main>

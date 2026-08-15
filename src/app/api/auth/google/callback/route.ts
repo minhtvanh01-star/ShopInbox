@@ -273,19 +273,42 @@ export async function GET(request: Request) {
         googleId: resolved.googleId,
         avatarUrl: resolved.avatarUrl,
         roleCode: normalizeRoleCode(resolved.role),
+        isActive: resolved.isActive,
       },
     });
 
-    await createSessionForStaff(staff.id);
-    const session = await loadStaffSession(staff.id);
+    const registerActor = {
+      id: staff.id,
+      email: staff.email,
+      role: staff.roleCode,
+      shopId: staff.shopId,
+    };
+
     await writeAudit({
       ...auditMetaFromRequest(request),
-      actor: session,
+      actor: registerActor,
       action: AUDIT_ACTIONS.authRegister,
       entityType: "Staff",
       entityId: staff.id,
-      metadata: { method: "google", roleCode: staff.roleCode, bootstrap: Boolean(resolved.createShop) },
+      metadata: {
+        method: "google",
+        roleCode: staff.roleCode,
+        isActive: staff.isActive,
+        pendingApproval: !staff.isActive,
+        bootstrap: Boolean(resolved.createShop),
+      },
     });
+
+    if (!resolved.isActive) {
+      return clearGoogleAuthCookies(
+        NextResponse.redirect(
+          authPageUrl(request, "/login", { auth_success: "pending_approval" }),
+        ),
+      );
+    }
+
+    await createSessionForStaff(staff.id);
+    const session = await loadStaffSession(staff.id);
     await writeAudit({
       ...auditMetaFromRequest(request),
       actor: session,

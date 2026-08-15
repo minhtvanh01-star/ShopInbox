@@ -1,5 +1,6 @@
 import { InboxWorkspace } from "@/components/inbox/InboxWorkspace";
 import { getChannelAccounts, getInboxData, getShopContext } from "@/lib/queries";
+import { ROLE_CODES, normalizeRoleCode } from "@/lib/rbac-catalog";
 import type { Channel } from "@/lib/types";
 
 type InboxPageProps = {
@@ -30,6 +31,7 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
     <InboxWorkspace
       {...data}
       currentStaffName={shop.staffName}
+      isAdmin={normalizeRoleCode(shop.role) === ROLE_CODES.admin}
       activeChannels={activeChannels}
       initialConversationId={initialConversationId}
     />

@@ -142,7 +142,7 @@ export async function verifyRegisterOtpAction(
         email: verified.email,
         passwordHash: verified.payload.passwordHash,
         roleCode,
-        isActive: true,
+        isActive: plan.isActive,
       },
     });
   } catch {
@@ -152,19 +152,33 @@ export async function verifyRegisterOtpAction(
 
   await consumeRegisterEmailOtp(verified.challengeId);
 
-  const session = toSessionPayload(staff);
-  await setSessionCookie(session);
   await writeAudit({
-    actor: session,
+    actor: plan.isActive
+      ? toSessionPayload(staff)
+      : {
+          id: staff.id,
+          email: staff.email,
+          role: staff.roleCode,
+          shopId: staff.shopId,
+        },
     action: AUDIT_ACTIONS.authRegister,
     entityType: "Staff",
     entityId: staff.id,
     metadata: {
       method: "password_email_otp",
       roleCode: staff.roleCode,
+      isActive: staff.isActive,
+      pendingApproval: !staff.isActive,
       bootstrap: Boolean(plan.createShop) || staffCount === 0,
     },
   });
+
+  if (!plan.isActive) {
+    redirect("/login?auth_success=pending_approval");
+  }
+
+  const session = toSessionPayload(staff);
+  await setSessionCookie(session);
 
   redirect(nextPath);
 }

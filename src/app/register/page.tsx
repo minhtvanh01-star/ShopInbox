@@ -28,8 +28,8 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
         </div>
         <p className="rounded-lg bg-surface-muted px-4 py-3 text-sm leading-6 text-slate-600">
           Đăng ký email sẽ nhận <strong>mã 6 số qua Gmail</strong> trước khi tạo tài khoản. Hoặc dùng
-          Google (OAuth). User đầu tiên là admin; các tài khoản sau vào shop mặc định với vai trò
-          nhân viên.
+          Google. User đầu tiên là admin và dùng ngay; các tài khoản sau cần quản trị viên phê duyệt
+          và phân quyền trước khi đăng nhập.
         </p>
         <RegisterForm
           shopName={shop?.name ?? "ShopInbox"}

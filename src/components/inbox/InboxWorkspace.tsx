@@ -5,7 +5,9 @@ import { useRouter } from "next/navigation";
 import {
   claimConversation,
   markConversationRead,
+  reactToMessage,
   releaseConversation,
+  sendImageMessage,
   sendMessage,
   touchConversationClaim,
   updateConversationTag,
@@ -17,6 +19,11 @@ import {
 } from "@/backend/reply-claim";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { CreateOrderForm } from "@/components/inbox/CreateOrderForm";
+import { MessageBubble } from "@/components/inbox/MessageBubble";
+import {
+  EmojiPickerButton,
+  ImagePickerButton,
+} from "@/components/inbox/MessageComposerTools";
 import {
   CHANNEL_LABEL,
   TAG_LABEL,
@@ -50,6 +57,8 @@ type InboxWorkspaceProps = {
   quickReplies: QuickReply[];
   currentStaffId: string;
   currentStaffName: string;
+  /** Admin / chủ shop — không bị khóa claim / TTL như nhân viên. */
+  isAdmin?: boolean;
   /** Kênh đã nối / có hội thoại — để hiện pill từ cấu hình, không hardcode. */
   activeChannels?: Channel[];
   initialConversationId?: string;
@@ -88,6 +97,7 @@ export function InboxWorkspace({
   quickReplies,
   currentStaffId,
   currentStaffName,
+  isAdmin = false,
   activeChannels,
   initialConversationId,
 }: InboxWorkspaceProps) {
@@ -193,14 +203,18 @@ export function InboxWorkspace({
       ? Boolean(selected?.replyStaffId && selected?.replyClaimedAt)
       : Boolean(selected?.replyStaffId) && claimRemainingMs > 0;
   const replyLockedByOther = Boolean(
-    claimActive && selected?.replyStaffId && selected.replyStaffId !== currentStaffId,
+    !isAdmin &&
+      claimActive &&
+      selected?.replyStaffId &&
+      selected.replyStaffId !== currentStaffId,
   );
   const replyIsMine = Boolean(
     claimActive && selected?.replyStaffId && selected.replyStaffId === currentStaffId,
   );
-  const canCompose = replyIsMine && !actionPending;
+  /** Admin trả lời mọi lúc; nhân viên phải claim còn hạn. */
+  const canCompose = (isAdmin || replyIsMine) && !actionPending;
   const claimCountdown =
-    nowMs !== null && claimActive && claimRemainingMs > 0
+    nowMs !== null && !isAdmin && claimActive && claimRemainingMs > 0
       ? formatReplyClaimCountdown(claimRemainingMs)
       : null;
 
@@ -294,8 +308,8 @@ export function InboxWorkspace({
         replyClaimedAt: null,
       });
     });
-    if (wasMine) {
-      void releaseConversation(id).catch(() => {
+    if (wasMine && !isAdmin) {
+      void releaseConversation(id, "idle_timeout").catch(() => {
         // Hết hạn phía client — DB có thể đã hết hạn theo TTL.
       });
     }
@@ -306,6 +320,7 @@ export function InboxWorkspace({
     selected?.replyStaffId,
     selected?.replyClaimedAt,
     currentStaffId,
+    isAdmin,
     patchOptimisticConversation,
     startBackground,
   ]);
@@ -437,7 +452,7 @@ export function InboxWorkspace({
   }
 
   function releaseReply() {
-    if (!selected || actionPending || !replyIsMine) return;
+    if (!selected || actionPending || (!replyIsMine && !isAdmin)) return;
     startAction(async () => {
       patchOptimisticConversation({
         id: selected.id,
@@ -455,14 +470,16 @@ export function InboxWorkspace({
 
   function onDraftChange(value: string) {
     setDraft(value);
-    if (!selected || !replyIsMine || !value.trim()) {
+    if (!selected || !(isAdmin || replyIsMine) || !value.trim()) {
       return;
     }
     renewClaimActivity(selected.id);
   }
 
   function send(text: string) {
-    if (!selected || !text.trim() || actionPending || !replyIsMine || nowMs === null) return;
+    if (!selected || !text.trim() || actionPending || !(isAdmin || replyIsMine) || nowMs === null) {
+      return;
+    }
 
     const body = text.trim();
     const tempId = `temp-${crypto.randomUUID()}`;
@@ -473,6 +490,7 @@ export function InboxWorkspace({
       sender: "shop",
       text: body,
       createdAt: sentAt,
+      reactions: [],
     };
 
     setError(null);
@@ -495,6 +513,71 @@ export function InboxWorkspace({
         await sendMessage(selected.id, body);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Gửi tin thất bại");
+      }
+    });
+  }
+
+  function insertEmoji(emoji: string) {
+    if (!canCompose || !selected) return;
+    setDraft((value) => `${value}${emoji}`);
+    renewClaimActivity(selected.id);
+    queueMicrotask(() => composerRef.current?.focus());
+  }
+
+  function sendImage(file: File) {
+    if (!selected || actionPending || !(isAdmin || replyIsMine) || nowMs === null) return;
+
+    const tempId = `temp-${crypto.randomUUID()}`;
+    const sentAt = new Date(nowMs).toISOString();
+    const previewUrl = URL.createObjectURL(file);
+    const optimistic: Message = {
+      id: tempId,
+      conversationId: selected.id,
+      sender: "shop",
+      text: "[Ảnh]",
+      createdAt: sentAt,
+      attachmentType: "image",
+      attachmentUrl: previewUrl,
+      attachmentName: file.name,
+      reactions: [],
+    };
+
+    setError(null);
+    lastClaimTouchRef.current = nowMs;
+
+    startAction(async () => {
+      addOptimisticMessage(optimistic);
+      patchOptimisticConversation({
+        id: selected.id,
+        lastMessage: "[Ảnh]",
+        lastAt: sentAt,
+        unread: 0,
+        replyStaffId: currentStaffId,
+        replyStaffName: currentStaffName,
+        replyClaimedAt: sentAt,
+      });
+
+      try {
+        const formData = new FormData();
+        formData.set("file", file);
+        await sendImageMessage(selected.id, formData);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Gửi ảnh thất bại");
+      } finally {
+        URL.revokeObjectURL(previewUrl);
+      }
+    });
+  }
+
+  function react(messageId: string, emoji: string) {
+    if (!(isAdmin || replyIsMine) || actionPending) return;
+    setError(null);
+    startAction(async () => {
+      try {
+        await reactToMessage(messageId, emoji);
+        router.refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Không gửi được reaction");
       }
     });
   }
@@ -661,6 +744,8 @@ export function InboxWorkspace({
                       <span className="text-[11px] tabular-nums text-slate-500" title="Hết hạn nếu không dùng">
                         Còn {claimCountdown}
                       </span>
+                    ) : isAdmin ? (
+                      <span className="text-[11px] text-teal-700">Admin · không timeout claim</span>
                     ) : null}
                     <button
                       type="button"
@@ -669,6 +754,20 @@ export function InboxWorkspace({
                       className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-surface-muted disabled:opacity-50"
                     >
                       Nhả hội thoại
+                    </button>
+                  </div>
+                ) : isAdmin ? (
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800">
+                      {selected.replyStaffName ?? "NV khác"} đang trả lời
+                    </span>
+                    <button
+                      type="button"
+                      disabled={actionPending}
+                      onClick={claimReply}
+                      className="btn-primary-sm"
+                    >
+                      Tiếp quản
                     </button>
                   </div>
                 ) : (
@@ -729,32 +828,27 @@ export function InboxWorkspace({
                 </button>
               ) : null}
               {thread.map((item) => (
-                <div
+                <MessageBubble
                   key={item.id}
-                  className={`flex ${item.sender === "shop" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[var(--chat-bubble-max)] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm transition-colors duration-150 ${
-                      item.sender === "shop"
-                        ? "rounded-br-md bg-teal-600 text-white"
-                        : "rounded-bl-md border border-border bg-surface text-slate-800"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap">{item.text}</p>
-                    <p
-                      className={`mt-1.5 text-[10px] ${
-                        item.sender === "shop" ? "text-teal-100" : "text-slate-400"
-                      }`}
-                    >
-                      {formatTime(item.createdAt)}
-                    </p>
-                  </div>
-                </div>
+                  message={item}
+                  canReact={Boolean((isAdmin || replyIsMine) && !item.id.startsWith("temp-"))}
+                  onReact={react}
+                />
               ))}
             </div>
             <footer className="border-t border-border bg-surface p-3 sm:p-4">
               {error ? <p className="alert-error mb-2 text-xs">{error}</p> : null}
-              {replyLockedByOther ? (
+              {isAdmin ? (
+                <p className="mb-3 flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
+                  <span className="activity-dot activity-dot-mine" aria-hidden />
+                  <span>
+                    Admin: trả lời mọi lúc, không bị khóa claim / hết giờ 15 phút như nhân viên
+                    {claimActive && !replyIsMine && selected.replyStaffName
+                      ? ` · ${selected.replyStaffName} đang giữ hội thoại (bấm Tiếp quản nếu cần báo đang trả lời).`
+                      : "."}
+                  </span>
+                </p>
+              ) : replyLockedByOther ? (
                 <p className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <span className="activity-dot activity-dot-other" aria-hidden />
                   <span>
@@ -798,6 +892,10 @@ export function InboxWorkspace({
                   send(draft);
                 }}
               >
+                <div className="flex shrink-0 gap-1 pb-1">
+                  <EmojiPickerButton disabled={!canCompose} onPick={insertEmoji} />
+                  <ImagePickerButton disabled={!canCompose} onFile={sendImage} />
+                </div>
                 <textarea
                   ref={composerRef}
                   value={draft}
@@ -810,7 +908,7 @@ export function InboxWorkspace({
                     }
                   }}
                   placeholder={
-                    replyIsMine
+                    isAdmin || replyIsMine
                       ? "Nhập tin nhắn… (Enter gửi, Shift+Enter xuống dòng)"
                       : replyLockedByOther
                         ? "Đang bị khóa..."

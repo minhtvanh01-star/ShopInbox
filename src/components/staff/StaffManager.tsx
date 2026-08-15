@@ -46,22 +46,35 @@ export function StaffManager({
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const editing = members.find((item) => item.id === editingId) ?? null;
+  const pendingMembers = members.filter((member) => !member.isActive);
+  const sortedMembers = [...members].sort((a, b) => {
+    if (a.isActive === b.isActive) return 0;
+    return a.isActive ? 1 : -1;
+  });
 
   return (
     <div className="grid min-h-0 flex-1 gap-6 overflow-auto p-6 lg:grid-cols-[1.1fr_0.9fr]">
       <section className="card-padded">
         <h2 className="text-base font-semibold text-slate-900">Danh sách tài khoản</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Mật khẩu lưu dạng bcrypt hash. Tài khoản tắt không đăng nhập được.
+          Tài khoản đăng ký mới hoặc Google ở trạng thái chờ phê duyệt. Bật hoạt động và chọn vai
+          trò để họ đăng nhập được.
         </p>
+        {pendingMembers.length > 0 ? (
+          <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {pendingMembers.length} tài khoản đang chờ phê duyệt / phân quyền.
+          </p>
+        ) : null}
         <ul className="mt-5 divide-y divide-border">
-          {members.map((member) => (
+          {sortedMembers.map((member) => (
             <li key={member.id} className="flex items-start justify-between gap-3 py-4 first:pt-0">
               <div className="min-w-0">
                 <p className="font-medium text-slate-900">
                   {member.name}
                   {!member.isActive ? (
-                    <span className="ml-2 text-xs font-semibold text-amber-700">(đã tắt)</span>
+                    <span className="ml-2 text-xs font-semibold text-amber-700">
+                      (chờ phê duyệt)
+                    </span>
                   ) : null}
                 </p>
                 <p className="truncate text-sm text-slate-500">{member.email}</p>
@@ -79,7 +92,7 @@ export function StaffManager({
                     onClick={() => setEditingId(member.id)}
                     className="mt-2 text-xs font-medium text-teal-700 hover:underline"
                   >
-                    Sửa
+                    {!member.isActive ? "Phê duyệt / phân quyền" : "Sửa"}
                   </button>
                 ) : null}
               </div>
@@ -94,8 +107,16 @@ export function StaffManager({
             <section className="card-padded">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-base font-semibold text-slate-900">Sửa nhân viên</h2>
+                  <h2 className="text-base font-semibold text-slate-900">
+                    {editing.isActive ? "Sửa nhân viên" : "Phê duyệt / phân quyền"}
+                  </h2>
                   <p className="mt-1 text-sm text-slate-500">{editing.email}</p>
+                  {!editing.isActive ? (
+                    <p className="mt-2 text-sm text-amber-800">
+                      Chọn vai trò rồi đặt trạng thái &quot;Đang hoạt động&quot; để cho phép đăng
+                      nhập.
+                    </p>
+                  ) : null}
                 </div>
                 <button
                   type="button"
@@ -155,7 +176,11 @@ export function StaffManager({
                   <p className="alert-success">{updateState.success}</p>
                 ) : null}
                 <button type="submit" disabled={updatePending} className="btn-primary">
-                  {updatePending ? "Đang lưu..." : "Lưu thay đổi"}
+                  {updatePending
+                    ? "Đang lưu..."
+                    : editing.isActive
+                      ? "Lưu thay đổi"
+                      : "Phê duyệt và lưu"}
                 </button>
               </form>
             </section>
