@@ -100,9 +100,15 @@ NEXT_PUBLIC_APP_URL=https://shopinbox-production.up.railway.app
 
 ### Quyền OAuth (scopes)
 
-App yêu cầu: `pages_show_list`, `pages_messaging`, `pages_manage_metadata`, `instagram_basic`, `instagram_manage_messages`.
+Facebook / Instagram (qua Fanpage) xin quyền Page:
 
-Production cần **App Review** trước khi go-live.
+- `pages_show_list`
+- `pages_messaging`
+- `pages_manage_metadata`
+
+Không xin `instagram_basic` / `instagram_manage_messages` (Meta báo **Invalid Scopes** trên nhiều app). Instagram DM vẫn nối qua Page đã liên kết IG Business.
+
+Production cần **App Review** trước khi go-live cho khách ngoài tester.
 
 Tài liệu: [Messenger Platform](https://developers.facebook.com/docs/messenger-platform/), [Instagram Messaging](https://developers.facebook.com/docs/messenger-platform/instagram).
 
