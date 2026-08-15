@@ -88,6 +88,21 @@ const CLAIM_TOUCH_MIN_INTERVAL_MS = 45_000;
 const CLAIM_HEARTBEAT_MS = 2 * 60 * 1000;
 const INBOX_SOFT_REFRESH_MS = 20_000;
 
+/**
+ * Next/React production ẩn lỗi Server Components thành minified #441.
+ * Mutation thường đã OK — không hiện digest thô trên composer.
+ */
+function inboxActionErrorMessage(err: unknown, fallback: string) {
+  const raw = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  if (
+    /minified React error #441/i.test(raw) ||
+    /error occurred in the Server Components render/i.test(raw)
+  ) {
+    return null;
+  }
+  return raw.trim() || fallback;
+}
+
 export function InboxWorkspace({
   conversations,
   messages,
@@ -340,7 +355,8 @@ export function InboxWorkspace({
     });
     void markConversationRead(id).catch((err) => {
       readMarkedRef.current.delete(id);
-      setError(err instanceof Error ? err.message : "Không đánh dấu đã đọc được");
+      const message = inboxActionErrorMessage(err, "Không đánh dấu đã đọc được");
+      if (message) setError(message);
     });
   }, [selected?.id, selected?.unread, patchOptimisticConversation, startBackground]);
 
@@ -422,7 +438,9 @@ export function InboxWorkspace({
       try {
         await updateConversationTag(selected.id, tag);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Đổi nhãn thất bại");
+        const message = inboxActionErrorMessage(err, "Đổi nhãn thất bại");
+        if (message) setError(message);
+        else router.refresh();
       }
     });
   }
@@ -446,7 +464,9 @@ export function InboxWorkspace({
         });
         queueMicrotask(() => composerRef.current?.focus());
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Không nhận được hội thoại");
+        const message = inboxActionErrorMessage(err, "Không nhận được hội thoại");
+        if (message) setError(message);
+        else router.refresh();
       }
     });
   }
@@ -463,7 +483,9 @@ export function InboxWorkspace({
       try {
         await releaseConversation(selected.id);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Không nhả được hội thoại");
+        const message = inboxActionErrorMessage(err, "Không nhả được hội thoại");
+        if (message) setError(message);
+        else router.refresh();
       }
     });
   }
@@ -512,7 +534,9 @@ export function InboxWorkspace({
       try {
         await sendMessage(selected.id, body);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Gửi tin thất bại");
+        const message = inboxActionErrorMessage(err, "Gửi tin thất bại");
+        if (message) setError(message);
+        else router.refresh();
       }
     });
   }
@@ -562,7 +586,9 @@ export function InboxWorkspace({
         formData.set("file", file);
         await sendImageMessage(selected.id, formData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Gửi ảnh thất bại");
+        const message = inboxActionErrorMessage(err, "Gửi ảnh thất bại");
+        if (message) setError(message);
+        else router.refresh();
       } finally {
         URL.revokeObjectURL(previewUrl);
       }
@@ -577,7 +603,9 @@ export function InboxWorkspace({
         await reactToMessage(messageId, emoji);
         router.refresh();
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Không gửi được reaction");
+        const message = inboxActionErrorMessage(err, "Không gửi được reaction");
+        if (message) setError(message);
+        else router.refresh();
       }
     });
   }
