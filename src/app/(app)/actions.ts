@@ -491,7 +491,9 @@ export async function markConversationRead(conversationId: string) {
     data: { unread: 0 },
   });
 
-  revalidatePath("/inbox");
+  // Không revalidatePath: client đã optimistic unread=0; soft-refresh Inbox
+  // sẽ cập nhật badge. Revalidate full /inbox sau mark-read dễ làm flight
+  // RSC fail (React #441) hiện banner đỏ trên composer khi mở hội thoại.
   return { ok: true as const };
 }
 
