@@ -40,7 +40,9 @@ export async function GET(request: Request) {
     nonce: crypto.randomUUID(),
   });
 
-  const response = NextResponse.redirect(buildMetaOAuthUrl(config, state));
+  const response = NextResponse.redirect(
+    buildMetaOAuthUrl(config, state, channel as Channel),
+  );
   response.cookies.set(OAUTH_STATE_COOKIE, state, {
     httpOnly: true,
     sameSite: "lax",

@@ -3,13 +3,23 @@ import type { MetaPageOption } from "@/lib/oauth-types";
 import type { Channel } from "@/lib/types";
 
 const GRAPH_VERSION = "v21.0";
-const META_SCOPES = [
+
+/** Quyền Page/Messenger — dùng Facebook Login. Không gộp Instagram scopes đã deprecated/invalid. */
+const META_PAGE_SCOPES = [
   "pages_show_list",
   "pages_messaging",
   "pages_manage_metadata",
-  "instagram_basic",
-  "instagram_manage_messages",
-].join(",");
+] as const;
+
+/**
+ * Scope theo kênh. Instagram DM vẫn qua Fanpage liên kết IG Business —
+ * Graph `instagram_business_account` lấy được với quyền Page (không cần
+ * `instagram_basic` / `instagram_manage_messages` — Meta báo Invalid Scopes).
+ */
+export function metaScopesForChannel(channel: Channel = "facebook") {
+  void channel;
+  return META_PAGE_SCOPES.join(",");
+}
 
 type MetaTokenResponse = {
   access_token?: string;
@@ -45,12 +55,16 @@ async function readJson<T>(response: Response): Promise<T> {
   return body;
 }
 
-export function buildMetaOAuthUrl(config: MetaOAuthConfig, state: string) {
+export function buildMetaOAuthUrl(
+  config: MetaOAuthConfig,
+  state: string,
+  channel: Channel = "facebook",
+) {
   const url = new URL(`https://www.facebook.com/${GRAPH_VERSION}/dialog/oauth`);
   url.searchParams.set("client_id", config.appId);
   url.searchParams.set("redirect_uri", config.redirectUri);
   url.searchParams.set("state", state);
-  url.searchParams.set("scope", META_SCOPES);
+  url.searchParams.set("scope", metaScopesForChannel(channel));
   url.searchParams.set("response_type", "code");
   return url.toString();
 }

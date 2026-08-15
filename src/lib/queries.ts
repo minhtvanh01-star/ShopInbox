@@ -2,8 +2,10 @@
 import { prisma } from "@/backend/prisma";
 import { requireSession } from "@/backend/auth";
 import { getPermissionCodes, hasPermission } from "@/backend/rbac";
+import { resolveReplyClaim } from "@/backend/reply-claim";
 import { roleLabel } from "@/lib/labels";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
+import type { InboxNoticeSummary } from "@/lib/inbox-notices";
 import type {
   Conversation,
   Customer,
@@ -55,6 +57,7 @@ export async function getInboxData() {
   const [conversations, messages, customers, orders, products, quickReplies] = await Promise.all([
     prisma.conversation.findMany({
       where: { shopId },
+      include: { staff: { select: { id: true, name: true } } },
       orderBy: { lastAt: "desc" },
     }),
     prisma.message.findMany({
@@ -81,8 +84,15 @@ export async function getInboxData() {
   ]);
 
   return {
-    conversations: conversations.map(
-      (item): Conversation => ({
+    currentStaffId: session.staffId,
+    conversations: conversations.map((item): Conversation => {
+      const claim = resolveReplyClaim({
+        staffId: item.staffId,
+        staffName: item.staff?.name,
+        replyClaimedAt: item.replyClaimedAt,
+        currentStaffId: session.staffId,
+      });
+      return {
         id: item.id,
         channel: item.channel,
         customerId: item.customerId,
@@ -90,8 +100,11 @@ export async function getInboxData() {
         lastAt: toIso(item.lastAt),
         unread: item.unread,
         tag: item.tag,
-      }),
-    ),
+        replyStaffId: claim.staffId,
+        replyStaffName: claim.staffName,
+        replyClaimedAt: claim.claimedAt,
+      };
+    }),
     messages: messages.map(
       (item): Message => ({
         id: item.id,
@@ -144,6 +157,52 @@ export async function getInboxData() {
         text: item.text,
       }),
     ),
+  };
+}
+
+export async function getInboxNotificationSummary(): Promise<InboxNoticeSummary> {
+  const session = await requireSession();
+  const shopId = session.shopId;
+
+  const [unreadRows, noticeRows] = await Promise.all([
+    prisma.conversation.findMany({
+      where: { shopId, unread: { gt: 0 } },
+      select: { unread: true },
+    }),
+    prisma.conversation.findMany({
+      where: { shopId, unread: { gt: 0 } },
+      include: {
+        customer: { select: { name: true } },
+        staff: { select: { name: true } },
+      },
+      orderBy: { lastAt: "desc" },
+      take: 12,
+    }),
+  ]);
+
+  const unreadTotal = unreadRows.reduce((sum, row) => sum + row.unread, 0);
+
+  return {
+    unreadTotal,
+    unreadConversations: unreadRows.length,
+    notices: noticeRows.map((item) => {
+      const claim = resolveReplyClaim({
+        staffId: item.staffId,
+        staffName: item.staff?.name,
+        replyClaimedAt: item.replyClaimedAt,
+        currentStaffId: session.staffId,
+      });
+      return {
+        conversationId: item.id,
+        customerName: item.customer.name,
+        preview: item.lastMessage,
+        unread: item.unread,
+        channel: item.channel,
+        lastAt: toIso(item.lastAt),
+        replyStaffName: claim.staffName,
+        replyActive: claim.active,
+      };
+    }),
   };
 }
 

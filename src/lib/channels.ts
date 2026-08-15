@@ -197,19 +197,29 @@ export function channelHasCredentials(
     displayName?: string | null;
   },
 ) {
-  if (data.accessToken && (data.pageId || data.oaId || data.displayName)) {
-    return true;
+  // Chat website: chỉ cần domain (chưa có OAuth token).
+  if (channel === "web") {
+    const platform = CONNECT_PLATFORMS.find((item) => item.channel === channel);
+    if (!platform || platform.fields.length === 0) {
+      return false;
+    }
+    return platform.fields
+      .filter((field) => field.required)
+      .every((field) => {
+        const value = data[field.key];
+        return typeof value === "string" && value.trim().length > 0;
+      });
   }
 
-  const platform = CONNECT_PLATFORMS.find((item) => item.channel === channel);
-  if (!platform || platform.fields.length === 0) {
+  // Facebook / Instagram / Zalo: App ID/Secret không đủ để gửi tin — cần access token (OAuth).
+  const token = data.accessToken?.trim();
+  if (!token) {
     return false;
   }
 
-  return platform.fields
-    .filter((field) => field.required)
-    .every((field) => {
-      const value = data[field.key];
-      return typeof value === "string" && value.trim().length > 0;
-    });
+  if (channel === "zalo") {
+    return Boolean(data.oaId?.trim() || data.displayName?.trim());
+  }
+
+  return Boolean(data.pageId?.trim() || data.displayName?.trim());
 }

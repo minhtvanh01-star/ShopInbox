@@ -185,7 +185,9 @@ export async function saveChannelCredentialsAction(
   return {
     success: ready
       ? "Đã lưu cấu hình. Kênh sẵn sàng (cần webhook để nhận tin nhắn)."
-      : "Đã lưu nháp. Hoàn tất OAuth hoặc điền đủ trường bắt buộc.",
+      : channel === "web"
+        ? "Đã lưu nháp. Điền domain website để đánh dấu sẵn sàng."
+        : "Đã lưu nháp. Nối OAuth (có access token) để kênh sẵn sàng gửi/nhận tin.",
   };
 }
 
