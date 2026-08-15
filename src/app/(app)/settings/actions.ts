@@ -11,7 +11,7 @@ import {
   OAUTH_PAGES_COOKIE,
   verifyOAuthPagesToken,
 } from "@/backend/oauth-state";
-import type { MetaPageOption } from "@/lib/oauth-types";
+import type { PendingMetaPages } from "@/lib/oauth-types";
 import { channelHasCredentials } from "@/lib/channels";
 import { prisma } from "@/backend/prisma";
 import type { Channel } from "@/lib/types";
@@ -38,10 +38,7 @@ function pickField(formData: FormData, key: string) {
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-export async function getPendingMetaPages(): Promise<{
-  channel: Channel;
-  pages: MetaPageOption[];
-} | null> {
+export async function getPendingMetaPages(): Promise<PendingMetaPages | null> {
   const session = await getSession();
   if (!session || !(await hasPermission(session, PERMISSION_CODES.channelsConnect))) {
     return null;
@@ -57,7 +54,16 @@ export async function getPendingMetaPages(): Promise<{
     return null;
   }
 
-  return { channel: payload.channel, pages: payload.pages };
+  // Không serialize pageAccessToken xuống RSC/client — token chỉ nằm trong cookie httpOnly.
+  return {
+    channel: payload.channel,
+    pages: payload.pages.map(({ pageId, pageName, instagramId, instagramUsername }) => ({
+      pageId,
+      pageName,
+      instagramId,
+      instagramUsername,
+    })),
+  };
 }
 
 export async function completeMetaPageAction(
