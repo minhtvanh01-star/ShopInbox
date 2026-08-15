@@ -27,21 +27,23 @@ describe("sendMetaMessage", () => {
     ).resolves.toEqual({ externalMessageId: "mid.123" });
   });
 
-  it("ném lỗi khi Graph trả error", async () => {
+  it("gửi attachment_id khi có ảnh", async () => {
     fetchMock.mockResolvedValue({
-      ok: false,
-      status: 400,
-      json: async () => ({ error: { message: "Invalid OAuth access token" } }),
+      ok: true,
+      json: async () => ({ message_id: "mid.img", recipient_id: "psid" }),
     });
 
     await expect(
       sendMetaMessage({
         pageId: "page-1",
-        accessToken: "bad",
+        accessToken: "token",
         recipientId: "psid",
-        text: "hi",
+        attachmentId: "att-1",
       }),
-    ).rejects.toThrow("Invalid OAuth access token");
+    ).resolves.toEqual({ externalMessageId: "mid.img" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.message.attachment.payload.attachment_id).toBe("att-1");
   });
 });
 

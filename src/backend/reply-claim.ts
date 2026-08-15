@@ -1,8 +1,8 @@
 /** Claim hội thoại khi nhân viên đang trả lời — người khác không gửi được. */
 
-/** Mỗi lần nhận/gửi/gia hạn: còn hiệu lực 5 phút nếu không còn hoạt động. */
-export const REPLY_CLAIM_TTL_MS = 5 * 60 * 1000;
-export const REPLY_CLAIM_TTL_MINUTES = 5;
+/** Mỗi lần nhận/gửi/gia hạn: còn hiệu lực 15 phút nếu không còn hoạt động. */
+export const REPLY_CLAIM_TTL_MS = 15 * 60 * 1000;
+export const REPLY_CLAIM_TTL_MINUTES = 15;
 
 export function isReplyClaimActive(
   claimedAt: Date | string | null | undefined,

@@ -3,7 +3,7 @@ import { requireSession } from "@/backend/auth";
 import { prisma } from "@/backend/prisma";
 import { getSession } from "@/backend/session";
 import type { SessionPayload } from "@/backend/session-token";
-import { normalizeRoleCode } from "@/lib/rbac-catalog";
+import { normalizeRoleCode, ROLE_CODES } from "@/lib/rbac-catalog";
 
 const CACHE_TTL_MS = 15_000;
 
@@ -104,4 +104,8 @@ export async function requirePermissionApi(code: string): Promise<SessionPayload
 
 export function sessionRoleCode(session: SessionPayload): string {
   return normalizeRoleCode(session.role);
+}
+
+export function isAdminSession(session: { role: string }): boolean {
+  return sessionRoleCode(session as SessionPayload) === ROLE_CODES.admin;
 }

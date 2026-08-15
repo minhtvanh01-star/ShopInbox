@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Roboto } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-const roboto = Roboto({
-  variable: "--font-roboto",
+const plusJakarta = Plus_Jakarta_Sans({
+  variable: "--font-plus-jakarta",
   subsets: ["latin", "latin-ext", "vietnamese"],
-  weight: ["400", "500", "700"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -16,8 +16,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="vi" className={`${roboto.variable} h-full antialiased`}>
-      <body className="min-h-full font-sans">{children}</body>
+    <html lang="vi" className={`${plusJakarta.variable} h-full antialiased`}>
+      <body className="min-h-full font-sans">
+        <a href="#main-content" className="skip-link">
+          Bỏ qua đến nội dung chính
+        </a>
+        {children}
+      </body>
     </html>
   );
 }

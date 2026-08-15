@@ -14,6 +14,9 @@ export type InboundMessageInput = {
   externalMessageId?: string;
   sentAt?: Date;
   touchWebhook?: boolean;
+  attachmentType?: string | null;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
 };
 
 function shortId(value: string) {
@@ -38,8 +41,8 @@ export async function findChannelAccount(channel: Channel, externalAccountId: st
   return prisma.channelAccount.findFirst({
     where: {
       channel,
-      pageId: externalAccountId,
       status: "ready",
+      OR: [{ pageId: externalAccountId }, { linkedPageId: externalAccountId }],
     },
   });
 }
@@ -146,7 +149,7 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
   );
 
   const sentAt = input.sentAt ?? new Date();
-  const text = input.text.trim();
+  const text = input.text.trim() || (input.attachmentUrl ? "[Ảnh]" : "");
   if (!text) {
     return { ok: false as const, reason: "empty_text" as const };
   }
@@ -158,6 +161,9 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
         conversationId: conversation.id,
         sender: "customer",
         text,
+        attachmentType: input.attachmentType ?? null,
+        attachmentUrl: input.attachmentUrl ?? null,
+        attachmentName: input.attachmentName ?? null,
         externalMessageId: input.externalMessageId ?? null,
         createdAt: sentAt,
       },
@@ -219,15 +225,53 @@ export async function ingestRecentMetaMessages(input: {
 
 export async function touchChannelWebhook(channel: Channel, externalAccountId: string) {
   if (channel === "zalo") {
-    await prisma.channelAccount.updateMany({
+    const result = await prisma.channelAccount.updateMany({
       where: { channel: "zalo", oaId: externalAccountId },
       data: { lastWebhookAt: new Date() },
     });
-    return;
+    return result.count;
   }
 
-  await prisma.channelAccount.updateMany({
-    where: { channel, pageId: externalAccountId },
+  const result = await prisma.channelAccount.updateMany({
+    where: {
+      channel,
+      OR: [{ pageId: externalAccountId }, { linkedPageId: externalAccountId }],
+    },
     data: { lastWebhookAt: new Date() },
+  });
+  return result.count;
+}
+
+export async function upsertMessageReaction(input: {
+  shopId: string;
+  messageId: string;
+  reactorKey: string;
+  emoji: string;
+  staffId?: string | null;
+}) {
+  return prisma.messageReaction.upsert({
+    where: {
+      messageId_reactorKey: {
+        messageId: input.messageId,
+        reactorKey: input.reactorKey,
+      },
+    },
+    create: {
+      shopId: input.shopId,
+      messageId: input.messageId,
+      reactorKey: input.reactorKey,
+      emoji: input.emoji,
+      staffId: input.staffId ?? null,
+    },
+    update: {
+      emoji: input.emoji,
+      staffId: input.staffId ?? null,
+    },
+  });
+}
+
+export async function removeMessageReaction(messageId: string, reactorKey: string) {
+  await prisma.messageReaction.deleteMany({
+    where: { messageId, reactorKey },
   });
 }

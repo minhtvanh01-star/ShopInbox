@@ -1,5 +1,5 @@
 import type { GoogleUserInfo } from "@/backend/google-oauth";
-import { roleCodeForNewStaff } from "@/lib/rbac-catalog";
+import { isActiveForOpenRegistration, roleCodeForNewStaff } from "@/lib/rbac-catalog";
 
 /** Shop mặc định — khớp DEMO_SHOP_ID trong lib/queries.ts */
 const DEFAULT_SHOP_ID = "shop1";
@@ -37,6 +37,8 @@ export type GoogleAuthResolveResult =
       avatarUrl?: string;
       role: string;
       shopId: string;
+      /** false = chờ admin phê duyệt / phân quyền trước khi đăng nhập. */
+      isActive: boolean;
       createShop?: { id: string; name: string };
     }
   | { action: "error"; code: string; message: string };
@@ -106,6 +108,7 @@ export function resolveGoogleAuthUser(input: GoogleAuthResolveInput): GoogleAuth
     avatarUrl: googleUser.picture,
     role,
     shopId: DEFAULT_SHOP_ID,
+    isActive: isActiveForOpenRegistration(staffCount),
     createShop: shopExists
       ? undefined
       : {

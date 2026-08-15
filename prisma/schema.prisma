@@ -53,6 +53,7 @@ model Shop {
   products         Product[]
   quickReplies     QuickReply[]
   auditLogs        AuditLog[]
+  messageReactions MessageReaction[]
 
   @@map("shops")
 }
@@ -107,6 +108,7 @@ model Staff {
   createdAt     DateTime       @default(now())
   assignedChats Conversation[]
   sentMessages  Message[]
+  messageReactions MessageReaction[]
   auditLogs     AuditLog[]
 
   @@index([shopId])
@@ -236,22 +238,45 @@ model Conversation {
 }
 
 model Message {
-  id             String        @id @default(cuid())
-  shopId         String
-  shop           Shop          @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  conversationId String
-  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  staffId        String?
-  staff          Staff?        @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  id                 String            @id @default(cuid())
+  shopId             String
+  shop               Shop              @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  conversationId     String
+  conversation       Conversation      @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  staffId            String?
+  staff              Staff?            @relation(fields: [staffId], references: [id], onDelete: SetNull)
   sender             MessageSender
   text               String
+  attachmentType     String?
+  attachmentUrl      String?
+  attachmentName     String?
   externalMessageId  String?
-  createdAt          DateTime      @default(now())
+  createdAt          DateTime          @default(now())
+  reactions          MessageReaction[]
 
   @@unique([shopId, externalMessageId])
   @@index([conversationId, createdAt])
   @@index([shopId])
   @@map("messages")
+}
+
+/** Reaction trên tin — staff:{id} hoặc customer:{psid}. */
+model MessageReaction {
+  id         String   @id @default(cuid())
+  shopId     String
+  shop       Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  messageId  String
+  message    Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  staffId    String?
+  staff      Staff?   @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  reactorKey String
+  emoji      String
+  createdAt  DateTime @default(now())
+
+  @@unique([messageId, reactorKey])
+  @@index([shopId])
+  @@index([messageId])
+  @@map("message_reactions")
 }
 
 model Product {

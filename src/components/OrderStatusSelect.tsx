@@ -23,24 +23,32 @@ export function OrderStatusSelect({
   status: OrderStatus;
 }) {
   const [isPending, startTransition] = useTransition();
+  const selectId = `order-status-${orderId}`;
 
   return (
-    <select
-      value={status}
-      disabled={isPending}
-      onChange={(event) => {
-        const next = event.target.value as OrderStatus;
-        startTransition(async () => {
-          await updateOrderStatus(orderId, next);
-        });
-      }}
-      className={`h-9 min-w-[8.5rem] cursor-pointer rounded-lg border px-2.5 text-sm font-medium outline-none transition focus:ring-2 focus:ring-teal-500/20 disabled:cursor-not-allowed disabled:opacity-60 ${STATUS_TONE[status]}`}
-    >
-      {STATUSES.map((item) => (
-        <option key={item} value={item}>
-          {ORDER_STATUS_LABEL[item]}
-        </option>
-      ))}
-    </select>
+    <label className="inline-flex flex-col gap-1">
+      <span className="sr-only" id={`${selectId}-label`}>
+        Trạng thái đơn hàng
+      </span>
+      <select
+        id={selectId}
+        value={status}
+        disabled={isPending}
+        aria-labelledby={`${selectId}-label`}
+        onChange={(event) => {
+          const next = event.target.value as OrderStatus;
+          startTransition(async () => {
+            await updateOrderStatus(orderId, next);
+          });
+        }}
+        className={`h-9 min-w-[8.5rem] cursor-pointer rounded-lg border px-2.5 text-sm font-medium outline-none transition focus:ring-2 focus:ring-teal-500/20 disabled:cursor-not-allowed disabled:opacity-60 ${STATUS_TONE[status]}`}
+      >
+        {STATUSES.map((item) => (
+          <option key={item} value={item}>
+            {ORDER_STATUS_LABEL[item]}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

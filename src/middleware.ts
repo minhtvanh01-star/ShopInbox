@@ -1,9 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, verifySessionToken } from "@/backend/session-token";
+import {
+  SESSION_COOKIE,
+  createSessionToken,
+  sessionCookieOptions,
+  shouldRefreshSession,
+  verifySessionToken,
+} from "@/backend/session-token";
 import { absoluteAppUrl } from "@/backend/public-url";
 
 const PUBLIC_PATHS = ["/login", "/register", "/forgot-password"];
-const PUBLIC_PREFIXES = ["/api/webhooks/", "/api/auth/google/"];
+const PUBLIC_PREFIXES = ["/api/webhooks/", "/api/auth/google/", "/api/auth/session-timeout"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -21,7 +27,14 @@ export async function middleware(request: NextRequest) {
   if (!session && !isPublic && pathname !== "/") {
     const loginUrl = absoluteAppUrl(request, "/login");
     loginUrl.searchParams.set("next", pathname);
-    return NextResponse.redirect(loginUrl);
+    if (token) {
+      loginUrl.searchParams.set("reason", "idle");
+    }
+    const response = NextResponse.redirect(loginUrl);
+    if (token) {
+      response.cookies.delete(SESSION_COOKIE);
+    }
+    return response;
   }
 
   if (
@@ -32,6 +45,20 @@ export async function middleware(request: NextRequest) {
       pathname === "/")
   ) {
     return NextResponse.redirect(absoluteAppUrl(request, "/inbox"));
+  }
+
+  if (session && shouldRefreshSession(session.lastActiveAt)) {
+    const response = NextResponse.next();
+    const refreshed = await createSessionToken({
+      staffId: session.staffId,
+      shopId: session.shopId,
+      email: session.email,
+      name: session.name,
+      role: session.role,
+      lastActiveAt: Date.now(),
+    });
+    response.cookies.set(SESSION_COOKIE, refreshed, sessionCookieOptions());
+    return response;
   }
 
   return NextResponse.next();

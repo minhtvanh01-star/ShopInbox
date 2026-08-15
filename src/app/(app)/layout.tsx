@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { SessionIdleGuard } from "@/components/auth/SessionIdleGuard";
 import { Sidebar } from "@/components/Sidebar";
 import { getInboxNotificationSummary, getShopContext } from "@/lib/queries";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
@@ -11,6 +12,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      <SessionIdleGuard />
       <Sidebar
         shopName={shop.shopName}
         staffName={shop.staffName}
@@ -18,7 +20,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         permissions={shop.permissions}
         inboxNotices={inboxNotices}
       />
-      <main className="flex min-w-0 flex-1 flex-col pt-14 md:pt-0">{children}</main>
+      <main id="main-content" className="flex min-w-0 flex-1 flex-col pt-14 md:pt-0">
+        {children}
+      </main>
     </div>
   );
 }

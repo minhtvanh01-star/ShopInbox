@@ -129,11 +129,12 @@ describe("resolveGoogleAuthUser", () => {
     expect(result.action).toBe("create");
     if (result.action === "create") {
       expect(result.role).toBe("admin");
+      expect(result.isActive).toBe(true);
       expect(result.createShop).toEqual({ id: "shop1", name: "ShopInbox" });
     }
   });
 
-  it("creates staff when registering into an existing shop", () => {
+  it("creates inactive staff when registering into an existing shop", () => {
     const result = resolveGoogleAuthUser({
       googleUser,
       existingByGoogleId: null,
@@ -146,6 +147,7 @@ describe("resolveGoogleAuthUser", () => {
     expect(result.action).toBe("create");
     if (result.action === "create") {
       expect(result.role).toBe("staff");
+      expect(result.isActive).toBe(false);
       expect(result.createShop).toBeUndefined();
     }
   });

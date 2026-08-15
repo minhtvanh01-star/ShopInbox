@@ -54,7 +54,8 @@ export async function getShopContext(): Promise<ShopContext> {
 export async function getInboxData() {
   const session = await requireSession();
   const shopId = session.shopId;
-  const [conversations, messages, customers, orders, products, quickReplies] = await Promise.all([
+  const [conversations, messages, customers, orders, products, quickReplies, reactions] =
+    await Promise.all([
     prisma.conversation.findMany({
       where: { shopId },
       include: { staff: { select: { id: true, name: true } } },
@@ -81,7 +82,32 @@ export async function getInboxData() {
       where: { shopId },
       orderBy: { title: "asc" },
     }),
+    prisma.messageReaction.findMany({
+      where: { shopId },
+      select: { messageId: true, emoji: true, reactorKey: true },
+    }),
   ]);
+
+  const reactionsByMessage = new Map<
+    string,
+    { emoji: string; count: number; reactedByMe: boolean }[]
+  >();
+  const mineKey = `staff:${session.staffId}`;
+  for (const row of reactions) {
+    const list = reactionsByMessage.get(row.messageId) ?? [];
+    const existing = list.find((item) => item.emoji === row.emoji);
+    if (existing) {
+      existing.count += 1;
+      if (row.reactorKey === mineKey) existing.reactedByMe = true;
+    } else {
+      list.push({
+        emoji: row.emoji,
+        count: 1,
+        reactedByMe: row.reactorKey === mineKey,
+      });
+    }
+    reactionsByMessage.set(row.messageId, list);
+  }
 
   return {
     currentStaffId: session.staffId,
@@ -112,6 +138,11 @@ export async function getInboxData() {
         sender: item.sender,
         text: item.text,
         createdAt: toIso(item.createdAt),
+        attachmentType: item.attachmentType,
+        attachmentUrl: item.attachmentUrl,
+        attachmentName: item.attachmentName,
+        externalMessageId: item.externalMessageId,
+        reactions: reactionsByMessage.get(item.id) ?? [],
       }),
     ),
     customers: customers.map(

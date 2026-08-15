@@ -37,7 +37,7 @@ export default async function OrdersPage() {
                 {orders.map((order, index) => (
                   <tr
                     key={order.id}
-                    className={`border-t border-border transition hover:bg-teal-50/40 ${
+                    className={`border-t border-border transition-colors duration-200 hover:bg-teal-50/50 ${
                       index % 2 === 1 ? "bg-surface-muted/50" : "bg-surface"
                     }`}
                   >

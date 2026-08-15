@@ -1,10 +1,11 @@
-import { roleCodeForNewStaff } from "@/lib/rbac-catalog";
+import { isActiveForOpenRegistration, roleCodeForNewStaff } from "@/lib/rbac-catalog";
 import { REGISTER_MIN_PASSWORD_LENGTH } from "@/lib/auth-password";
 
 /** Shop mặc định — khớp DEMO_SHOP_ID / Google signup */
 export const REGISTER_DEFAULT_SHOP_ID = "shop1";
 export const REGISTER_DEFAULT_SHOP_NAME = "ShopInbox";
 export { REGISTER_MIN_PASSWORD_LENGTH };
+export { isActiveForOpenRegistration };
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -112,13 +113,17 @@ export type RegisterPlan =
       ok: true;
       role: string;
       shopId: string;
+      /** Chỉ user bootstrap (đầu tiên) được active ngay; user sau chờ admin phân quyền. */
+      isActive: boolean;
       createShop?: { id: string; name: string };
     };
 
+/** User đầu tiên tự kích hoạt; mọi đăng ký mở sau đó cần admin bật + phân quyền — xem `isActiveForOpenRegistration`. */
+
 /**
  * Quyết định vai trò / shop khi đăng ký mở.
- * - User đầu tiên → admin (bootstrap); tạo shop mặc định nếu chưa có.
- * - User sau → staff vào shop mặc định (`shop1`). Không tự tạo admin.
+ * - User đầu tiên → admin (bootstrap); tạo shop mặc định nếu chưa có; active ngay.
+ * - User sau → staff vào shop mặc định (`shop1`), inactive đến khi admin phê duyệt.
  */
 export function planOpenRegistration(input: RegisterPlanInput): RegisterPlan {
   if (input.emailTaken) {
@@ -130,6 +135,7 @@ export function planOpenRegistration(input: RegisterPlanInput): RegisterPlan {
     ok: true,
     role,
     shopId: REGISTER_DEFAULT_SHOP_ID,
+    isActive: isActiveForOpenRegistration(input.staffCount),
     createShop: input.shopExists
       ? undefined
       : {
