@@ -24,17 +24,24 @@ OAuth **không hoạt động** nếu chỉ để trống hoặc bịa ID/Secret
 
 1. Mở [Meta for Developers](https://developers.facebook.com/) → Create App (Business) → thêm Messenger / Instagram.
 2. **Settings → Basic** → copy **App ID**, **App Secret**.
-3. **Facebook Login → Settings → Valid OAuth Redirect URIs** → thêm đúng `META_REDIRECT_URI` (local hoặc URL ngrok HTTPS).
-4. Dán vào `.env`:
+3. **Production (Railway)** — bắt buộc, không thì Facebook báo *"Miền … không được đưa vào miền của ứng dụng"*:
+   - **Miền ứng dụng:** `shopinbox-production.up.railway.app`
+   - **Nền tảng Website → URL:** `https://shopinbox-production.up.railway.app/`
+   - **Facebook Login → Valid OAuth Redirect URIs:**
+     ```
+     https://shopinbox-production.up.railway.app/api/connect/meta/callback
+     ```
+4. Local: **Facebook Login → Valid OAuth Redirect URIs** → thêm đúng `META_REDIRECT_URI` (localhost hoặc ngrok HTTPS).
+5. Dán vào `.env` / Railway Variables:
 
 ```env
 META_APP_ID=<App ID từ Meta>
 META_APP_SECRET=<App Secret từ Meta>
 ```
 
-5. Restart `npm run dev`. Nút **Kết nối với Facebook/Instagram** sẽ hết báo thiếu biến.
+6. Restart `npm run dev` (local) hoặc **Deploy** trên Railway. Nút **Kết nối với Facebook/Instagram** sẽ hết báo thiếu biến.
 
-Chi tiết webhook / ngrok: [ket-noi-kenh.md](./ket-noi-kenh.md).
+Chi tiết webhook / ngrok / App Domains: [ket-noi-kenh.md](./ket-noi-kenh.md).
 
 ### Zalo OA
 
