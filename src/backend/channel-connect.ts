@@ -67,14 +67,41 @@ export async function saveOAuthConnection(input: SaveOAuthConnectionInput) {
   });
 }
 
+const CHANNEL_DRAFT_NAME: Record<Channel, string> = {
+  facebook: "Facebook Messenger",
+  instagram: "Instagram DM",
+  zalo: "Zalo OA",
+  web: "Chat website",
+};
+
+/** Đánh dấu đang OAuth; tạo nháp ChannelAccount nếu shop chưa có hàng cho kênh. */
 export async function markChannelConnecting(shopId: string, channel: Channel) {
-  await prisma.channelAccount.updateMany({
-    where: { shopId, channel },
+  const existing = await prisma.channelAccount.findUnique({
+    where: { shopId_channel: { shopId, channel } },
+  });
+
+  if (existing) {
+    await prisma.channelAccount.update({
+      where: { id: existing.id },
+      data: {
+        status: "connecting",
+        note: "Đang chờ hoàn tất OAuth...",
+      },
+    });
+    return existing.id;
+  }
+
+  const created = await prisma.channelAccount.create({
     data: {
+      id: `ch-${channel}-${crypto.randomUUID()}`,
+      shopId,
+      channel,
+      name: CHANNEL_DRAFT_NAME[channel],
       status: "connecting",
       note: "Đang chờ hoàn tất OAuth...",
     },
   });
+  return created.id;
 }
 
 export async function disconnectChannel(shopId: string, channel: Channel) {

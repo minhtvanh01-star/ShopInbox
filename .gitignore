@@ -44,6 +44,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# Local DB dumps (có hash mật khẩu / data shop — không commit)
+/backups/*
+!/backups/.gitkeep
+
 # Cursor / local editor (không commit)
 .cursor/
 

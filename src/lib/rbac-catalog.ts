@@ -222,6 +222,7 @@ export function catalogHasPermission(roleCode: string, permission: string): bool
 export const AUDIT_ACTIONS = {
   authLogin: "auth.login",
   authLoginFail: "auth.login_fail",
+  authRegister: "auth.register",
   staffCreate: "staff.create",
   staffUpdate: "staff.update",
   staffDisable: "staff.disable",
@@ -240,6 +241,7 @@ export type AuditActionCode = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS]
 export const AUDIT_ACTION_LABEL: Record<string, string> = {
   [AUDIT_ACTIONS.authLogin]: "Đăng nhập",
   [AUDIT_ACTIONS.authLoginFail]: "Đăng nhập thất bại",
+  [AUDIT_ACTIONS.authRegister]: "Đăng ký tài khoản",
   [AUDIT_ACTIONS.staffCreate]: "Tạo nhân viên",
   [AUDIT_ACTIONS.staffUpdate]: "Cập nhật nhân viên",
   [AUDIT_ACTIONS.staffDisable]: "Vô hiệu hóa nhân viên",

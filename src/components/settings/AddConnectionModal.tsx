@@ -43,6 +43,8 @@ type AddConnectionModalProps = {
   canConnect: boolean;
   metaOAuthConfigured: boolean;
   zaloOAuthConfigured: boolean;
+  metaMissingEnvVars: string[];
+  zaloMissingEnvVars: string[];
   metaWebhookUrl: string;
   zaloWebhookUrl: string;
   metaWebhookVerifyToken: string;
@@ -96,6 +98,13 @@ function oauthStartUrl(platform: PlatformOption) {
     return `/api/connect/meta/start?channel=${platform.channel}`;
   }
   return null;
+}
+
+function oauthConnectLabel(channel: Channel | undefined) {
+  if (channel === "zalo") return "Kết nối với Zalo";
+  if (channel === "instagram") return "Kết nối với Instagram";
+  if (channel === "facebook") return "Kết nối với Facebook";
+  return "Kết nối OAuth";
 }
 
 function statusBadgeClass(status: ChannelStatus) {
@@ -166,6 +175,8 @@ export function AddConnectionModal({
   canConnect,
   metaOAuthConfigured,
   zaloOAuthConfigured,
+  metaMissingEnvVars,
+  zaloMissingEnvVars,
   metaWebhookUrl,
   zaloWebhookUrl,
   metaWebhookVerifyToken,
@@ -222,11 +233,18 @@ export function AddConnectionModal({
       : selected.channel === "facebook" || selected.channel === "instagram"
         ? metaOAuthConfigured
         : false;
+  const missingOAuthEnvVars =
+    selected.channel === "zalo"
+      ? zaloMissingEnvVars
+      : selected.channel === "facebook" || selected.channel === "instagram"
+        ? metaMissingEnvVars
+        : [];
   const oauthUrl = oauthStartUrl(selected);
+  const connectLabel = oauthConnectLabel(selected.channel);
   const showPagePicker =
     pendingMetaPages &&
-    account &&
-    pendingMetaPages.channel === account.channel &&
+    selected.channel &&
+    pendingMetaPages.channel === selected.channel &&
     pendingMetaPages.pages.length > 1;
 
   const webhookUrl =
@@ -344,12 +362,21 @@ export function AddConnectionModal({
                   {PLATFORM_AVAILABILITY_LABEL[selected.availability] || "Chưa mở"}
                 </span>
               </div>
-            ) : !account ? (
-              <div className="empty-state mx-auto max-w-sm">
-                <p className="text-sm text-slate-600">Chưa có tài khoản kênh này trong shop.</p>
-              </div>
             ) : (
               <div className="mx-auto max-w-xl">
+                {!account ? (
+                  <div className="mb-4 rounded-xl border border-dashed border-border bg-surface-muted/40 px-4 py-3">
+                    <p className="text-sm font-medium text-slate-800">
+                      Chưa có tài khoản kênh này trong shop.
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {isOAuthPlatform
+                        ? "Bấm nút kết nối bên dưới để bắt đầu OAuth — hệ thống sẽ tạo kênh tự động."
+                        : "Dùng form bên dưới để lưu cấu hình (hoặc liên hệ admin nếu không có quyền)."}
+                    </p>
+                  </div>
+                ) : null}
+
                 {connectedPages.length > 0 ? (
                   <div className="mb-6">
                     <p className="section-label mb-2">Kênh đã nối</p>
@@ -371,33 +398,35 @@ export function AddConnectionModal({
                   </div>
                 ) : null}
 
-                <div className="mb-4 flex items-center justify-between rounded-xl border border-border bg-surface-muted px-4 py-3">
-                  <div>
-                    <p className="font-medium text-slate-900">
-                      {account.displayName ?? account.name}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {account.hasOAuthToken
-                        ? "Đã lưu token OAuth trên server"
-                        : "Chưa kết nối OAuth"}
-                    </p>
-                    {account.connectedAt ? (
-                      <p className="mt-1 text-xs text-slate-400">
-                        Kết nối lúc {formatDateTime(account.connectedAt)}
+                {account ? (
+                  <div className="mb-4 flex items-center justify-between rounded-xl border border-border bg-surface-muted px-4 py-3">
+                    <div>
+                      <p className="font-medium text-slate-900">
+                        {account.displayName ?? account.name}
                       </p>
-                    ) : null}
+                      <p className="text-xs text-slate-500">
+                        {account.hasOAuthToken
+                          ? "Đã lưu token OAuth trên server"
+                          : "Chưa kết nối OAuth"}
+                      </p>
+                      {account.connectedAt ? (
+                        <p className="mt-1 text-xs text-slate-400">
+                          Kết nối lúc {formatDateTime(account.connectedAt)}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex flex-col items-end gap-2">
+                      <ChannelBadge channel={account.channel} />
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${statusBadgeClass(account.status)}`}
+                      >
+                        {account.status === "ready" ? "Đã nối" : CHANNEL_STATUS_LABEL[account.status]}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-end gap-2">
-                    <ChannelBadge channel={account.channel} />
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${statusBadgeClass(account.status)}`}
-                    >
-                      {account.status === "ready" ? "Đã nối" : CHANNEL_STATUS_LABEL[account.status]}
-                    </span>
-                  </div>
-                </div>
+                ) : null}
 
-                {account.status === "ready" ? (
+                {account?.status === "ready" ? (
                   <div className="mb-4 rounded-xl border border-border bg-surface-muted/60 p-4">
                     <p className="section-label mb-3">Tiến độ thiết lập</p>
                     <SetupChecklist
@@ -414,12 +443,12 @@ export function AddConnectionModal({
                 ) : null}
 
                 {!canConnect ? (
-                  <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
+                  <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
                     Bạn không có quyền kết nối OAuth hoặc lưu cấu hình kênh.
                   </p>
                 ) : null}
 
-                {showPagePicker ? (
+                {showPagePicker && pendingMetaPages ? (
                   <form action={pickAction} className="mt-4 space-y-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
                     <div>
                       <p className="text-sm font-semibold text-slate-900">Chọn trang để kích hoạt</p>
@@ -476,22 +505,46 @@ export function AddConnectionModal({
                           ? "Đăng nhập Zalo OA và cấp quyền cho ứng dụng ShopInbox."
                           : "Đăng nhập Facebook (admin Fanpage / Instagram Business) và cấp quyền."}
                       </p>
-                      {oauthConfigured && oauthUrl && canConnect ? (
+                      {canConnect && oauthConfigured && oauthUrl ? (
                         <a href={oauthUrl} className="btn-primary mt-3 inline-flex">
-                          {selected.channel === "zalo"
-                            ? "Kết nối với Zalo"
-                            : selected.channel === "instagram"
-                              ? "Kết nối với Instagram"
-                              : "Kết nối với Facebook"}
+                          {connectLabel}
                         </a>
                       ) : (
-                        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
-                          Chưa cấu hình OAuth — liên hệ admin để bật biến môi trường trên server.
-                        </p>
+                        <div className="mt-3 space-y-2">
+                          <button
+                            type="button"
+                            disabled
+                            className="btn-primary inline-flex cursor-not-allowed opacity-50"
+                            title={
+                              !canConnect
+                                ? "Thiếu quyền channels.connect"
+                                : "Thiếu biến OAuth trên server"
+                            }
+                          >
+                            {connectLabel}
+                          </button>
+                          {canConnect ? (
+                            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
+                              Chưa cấu hình OAuth trên server. Thiếu biến môi trường:{" "}
+                              <span className="font-semibold">
+                                {(missingOAuthEnvVars.length > 0
+                                  ? missingOAuthEnvVars
+                                  : selected.channel === "zalo"
+                                    ? ["ZALO_APP_ID", "ZALO_APP_SECRET", "ZALO_REDIRECT_URI"]
+                                    : ["META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI"]
+                                ).join(", ")}
+                              </span>
+                              . Điền trong <code className="text-xs">.env</code> (xem{" "}
+                              <code className="text-xs">.env.example</code> và{" "}
+                              <code className="text-xs">docs/ket-noi-kenh.md</code>) rồi restart{" "}
+                              <code className="text-xs">npm run dev</code>.
+                            </p>
+                          ) : null}
+                        </div>
                       )}
                     </div>
 
-                    {account.status === "ready" && webhookUrl ? (
+                    {account?.status === "ready" && webhookUrl ? (
                       <div className="rounded-xl border border-border bg-surface-muted/60 p-4">
                         <p className="text-sm font-medium text-slate-900">Bước 2 — Webhook</p>
                         <p className="mt-1 text-xs text-slate-500">
@@ -523,7 +576,7 @@ export function AddConnectionModal({
                       </div>
                     ) : null}
 
-                    {canConnect && account.status === "ready" && account.hasOAuthToken ? (
+                    {canConnect && account?.status === "ready" && account.hasOAuthToken ? (
                       <button
                         type="button"
                         onClick={handleDisconnect}
@@ -534,17 +587,19 @@ export function AddConnectionModal({
                       </button>
                     ) : null}
 
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvanced((value) => !value)}
-                      className="text-sm font-medium text-teal-700 hover:text-teal-900"
-                    >
-                      {showAdvanced ? "Ẩn cấu hình nâng cao (dev)" : "Cấu hình nâng cao (dev)"}
-                    </button>
+                    {account ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvanced((value) => !value)}
+                        className="text-sm font-medium text-teal-700 hover:text-teal-900"
+                      >
+                        {showAdvanced ? "Ẩn cấu hình nâng cao (dev)" : "Cấu hình nâng cao (dev)"}
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
 
-                {(showAdvanced || !isOAuthPlatform) && selected.fields.length > 0 ? (
+                {account && (showAdvanced || !isOAuthPlatform) && selected.fields.length > 0 ? (
                   <form action={saveAction} className="mt-4 space-y-4">
                     <input type="hidden" name="channel" value={account.channel} />
 
