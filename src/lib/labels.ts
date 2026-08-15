@@ -12,6 +12,35 @@ export const CHANNEL_LABEL: Record<Channel, string> = {
   web: "Web",
 };
 
+/** Thứ tự kênh trong catalog — nguồn cho bộ lọc Inbox (không hardcode ở UI). */
+export const CHANNEL_ORDER = Object.keys(CHANNEL_LABEL) as Channel[];
+
+export type InboxChannelFilter = { id: "all" | Channel; label: string };
+
+/**
+ * Bộ lọc kênh Inbox từ CHANNEL_LABEL.
+ * Nếu truyền `activeChannels`, chỉ hiện kênh đang có hội thoại / đã nối;
+ * danh sách rỗng → hiện đủ catalog.
+ */
+export function getInboxChannelFilters(activeChannels?: Iterable<Channel>): InboxChannelFilter[] {
+  const active = activeChannels ? new Set(activeChannels) : null;
+  const channels =
+    active && active.size > 0
+      ? CHANNEL_ORDER.filter((id) => active.has(id))
+      : CHANNEL_ORDER;
+
+  return [
+    { id: "all", label: "Tất cả" },
+    ...channels.map((id) => ({ id, label: CHANNEL_LABEL[id] })),
+  ];
+}
+
+export function inboxChannelsSubtitle(filters: InboxChannelFilter[]) {
+  const names = filters.filter((item) => item.id !== "all").map((item) => item.label);
+  if (names.length === 0) return "Chưa có kênh nào";
+  return `Tin nhắn đồng bộ từ ${names.join(", ")}`;
+}
+
 export const CHANNEL_STATUS_LABEL: Record<ChannelStatus, string> = {
   disconnected: "Chưa nối",
   connecting: "Đang kết nối",

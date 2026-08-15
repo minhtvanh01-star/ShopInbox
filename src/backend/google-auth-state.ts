@@ -1,8 +1,9 @@
 import { SignJWT, jwtVerify } from "jose";
 
 export const GOOGLE_AUTH_STATE_COOKIE = "shopinbox_google_auth_state";
+export const GOOGLE_PKCE_COOKIE = "shopinbox_google_pkce";
 
-export type GoogleAuthMode = "login" | "link";
+export type GoogleAuthMode = "login" | "register" | "link";
 
 export type GoogleAuthStatePayload = {
   nonce: string;
@@ -17,6 +18,16 @@ function getSecret() {
     throw new Error("Thiếu SESSION_SECRET (tối thiểu 16 ký tự) trong .env");
   }
   return new TextEncoder().encode(secret);
+}
+
+export function googleAuthCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: process.env.NODE_ENV === "production",
+    path: "/",
+    maxAge: 60 * 15,
+  };
 }
 
 export async function createGoogleAuthStateToken(payload: GoogleAuthStatePayload) {
@@ -42,7 +53,7 @@ export async function verifyGoogleAuthStateToken(
     }
 
     const mode = payload.mode;
-    if (mode !== "login" && mode !== "link") {
+    if (mode !== "login" && mode !== "register" && mode !== "link") {
       return null;
     }
 
@@ -57,6 +68,23 @@ export async function verifyGoogleAuthStateToken(
       mode,
       staffId,
     };
+  } catch {
+    return null;
+  }
+}
+
+export async function createGooglePkceToken(codeVerifier: string) {
+  return new SignJWT({ v: codeVerifier })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("15m")
+    .sign(getSecret());
+}
+
+export async function verifyGooglePkceToken(token: string): Promise<string | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecret());
+    return typeof payload.v === "string" && payload.v.length >= 43 ? payload.v : null;
   } catch {
     return null;
   }

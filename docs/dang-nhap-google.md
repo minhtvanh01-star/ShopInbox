@@ -34,24 +34,39 @@ GOOGLE_REDIRECT_URI=http://localhost:3000/api/auth/google/callback
 npm run dev
 ```
 
-Mở `/login` → bấm **Đăng nhập với Google**.
+Mở `/login` → **Đăng nhập với Google**, hoặc `/register` → **Đăng ký với Google**.
 
-- Email đã có trong bảng `staff` → đăng nhập (tự liên kết `googleId` nếu trước đó chỉ có mật khẩu).
-- Email mới → tạo tài khoản `staff` (chủ shop nếu DB chưa có nhân viên nào).
-- Token Google **không** lưu lâu dài — chỉ dùng lấy profile, lưu `googleId` + ảnh/email.
+Bảo mật OAuth:
+
+- Authorization code + **PKCE (S256)** + `client_secret`.
+- `state` JWT httpOnly cookie phải khớp query; `nonce` phải khớp `id_token`.
+- Xác minh `id_token` (chữ ký Google JWKS, `iss`, `aud`, `exp`) — không tin userinfo một mình.
+- Chỉ chấp nhận email Google đã `email_verified`.
+- **Không tự liên kết** tài khoản mật khẩu với Google. Liên kết chỉ từ **Hồ sơ** khi đã đăng nhập.
+- Đăng nhập Google chỉ mở tài khoản đã có `googleId`. Tài khoản mới phải **đăng ký** (`mode=register`).
+- Token Google **không** lưu lâu dài — chỉ lấy identity, lưu `googleId` + ảnh/email.
 
 ## 4. Liên kết từ hồ sơ
 
 Đã đăng nhập bằng email/mật khẩu → **Hồ sơ cá nhân** → **Liên kết Google**.
 
-## 5. Đăng ký email / mật khẩu
+## 5. Đăng ký
 
 Trang `/register` (link **Chưa có tài khoản? Đăng ký** trên `/login`):
+
+### Google
+
+- Nút **Đăng ký với Google** → `/api/auth/google/start?mode=register`.
+- Email Google chưa xác minh, hoặc email/googleId đã có trong `staff` → từ chối (không chiếm tài khoản).
+- User đầu tiên → `admin` + tạo shop `shop1`; user sau → `staff` vào `shop1`.
+- Audit: `auth.register` (`method: google`) rồi `auth.login`.
+
+### Email / mật khẩu
 
 - Validate: họ tên bắt buộc, email hợp lệ, mật khẩu ≥ 8 ký tự, xác nhận khớp.
 - Email đã tồn tại (kể cả tài khoản chỉ Google) → từ chối.
 - **User đầu tiên** trong DB → vai trò `admin`; tạo shop `shop1` nếu chưa có.
-- **User sau** → vai trò `staff`, gia nhập shop mặc định `shop1` (giống Google signup mở).
+- **User sau** → vai trò `staff`, gia nhập shop mặc định `shop1`.
 - Sau đăng ký: set cookie session và chuyển `/inbox`.
 - Audit: `auth.register`.
 

@@ -3,20 +3,61 @@
 import Link from "next/link";
 import { useActionState } from "react";
 import { registerAction, type RegisterActionState } from "@/app/register/actions";
+import { GoogleAuthButton } from "@/components/auth/GoogleAuthButton";
+import { GOOGLE_AUTH_ERROR_MESSAGES } from "@/lib/google-auth-errors";
 
 const initialState: RegisterActionState = {};
 
 type RegisterFormProps = {
   shopName: string;
   nextPath: string;
+  googleOAuthConfigured: boolean;
+  authError?: string;
+  authMessage?: string;
 };
 
-export function RegisterForm({ shopName, nextPath }: RegisterFormProps) {
+export function RegisterForm({
+  shopName,
+  nextPath,
+  googleOAuthConfigured,
+  authError,
+  authMessage,
+}: RegisterFormProps) {
   const [state, formAction, pending] = useActionState(registerAction, initialState);
+
+  const oauthErrorText = authError
+    ? (GOOGLE_AUTH_ERROR_MESSAGES[authError] ?? "Đăng ký Google thất bại.")
+    : null;
 
   return (
     <>
-      <form action={formAction} className="mt-6 space-y-5">
+      {googleOAuthConfigured ? (
+        <div className="mt-6">
+          <GoogleAuthButton
+            href={`/api/auth/google/start?mode=register&next=${encodeURIComponent(nextPath)}`}
+            label="Đăng ký với Google"
+          />
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            Google xác minh email trước khi tạo tài khoản. Không tự liên kết với tài khoản mật khẩu
+            sẵn có.
+          </p>
+        </div>
+      ) : (
+        <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+          Đăng ký Google chưa bật — cần cấu hình GOOGLE_CLIENT_ID trên server.
+        </p>
+      )}
+
+      <div className="relative my-6">
+        <div className="absolute inset-0 flex items-center" aria-hidden="true">
+          <div className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-surface px-2 text-slate-400">hoặc email</span>
+        </div>
+      </div>
+
+      <form action={formAction} className="space-y-5">
         <input type="hidden" name="next" value={nextPath} />
         <div className="field-group">
           <label htmlFor="name" className="label mb-0">
@@ -74,6 +115,12 @@ export function RegisterForm({ shopName, nextPath }: RegisterFormProps) {
           />
         </div>
         {state.error ? <p className="alert-error">{state.error}</p> : null}
+        {oauthErrorText ? (
+          <p className="alert-error">
+            {oauthErrorText}
+            {authMessage ? ` (${authMessage})` : null}
+          </p>
+        ) : null}
         <button type="submit" disabled={pending} className="btn-primary w-full">
           {pending ? "Đang tạo tài khoản..." : `Đăng ký ${shopName}`}
         </button>

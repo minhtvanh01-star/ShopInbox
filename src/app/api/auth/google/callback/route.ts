@@ -3,12 +3,16 @@ import { NextResponse } from "next/server";
 import { resolveGoogleAuthUser } from "@/backend/google-auth";
 import {
   GOOGLE_AUTH_STATE_COOKIE,
+  GOOGLE_PKCE_COOKIE,
   verifyGoogleAuthStateToken,
+  verifyGooglePkceToken,
 } from "@/backend/google-auth-state";
 import {
+  assertGoogleIdentitiesMatch,
   exchangeGoogleCode,
   fetchGoogleUserInfo,
   getGoogleOAuthConfig,
+  verifyGoogleIdToken,
 } from "@/backend/google-oauth";
 import { prisma } from "@/backend/prisma";
 import { loadStaffSession } from "@/backend/auth";
@@ -17,13 +21,33 @@ import { auditMetaFromRequest, writeAudit } from "@/backend/audit";
 import { safeInternalPath } from "@/backend/safe-path";
 import { AUDIT_ACTIONS, normalizeRoleCode } from "@/lib/rbac-catalog";
 
-function redirectWithError(request: Request, code: string, next?: string) {
-  const url = new URL("/login", request.url);
-  url.searchParams.set("auth_error", code);
-  if (next) {
-    url.searchParams.set("next", next);
+function authPageUrl(
+  request: Request,
+  path: "/login" | "/register",
+  params: Record<string, string>,
+) {
+  const url = new URL(path, request.url);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
   }
-  return NextResponse.redirect(url);
+  return url;
+}
+
+function redirectWithError(
+  request: Request,
+  code: string,
+  mode: "login" | "register" | "link",
+  next?: string,
+) {
+  if (mode === "link") {
+    return profileRedirect(request, { auth_error: code });
+  }
+
+  const params: Record<string, string> = { auth_error: code };
+  if (next) {
+    params.next = next;
+  }
+  return NextResponse.redirect(authPageUrl(request, mode === "register" ? "/register" : "/login", params));
 }
 
 function profileRedirect(request: Request, params: Record<string, string>) {
@@ -34,6 +58,12 @@ function profileRedirect(request: Request, params: Record<string, string>) {
   return NextResponse.redirect(url);
 }
 
+function clearGoogleAuthCookies(response: NextResponse) {
+  response.cookies.delete(GOOGLE_AUTH_STATE_COOKIE);
+  response.cookies.delete(GOOGLE_PKCE_COOKIE);
+  return response;
+}
+
 async function createSessionForStaff(staffId: string) {
   await setSessionCookie(await loadStaffSession(staffId));
 }
@@ -41,44 +71,73 @@ async function createSessionForStaff(staffId: string) {
 export async function GET(request: Request) {
   const config = getGoogleOAuthConfig();
   if (!config) {
-    return redirectWithError(request, "google_not_configured");
+    return redirectWithError(request, "google_not_configured", "login");
   }
 
   const { searchParams } = new URL(request.url);
+  const jar = await cookies();
+  const storedState = jar.get(GOOGLE_AUTH_STATE_COOKIE)?.value;
+  const storedPkce = jar.get(GOOGLE_PKCE_COOKIE)?.value;
+  const earlyState = storedState ? await verifyGoogleAuthStateToken(storedState) : null;
+  const earlyMode = earlyState?.mode === "register" ? "register" : "login";
+
   const oauthError = searchParams.get("error");
   if (oauthError) {
-    return redirectWithError(request, "google_denied");
+    return clearGoogleAuthCookies(redirectWithError(request, "google_denied", earlyMode));
   }
 
   const code = searchParams.get("code");
   const state = searchParams.get("state");
   if (!code || !state) {
-    return redirectWithError(request, "google_invalid");
+    return clearGoogleAuthCookies(redirectWithError(request, "google_invalid", earlyMode));
   }
 
-  const jar = await cookies();
-  const storedState = jar.get(GOOGLE_AUTH_STATE_COOKIE)?.value;
   if (!storedState || storedState !== state) {
-    return redirectWithError(request, "google_state");
+    return clearGoogleAuthCookies(redirectWithError(request, "google_state", earlyMode));
   }
 
   const statePayload = await verifyGoogleAuthStateToken(state);
-  if (!statePayload) {
-    return redirectWithError(request, "google_state");
+  const codeVerifier = storedPkce ? await verifyGooglePkceToken(storedPkce) : null;
+  if (!statePayload || !codeVerifier) {
+    return clearGoogleAuthCookies(redirectWithError(request, "google_state", earlyMode));
   }
 
   const nextPath = safeInternalPath(statePayload.next);
+  const mode = statePayload.mode;
 
-  if (statePayload.mode === "link") {
+  if (mode === "link") {
     const session = await getSession();
     if (!session || session.staffId !== statePayload.staffId) {
-      return NextResponse.redirect(new URL("/login?next=/settings/profile", request.url));
+      return clearGoogleAuthCookies(
+        NextResponse.redirect(new URL("/login?next=/settings/profile", request.url)),
+      );
     }
   }
 
   try {
-    const token = await exchangeGoogleCode(config, code);
-    const googleUser = await fetchGoogleUserInfo(token.accessToken);
+    const token = await exchangeGoogleCode(config, code, codeVerifier);
+    const googleUser = await verifyGoogleIdToken(config, token.idToken, statePayload.nonce);
+
+    try {
+      const userInfo = await fetchGoogleUserInfo(token.accessToken);
+      assertGoogleIdentitiesMatch(googleUser, userInfo);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (message.includes("không khớp")) {
+        throw err;
+      }
+    }
+
+    if (!googleUser.emailVerified) {
+      await writeAudit({
+        ...auditMetaFromRequest(request),
+        actorEmail: googleUser.email,
+        action: AUDIT_ACTIONS.authLoginFail,
+        entityType: "Session",
+        metadata: { reason: "google_email_unverified", method: "google" },
+      });
+      return clearGoogleAuthCookies(redirectWithError(request, "google_email_unverified", mode, nextPath));
+    }
 
     const [existingByGoogleId, existingByEmail, staffCount, shopExists] = await Promise.all([
       prisma.staff.findUnique({ where: { googleId: googleUser.sub } }),
@@ -87,47 +146,25 @@ export async function GET(request: Request) {
       prisma.shop.findFirst({ select: { id: true } }).then(Boolean),
     ]);
 
-    const resolved = resolveGoogleAuthUser({
-      googleUser,
-      existingByGoogleId,
-      existingByEmail,
-      staffCount,
-      shopExists,
-    });
-
-    if (resolved.action === "error") {
-      await writeAudit({
-        ...auditMetaFromRequest(request),
-        actorEmail: googleUser.email,
-        action: AUDIT_ACTIONS.authLoginFail,
-        entityType: "Session",
-        metadata: { reason: resolved.code, method: "google" },
-      });
-      const response =
-        statePayload.mode === "link"
-          ? profileRedirect(request, { auth_error: resolved.code })
-          : redirectWithError(request, resolved.code, nextPath);
-      response.cookies.delete(GOOGLE_AUTH_STATE_COOKIE);
-      return response;
-    }
-
-    if (statePayload.mode === "link") {
+    if (mode === "link") {
       const session = await getSession();
       if (!session) {
-        return NextResponse.redirect(new URL("/login?next=/settings/profile", request.url));
+        return clearGoogleAuthCookies(
+          NextResponse.redirect(new URL("/login?next=/settings/profile", request.url)),
+        );
       }
 
       const current = await prisma.staff.findUniqueOrThrow({ where: { id: session.staffId } });
       if (current.googleId) {
-        return profileRedirect(request, { auth_error: "google_already_linked" });
+        return clearGoogleAuthCookies(profileRedirect(request, { auth_error: "google_already_linked" }));
       }
 
       if (existingByGoogleId && existingByGoogleId.id !== session.staffId) {
-        return profileRedirect(request, { auth_error: "google_account_taken" });
+        return clearGoogleAuthCookies(profileRedirect(request, { auth_error: "google_account_taken" }));
       }
 
       if (existingByEmail && existingByEmail.id !== session.staffId) {
-        return profileRedirect(request, { auth_error: "google_email_taken" });
+        return clearGoogleAuthCookies(profileRedirect(request, { auth_error: "google_email_taken" }));
       }
 
       await prisma.staff.update({
@@ -140,9 +177,27 @@ export async function GET(request: Request) {
 
       await createSessionForStaff(session.staffId);
 
-      const response = profileRedirect(request, { auth_success: "google_linked" });
-      response.cookies.delete(GOOGLE_AUTH_STATE_COOKIE);
-      return response;
+      return clearGoogleAuthCookies(profileRedirect(request, { auth_success: "google_linked" }));
+    }
+
+    const resolved = resolveGoogleAuthUser({
+      googleUser,
+      existingByGoogleId,
+      existingByEmail,
+      staffCount,
+      shopExists,
+      intent: mode === "register" ? "register" : "login",
+    });
+
+    if (resolved.action === "error") {
+      await writeAudit({
+        ...auditMetaFromRequest(request),
+        actorEmail: googleUser.email,
+        action: AUDIT_ACTIONS.authLoginFail,
+        entityType: "Session",
+        metadata: { reason: resolved.code, method: "google" },
+      });
+      return clearGoogleAuthCookies(redirectWithError(request, resolved.code, mode, nextPath));
     }
 
     if (resolved.action === "login") {
@@ -167,15 +222,10 @@ export async function GET(request: Request) {
           entityId: resolved.staffId,
           metadata: { reason: "inactive", method: "google" },
         });
-        const response = redirectWithError(request, "inactive", nextPath);
-        response.cookies.delete(GOOGLE_AUTH_STATE_COOKIE);
-        return response;
+        return clearGoogleAuthCookies(redirectWithError(request, "inactive", mode, nextPath));
       }
 
-      const updateData: { googleId?: string; name?: string; avatarUrl?: string | null } = {};
-      if (resolved.linkGoogleId) {
-        updateData.googleId = resolved.linkGoogleId;
-      }
+      const updateData: { name?: string; avatarUrl?: string | null } = {};
       if (resolved.updateProfile?.name) {
         updateData.name = resolved.updateProfile.name;
       }
@@ -201,9 +251,7 @@ export async function GET(request: Request) {
         metadata: { method: "google" },
       });
 
-      const response = NextResponse.redirect(new URL(nextPath, request.url));
-      response.cookies.delete(GOOGLE_AUTH_STATE_COOKIE);
-      return response;
+      return clearGoogleAuthCookies(NextResponse.redirect(new URL(nextPath, request.url)));
     }
 
     if (resolved.createShop) {
@@ -232,10 +280,10 @@ export async function GET(request: Request) {
     await writeAudit({
       ...auditMetaFromRequest(request),
       actor: session,
-      action: AUDIT_ACTIONS.staffCreate,
+      action: AUDIT_ACTIONS.authRegister,
       entityType: "Staff",
       entityId: staff.id,
-      metadata: { method: "google", roleCode: staff.roleCode },
+      metadata: { method: "google", roleCode: staff.roleCode, bootstrap: Boolean(resolved.createShop) },
     });
     await writeAudit({
       ...auditMetaFromRequest(request),
@@ -246,9 +294,7 @@ export async function GET(request: Request) {
       metadata: { method: "google", bootstrap: Boolean(resolved.createShop) },
     });
 
-    const response = NextResponse.redirect(new URL(nextPath, request.url));
-    response.cookies.delete(GOOGLE_AUTH_STATE_COOKIE);
-    return response;
+    return clearGoogleAuthCookies(NextResponse.redirect(new URL(nextPath, request.url)));
   } catch (err) {
     const message = err instanceof Error ? err.message : "google_failed";
     await writeAudit({
@@ -257,11 +303,13 @@ export async function GET(request: Request) {
       entityType: "Session",
       metadata: { reason: "google_failed", method: "google" },
     });
-    const url = new URL("/login", request.url);
-    url.searchParams.set("auth_error", "google_failed");
-    url.searchParams.set("auth_message", message.slice(0, 200));
-    const response = NextResponse.redirect(url);
-    response.cookies.delete(GOOGLE_AUTH_STATE_COOKIE);
-    return response;
+    const failedMode = statePayload.mode === "register" ? "register" : "login";
+    const codeName =
+      message.includes("id_token") || message.includes("nonce") ? "google_id_token" : "google_failed";
+    const url = authPageUrl(request, failedMode === "register" ? "/register" : "/login", {
+      auth_error: codeName,
+      auth_message: message.slice(0, 200),
+    });
+    return clearGoogleAuthCookies(NextResponse.redirect(url));
   }
 }

@@ -57,7 +57,7 @@ const saveInitialState: SaveChannelCredentialsState = {};
 const pickInitialState: CompleteMetaPageState = {};
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  meta_not_configured: "Chưa cấu hình OAuth Meta — liên hệ admin (META_APP_ID, META_APP_SECRET, META_REDIRECT_URI).",
+  meta_not_configured: "Chưa cấu hình OAuth Meta — liên hệ admin (META_APP_ID, META_APP_SECRET).",
   zalo_not_configured: "Chưa cấu hình OAuth Zalo — liên hệ admin (ZALO_APP_ID, ZALO_APP_SECRET, ZALO_REDIRECT_URI).",
   meta_denied: "Bạn đã hủy cấp quyền Meta.",
   zalo_denied: "Bạn đã hủy cấp quyền Zalo.",
@@ -531,7 +531,7 @@ export function AddConnectionModal({
                                   ? missingOAuthEnvVars
                                   : selected.channel === "zalo"
                                     ? ["ZALO_APP_ID", "ZALO_APP_SECRET", "ZALO_REDIRECT_URI"]
-                                    : ["META_APP_ID", "META_APP_SECRET", "META_REDIRECT_URI"]
+                                    : ["META_APP_ID", "META_APP_SECRET"]
                                 ).join(", ")}
                               </span>
                               . Điền trong <code className="text-xs">.env</code> (xem{" "}
