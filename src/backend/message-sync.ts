@@ -38,8 +38,8 @@ export async function findChannelAccount(channel: Channel, externalAccountId: st
   return prisma.channelAccount.findFirst({
     where: {
       channel,
-      pageId: externalAccountId,
       status: "ready",
+      OR: [{ pageId: externalAccountId }, { linkedPageId: externalAccountId }],
     },
   });
 }
@@ -219,15 +219,19 @@ export async function ingestRecentMetaMessages(input: {
 
 export async function touchChannelWebhook(channel: Channel, externalAccountId: string) {
   if (channel === "zalo") {
-    await prisma.channelAccount.updateMany({
+    const result = await prisma.channelAccount.updateMany({
       where: { channel: "zalo", oaId: externalAccountId },
       data: { lastWebhookAt: new Date() },
     });
-    return;
+    return result.count;
   }
 
-  await prisma.channelAccount.updateMany({
-    where: { channel, pageId: externalAccountId },
+  const result = await prisma.channelAccount.updateMany({
+    where: {
+      channel,
+      OR: [{ pageId: externalAccountId }, { linkedPageId: externalAccountId }],
+    },
     data: { lastWebhookAt: new Date() },
   });
+  return result.count;
 }

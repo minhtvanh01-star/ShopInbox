@@ -253,8 +253,9 @@ export function SettingsWorkspace({
                   ) : channel.status === "ready" ? (
                     <div className="mt-2 space-y-2">
                       <p className="text-xs text-amber-700">
-                        OAuth đã nối, nhưng Inbox chỉ có tin khi webhook chạy hoặc khi bấm đồng bộ.
-                        Tin trên Meta Business Suite không tự chảy sang ShopInbox.
+                        OAuth đã nối. Checklist webhook chỉ xanh khi Meta POST event tới server —
+                        verify URL trên Meta chưa đủ. App chưa phát hành thì chỉ nhận được sự kiện
+                        thử từ dashboard (field messages → Thử nghiệm, chọn đúng Fanpage).
                       </p>
                       {(channel.channel === "facebook" || channel.channel === "instagram") &&
                       metaWebhookUrl ? (

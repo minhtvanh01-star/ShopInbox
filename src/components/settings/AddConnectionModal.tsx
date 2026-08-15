@@ -140,17 +140,23 @@ function CopyButton({ value, label }: { value: string; label?: string }) {
 
 function SetupChecklist({
   oauthDone,
-  webhookRegistered,
+  webhookUrlReady,
   messagesSynced,
 }: {
   oauthDone: boolean;
-  webhookRegistered: boolean;
+  webhookUrlReady: boolean;
   messagesSynced: boolean;
 }) {
   const items = [
     { done: oauthDone, label: "OAuth — đăng nhập & lưu token" },
-    { done: webhookRegistered, label: "Webhook URL — đăng ký trong Meta/Zalo dashboard" },
-    { done: messagesSynced, label: "Tin nhắn đã đồng bộ vào Inbox" },
+    {
+      done: webhookUrlReady,
+      label: "Webhook URL sẵn sàng — dán vào Meta và bật field messages",
+    },
+    {
+      done: messagesSynced,
+      label: "Đã nhận event từ Meta (tin mới hoặc Thử nghiệm)",
+    },
   ];
 
   return (
@@ -450,12 +456,20 @@ export function AddConnectionModal({
                     <p className="section-label mb-3">Tiến độ thiết lập</p>
                     <SetupChecklist
                       oauthDone={Boolean(account.hasOAuthToken)}
-                      webhookRegistered={Boolean(account.lastWebhookAt)}
+                      webhookUrlReady={Boolean(account.hasOAuthToken && webhookUrl)}
                       messagesSynced={Boolean(account.lastWebhookAt)}
                     />
                     {account.lastWebhookAt ? (
                       <p className="mt-3 text-xs text-emerald-600">
                         Tin nhắn gần nhất: {formatDateTime(account.lastWebhookAt)}
+                      </p>
+                    ) : account.hasOAuthToken ? (
+                      <p className="mt-3 text-xs text-amber-700">
+                        Meta chưa gửi event tới ShopInbox. App phải{" "}
+                        <span className="font-medium">phát hành</span>, hoặc bấm{" "}
+                        <span className="font-medium">Thử nghiệm</span> trên field{" "}
+                        <code className="text-[11px]">messages</code> (chọn đúng Fanpage{" "}
+                        {account.displayName ?? "đã nối"}).
                       </p>
                     ) : null}
                   </div>
