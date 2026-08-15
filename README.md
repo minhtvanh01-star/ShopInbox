@@ -2,7 +2,7 @@
 
 Web app inbox đa kênh cho cửa hàng: gom tin nhắn, trả lời, lưu đơn hàng.
 
-Hiện tại: **Lát 3** — đăng nhập + Inbox đọc/ghi DB + **tạo đơn từ chat**. Chưa nối Facebook / Zalo / Instagram thật.
+Hiện tại: đăng nhập + Inbox đọc/ghi DB + tạo đơn từ chat + **OAuth Facebook / Instagram / Zalo** (webhook đồng bộ tin).
 
 ## Yêu cầu
 
@@ -97,9 +97,11 @@ Rồi đổi `.env` sang `postgresql://shopinbox:shopinbox@127.0.0.1:5433/shopin
 
 ## Cài đặt kênh
 
-Menu **Cài đặt** → **Thêm kết nối** để lưu App ID, secret, Page/OA ID (chưa OAuth thật).
+1. Điền `META_APP_ID` / `META_APP_SECRET` (và `NEXT_PUBLIC_APP_URL`) trong `.env` — xem `.env.example`.
+2. Trên Meta Developers dán **OAuth Redirect** = `{APP_URL}/api/connect/meta/callback` và **Webhook** = `{APP_URL}/api/webhooks/meta`.
+3. Trong app: menu **Cài đặt** → **Thêm kết nối** → **Kết nối với Facebook/Instagram** (OAuth). Settings cũng hiện URL + verify token để copy.
 
-Hướng dẫn lấy credential từ Meta / Zalo / web widget: [docs/ket-noi-kenh.md](docs/ket-noi-kenh.md).
+Chi tiết từng ô trên Meta / Zalo: [docs/ket-noi-kenh.md](docs/ket-noi-kenh.md), checklist env: [docs/env-checklist.md](docs/env-checklist.md).
 
 ## Cấu trúc src
 

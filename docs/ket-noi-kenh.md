@@ -29,18 +29,23 @@ Checklist nhanh (local + biến phải dán thủ công): [env-checklist.md](./e
 ngrok http 3000
 ```
 
-Cập nhật `.env`:
+Cập nhật `.env` (chỉ cần `NEXT_PUBLIC_APP_URL` — redirect OAuth được suy tự động nếu `META_REDIRECT_URI` / `ZALO_REDIRECT_URI` trống):
 
 ```env
 NEXT_PUBLIC_APP_URL=https://abc123.ngrok-free.app
-META_REDIRECT_URI=https://abc123.ngrok-free.app/api/connect/meta/callback
-ZALO_REDIRECT_URI=https://abc123.ngrok-free.app/api/connect/zalo/callback
+# Tuỳ chọn — nếu trống app dùng NEXT_PUBLIC_APP_URL + path callback
+# META_REDIRECT_URI=https://abc123.ngrok-free.app/api/connect/meta/callback
+# ZALO_REDIRECT_URI=https://abc123.ngrok-free.app/api/connect/zalo/callback
 ```
 
-Webhook:
+URL cố định (copy từ **Cài đặt** trong app cũng được):
 
-- Meta: `https://your-domain/api/webhooks/meta`
-- Zalo: `https://your-domain/api/webhooks/zalo`
+| Mục | Path |
+|-----|------|
+| Meta OAuth callback | `{APP_URL}/api/connect/meta/callback` |
+| Meta Webhook | `{APP_URL}/api/webhooks/meta` |
+| Zalo OAuth callback | `{APP_URL}/api/connect/zalo/callback` |
+| Zalo Webhook | `{APP_URL}/api/webhooks/zalo` |
 
 ---
 
@@ -83,14 +88,14 @@ Local qua ngrok: dùng URL ngrok tương ứng (và thêm miền ngrok vào App 
 ```env
 META_APP_ID=
 META_APP_SECRET=
-META_REDIRECT_URI=https://shopinbox-production.up.railway.app/api/connect/meta/callback
 META_WEBHOOK_VERIFY_TOKEN=chuoi-bi-mat-tuy-chon
 NEXT_PUBLIC_APP_URL=https://shopinbox-production.up.railway.app
+# META_REDIRECT_URI tuỳ chọn — nếu trống hoặc còn localhost, app suy từ NEXT_PUBLIC_APP_URL
 ```
 
 `META_WEBHOOK_VERIFY_TOKEN` dùng khi Meta gọi GET verify webhook (`/api/webhooks/meta`).
 
-> **Railway:** không để redirect OAuth trỏ `localhost`. App lắng nghe cổng nội bộ `8080` — code dùng `NEXT_PUBLIC_APP_URL` để redirect về domain public (tránh nhảy `localhost:8080` sau login/OAuth).
+> **Railway:** đặt đúng `NEXT_PUBLIC_APP_URL` = domain public. App lắng nghe cổng nội bộ `8080` — code suy OAuth callback / webhook từ URL này (tránh nhảy `localhost:8080`).
 
 ### Webhook tin nhắn
 

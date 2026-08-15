@@ -47,6 +47,8 @@ type AddConnectionModalProps = {
   zaloOAuthConfigured: boolean;
   metaMissingEnvVars: string[];
   zaloMissingEnvVars: string[];
+  metaOAuthRedirectUri: string;
+  zaloOAuthRedirectUri: string;
   metaWebhookUrl: string;
   zaloWebhookUrl: string;
   metaWebhookVerifyToken: string;
@@ -191,6 +193,8 @@ export function AddConnectionModal({
   zaloOAuthConfigured,
   metaMissingEnvVars,
   zaloMissingEnvVars,
+  metaOAuthRedirectUri,
+  zaloOAuthRedirectUri,
   metaWebhookUrl,
   zaloWebhookUrl,
   metaWebhookVerifyToken,
@@ -280,6 +284,12 @@ export function AddConnectionModal({
       ? zaloWebhookUrl
       : selected.channel === "facebook" || selected.channel === "instagram"
         ? metaWebhookUrl
+        : null;
+  const oauthRedirectUri =
+    selected.channel === "zalo"
+      ? zaloOAuthRedirectUri
+      : selected.channel === "facebook" || selected.channel === "instagram"
+        ? metaOAuthRedirectUri
         : null;
 
   async function handleDisconnect() {
@@ -572,6 +582,21 @@ export function AddConnectionModal({
                           ? "Đăng nhập Zalo OA và cấp quyền cho ứng dụng ShopInbox."
                           : "Đăng nhập Facebook (admin Fanpage / Instagram Business) và cấp quyền."}
                       </p>
+                      {oauthRedirectUri ? (
+                        <div className="mt-3">
+                          <p className="text-xs text-slate-500">
+                            {selected.channel === "zalo"
+                              ? "Redirect URI (dán vào Zalo Developers):"
+                              : "OAuth Redirect URI (dán vào Meta → Facebook Login → Valid OAuth Redirect URIs):"}
+                          </p>
+                          <div className="mt-1 flex items-start gap-2 rounded bg-surface px-2 py-2">
+                            <code className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700">
+                              {oauthRedirectUri}
+                            </code>
+                            <CopyButton value={oauthRedirectUri} />
+                          </div>
+                        </div>
+                      ) : null}
                       {canConnect && oauthConfigured && oauthUrl ? (
                         <a href={oauthUrl} className="btn-primary mt-3 inline-flex">
                           {connectLabel}
