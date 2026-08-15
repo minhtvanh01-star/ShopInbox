@@ -1,4 +1,5 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
+import { resolveOAuthRedirectUri } from "@/backend/oauth-config";
 
 export type GoogleOAuthConfig = {
   clientId: string;
@@ -31,13 +32,19 @@ const GOOGLE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth
 export function getGoogleOAuthConfig(): GoogleOAuthConfig | null {
   const clientId = process.env.GOOGLE_CLIENT_ID?.trim();
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET?.trim();
-  const redirectUri = process.env.GOOGLE_REDIRECT_URI?.trim();
 
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!clientId || !clientSecret) {
     return null;
   }
 
-  return { clientId, clientSecret, redirectUri };
+  return {
+    clientId,
+    clientSecret,
+    redirectUri: resolveOAuthRedirectUri(
+      process.env.GOOGLE_REDIRECT_URI,
+      "/api/auth/google/callback",
+    ),
+  };
 }
 
 function base64UrlEncode(bytes: Uint8Array) {

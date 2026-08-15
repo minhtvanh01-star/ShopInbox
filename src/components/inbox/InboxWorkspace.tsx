@@ -9,6 +9,8 @@ import {
   TAG_LABEL,
   formatMoney,
   formatTime,
+  getInboxChannelFilters,
+  inboxChannelsSubtitle,
   orderTotal,
 } from "@/lib/labels";
 import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
@@ -23,14 +25,6 @@ import type {
   QuickReply,
 } from "@/lib/types";
 
-const FILTERS: Array<{ id: "all" | Channel; label: string }> = [
-  { id: "all", label: "Tất cả" },
-  { id: "facebook", label: "Facebook" },
-  { id: "zalo", label: "Zalo" },
-  { id: "instagram", label: "Instagram" },
-  { id: "web", label: "Web" },
-];
-
 type MobilePane = "list" | "chat" | "customer";
 
 type InboxWorkspaceProps = {
@@ -40,6 +34,8 @@ type InboxWorkspaceProps = {
   orders: Order[];
   products: Product[];
   quickReplies: QuickReply[];
+  /** Kênh đã nối / có hội thoại — để hiện pill từ cấu hình, không hardcode. */
+  activeChannels?: Channel[];
 };
 
 type ConversationPatch = {
@@ -61,7 +57,12 @@ export function InboxWorkspace({
   orders,
   products,
   quickReplies,
+  activeChannels,
 }: InboxWorkspaceProps) {
+  const channelFilters = useMemo(
+    () => getInboxChannelFilters(activeChannels),
+    [activeChannels],
+  );
   const [channel, setChannel] = useState<"all" | Channel>("all");
   const [selectedId, setSelectedId] = useState(conversations[0]?.id ?? "");
   const [draft, setDraft] = useState("");
@@ -97,12 +98,16 @@ export function InboxWorkspace({
     return (id: string) => map.get(id);
   }, [customers]);
 
+  // Nếu kênh đang chọn biến mất khỏi bộ lọc (ngắt kết nối), về "Tất cả"
+  const selectedFilter =
+    channelFilters.some((item) => item.id === channel) ? channel : "all";
+
   const visible = useMemo(
     () =>
       optimisticConversations
-        .filter((item) => channel === "all" || item.channel === channel)
+        .filter((item) => selectedFilter === "all" || item.channel === selectedFilter)
         .sort((a, b) => +new Date(b.lastAt) - +new Date(a.lastAt)),
-    [channel, optimisticConversations],
+    [selectedFilter, optimisticConversations],
   );
 
   const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
@@ -166,15 +171,17 @@ export function InboxWorkspace({
       >
         <div className="border-b border-border px-4 py-4">
           <h1 className="text-lg font-semibold text-slate-900">Inbox</h1>
-          <p className="mt-0.5 text-xs text-slate-500">Tin nhắn đồng bộ từ Facebook, Zalo, Instagram</p>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {inboxChannelsSubtitle(channelFilters)}
+          </p>
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {FILTERS.map((item) => (
+            {channelFilters.map((item) => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => setChannel(item.id)}
                 className={`filter-pill ${
-                  channel === item.id ? "filter-pill-active" : "filter-pill-inactive"
+                  selectedFilter === item.id ? "filter-pill-active" : "filter-pill-inactive"
                 }`}
               >
                 {item.label}

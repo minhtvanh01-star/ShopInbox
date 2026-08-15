@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   formatDateTimeVN,
   formatTimeVN,
+  getInboxChannelFilters,
+  inboxChannelsSubtitle,
   parseVnDayEnd,
   parseVnDayStart,
 } from "./labels";
@@ -33,5 +35,37 @@ describe("parseVnDayStart / parseVnDayEnd", () => {
     expect(parseVnDayStart(undefined)).toBeUndefined();
     expect(parseVnDayStart("15/08/2026")).toBeUndefined();
     expect(parseVnDayEnd("")).toBeUndefined();
+  });
+});
+
+describe("getInboxChannelFilters", () => {
+  it("builds filters from CHANNEL_LABEL catalog", () => {
+    expect(getInboxChannelFilters()).toEqual([
+      { id: "all", label: "Tất cả" },
+      { id: "facebook", label: "Facebook" },
+      { id: "zalo", label: "Zalo" },
+      { id: "instagram", label: "Instagram" },
+      { id: "web", label: "Web" },
+    ]);
+  });
+
+  it("limits pills to active channels when provided", () => {
+    expect(getInboxChannelFilters(["facebook", "zalo"])).toEqual([
+      { id: "all", label: "Tất cả" },
+      { id: "facebook", label: "Facebook" },
+      { id: "zalo", label: "Zalo" },
+    ]);
+  });
+
+  it("falls back to full catalog when active set is empty", () => {
+    expect(getInboxChannelFilters([])).toHaveLength(5);
+  });
+});
+
+describe("inboxChannelsSubtitle", () => {
+  it("lists channel names from filters", () => {
+    expect(inboxChannelsSubtitle(getInboxChannelFilters(["facebook", "web"]))).toBe(
+      "Tin nhắn đồng bộ từ Facebook, Web",
+    );
   });
 });
