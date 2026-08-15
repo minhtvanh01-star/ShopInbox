@@ -1,9 +1,13 @@
 import type { ReactNode } from "react";
 import { Sidebar } from "@/components/Sidebar";
-import { getShopContext } from "@/lib/queries";
+import { getInboxNotificationSummary, getShopContext } from "@/lib/queries";
+import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const shop = await getShopContext();
+  const inboxNotices = shop.permissions.includes(PERMISSION_CODES.inboxRead)
+    ? await getInboxNotificationSummary()
+    : { unreadTotal: 0, unreadConversations: 0, notices: [] };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -12,6 +16,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         staffName={shop.staffName}
         roleLabel={shop.roleLabel}
         permissions={shop.permissions}
+        inboxNotices={inboxNotices}
       />
       <main className="flex min-w-0 flex-1 flex-col pt-14 md:pt-0">{children}</main>
     </div>

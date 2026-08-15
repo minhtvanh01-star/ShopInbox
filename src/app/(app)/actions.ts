@@ -4,11 +4,144 @@
 import { revalidatePath } from "next/cache";
 import { writeAudit } from "@/backend/audit";
 import { dispatchOutboundMessage } from "@/backend/channel-send";
+import { isReplyClaimActive } from "@/backend/reply-claim";
 import { requirePermission } from "@/backend/rbac";
 import { nextOrderCode, normalizeOrderItems, type DraftOrderItem } from "@/backend/order-code";
 import { prisma } from "@/backend/prisma";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
-import type { OrderStatus } from "@/lib/types";
+import type { ConversationTag, OrderStatus } from "@/lib/types";
+
+function assertCanReply(input: {
+  staffId: string | null;
+  replyClaimedAt: Date | null;
+  currentStaffId: string;
+}) {
+  if (!input.staffId || !isReplyClaimActive(input.replyClaimedAt)) {
+    throw new Error('Hãy bấm "Tôi trả lời" trước khi gửi tin.');
+  }
+  if (input.staffId !== input.currentStaffId) {
+    throw new Error("Hội thoại đang được nhân viên khác trả lời.");
+  }
+}
+
+export async function claimConversation(conversationId: string) {
+  const session = await requirePermission(PERMISSION_CODES.inboxReply);
+  if (!conversationId) {
+    throw new Error("Thiếu hội thoại");
+  }
+
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, shopId: session.shopId },
+    include: { staff: { select: { name: true } } },
+  });
+  if (!conversation) {
+    throw new Error("Không tìm thấy hội thoại");
+  }
+
+  if (
+    conversation.staffId &&
+    conversation.staffId !== session.staffId &&
+    isReplyClaimActive(conversation.replyClaimedAt)
+  ) {
+    throw new Error(
+      `${conversation.staff?.name ?? "Nhân viên khác"} đang trả lời hội thoại này.`,
+    );
+  }
+
+  const claimedAt = new Date();
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: {
+      staffId: session.staffId,
+      replyClaimedAt: claimedAt,
+    },
+  });
+
+  revalidatePath("/inbox");
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.conversationClaim,
+    entityType: "Conversation",
+    entityId: conversationId,
+  });
+
+  return { ok: true as const, claimedAt: claimedAt.toISOString() };
+}
+
+export async function releaseConversation(conversationId: string) {
+  const session = await requirePermission(PERMISSION_CODES.inboxReply);
+  if (!conversationId) {
+    throw new Error("Thiếu hội thoại");
+  }
+
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, shopId: session.shopId },
+    select: { id: true, staffId: true, replyClaimedAt: true },
+  });
+  if (!conversation) {
+    throw new Error("Không tìm thấy hội thoại");
+  }
+
+  if (
+    conversation.staffId &&
+    conversation.staffId !== session.staffId &&
+    isReplyClaimActive(conversation.replyClaimedAt)
+  ) {
+    throw new Error("Chỉ người đang trả lời mới nhả được hội thoại.");
+  }
+
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: {
+      staffId: null,
+      replyClaimedAt: null,
+    },
+  });
+
+  revalidatePath("/inbox");
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.conversationRelease,
+    entityType: "Conversation",
+    entityId: conversationId,
+  });
+
+  return { ok: true as const };
+}
+
+/** Gia hạn claim khi đang gõ / còn dùng — tránh timeout vì idle. */
+export async function touchConversationClaim(conversationId: string) {
+  const session = await requirePermission(PERMISSION_CODES.inboxReply);
+  if (!conversationId) {
+    throw new Error("Thiếu hội thoại");
+  }
+
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, shopId: session.shopId },
+    select: { id: true, staffId: true, replyClaimedAt: true },
+  });
+  if (!conversation) {
+    throw new Error("Không tìm thấy hội thoại");
+  }
+
+  if (conversation.staffId !== session.staffId || !isReplyClaimActive(conversation.replyClaimedAt)) {
+    throw new Error("Bạn không còn giữ hội thoại này.");
+  }
+
+  const claimedAt = new Date();
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: {
+      staffId: session.staffId,
+      replyClaimedAt: claimedAt,
+    },
+  });
+
+  // Không revalidatePath — tránh nhảy UI khi đang gõ; client tự cập nhật claimedAt.
+  return { ok: true as const, claimedAt: claimedAt.toISOString() };
+}
 
 export async function sendMessage(conversationId: string, text: string) {
   const session = await requirePermission(PERMISSION_CODES.inboxReply);
@@ -23,6 +156,12 @@ export async function sendMessage(conversationId: string, text: string) {
   if (!conversation) {
     throw new Error("Không tìm thấy hội thoại");
   }
+
+  assertCanReply({
+    staffId: conversation.staffId,
+    replyClaimedAt: conversation.replyClaimedAt,
+    currentStaffId: session.staffId,
+  });
 
   const outbound = await dispatchOutboundMessage({
     shopId: session.shopId,
@@ -50,6 +189,9 @@ export async function sendMessage(conversationId: string, text: string) {
       lastMessage: body,
       lastAt: createdAt,
       unread: 0,
+      // Gia hạn claim khi đang trả lời
+      replyClaimedAt: createdAt,
+      staffId: session.staffId,
     },
   });
 
@@ -74,6 +216,74 @@ export async function sendMessage(conversationId: string, text: string) {
     text: message.text,
     createdAt: message.createdAt.toISOString(),
   };
+}
+
+export async function markConversationRead(conversationId: string) {
+  const session = await requirePermission(PERMISSION_CODES.inboxRead);
+  if (!conversationId) {
+    throw new Error("Thiếu hội thoại");
+  }
+
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, shopId: session.shopId },
+    select: { id: true, unread: true },
+  });
+  if (!conversation) {
+    throw new Error("Không tìm thấy hội thoại");
+  }
+
+  if (conversation.unread === 0) {
+    return { ok: true as const };
+  }
+
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: { unread: 0 },
+  });
+
+  revalidatePath("/inbox");
+  return { ok: true as const };
+}
+
+const CONVERSATION_TAGS: ConversationTag[] = ["new", "consulting", "closed", "spam"];
+
+export async function updateConversationTag(
+  conversationId: string,
+  tag: ConversationTag,
+) {
+  const session = await requirePermission(PERMISSION_CODES.inboxReply);
+  if (!conversationId || !CONVERSATION_TAGS.includes(tag)) {
+    throw new Error("Nhãn hội thoại không hợp lệ");
+  }
+
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, shopId: session.shopId },
+    select: { id: true, tag: true },
+  });
+  if (!conversation) {
+    throw new Error("Không tìm thấy hội thoại");
+  }
+
+  if (conversation.tag === tag) {
+    return { ok: true as const };
+  }
+
+  await prisma.conversation.update({
+    where: { id: conversationId },
+    data: { tag },
+  });
+
+  revalidatePath("/inbox");
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.conversationTagChange,
+    entityType: "Conversation",
+    entityId: conversationId,
+    metadata: { from: conversation.tag, to: tag },
+  });
+
+  return { ok: true as const };
 }
 
 export async function createOrder(input: {

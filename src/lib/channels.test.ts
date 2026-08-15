@@ -12,7 +12,7 @@ describe("channelHasCredentials", () => {
     ).toBe(true);
   });
 
-  it("requires all Meta fields for facebook manual config", () => {
+  it("does not mark Meta ready from App ID/Secret alone", () => {
     expect(
       channelHasCredentials("facebook", {
         appId: "1",
@@ -20,7 +20,7 @@ describe("channelHasCredentials", () => {
         pageId: "p",
         webhookSecret: "w",
       }),
-    ).toBe(true);
+    ).toBe(false);
 
     expect(
       channelHasCredentials("facebook", {
@@ -30,13 +30,20 @@ describe("channelHasCredentials", () => {
     ).toBe(false);
   });
 
-  it("requires oaId for zalo", () => {
+  it("requires token + oaId (or displayName) for zalo", () => {
     expect(
       channelHasCredentials("zalo", {
         appId: "1",
         appSecret: "s",
         oaId: "oa",
         webhookSecret: "w",
+      }),
+    ).toBe(false);
+
+    expect(
+      channelHasCredentials("zalo", {
+        accessToken: "token",
+        oaId: "oa",
       }),
     ).toBe(true);
   });

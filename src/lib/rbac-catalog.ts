@@ -234,6 +234,9 @@ export const AUDIT_ACTIONS = {
   profileUpdate: "profile.update",
   profilePasswordChange: "profile.password_change",
   messageSend: "message.send",
+  conversationTagChange: "conversation.tag_change",
+  conversationClaim: "conversation.claim",
+  conversationRelease: "conversation.release",
 } as const;
 
 export type AuditActionCode = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
@@ -253,6 +256,9 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   [AUDIT_ACTIONS.profileUpdate]: "Cập nhật hồ sơ",
   [AUDIT_ACTIONS.profilePasswordChange]: "Đổi mật khẩu",
   [AUDIT_ACTIONS.messageSend]: "Gửi tin nhắn",
+  [AUDIT_ACTIONS.conversationTagChange]: "Đổi nhãn hội thoại",
+  [AUDIT_ACTIONS.conversationClaim]: "Nhận trả lời hội thoại",
+  [AUDIT_ACTIONS.conversationRelease]: "Nhả hội thoại",
 };
 
 export const AUDIT_ENTITY_LABEL: Record<string, string> = {

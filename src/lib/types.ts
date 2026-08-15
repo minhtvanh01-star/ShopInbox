@@ -57,6 +57,10 @@ export type Conversation = {
   lastAt: string;
   unread: number;
   tag: ConversationTag;
+  /** Nhân viên đang claim trả lời (null nếu trống / hết hạn). */
+  replyStaffId?: string | null;
+  replyStaffName?: string | null;
+  replyClaimedAt?: string | null;
 };
 
 export type OrderItem = {

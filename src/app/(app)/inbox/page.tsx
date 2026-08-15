@@ -1,9 +1,18 @@
 import { InboxWorkspace } from "@/components/inbox/InboxWorkspace";
-import { getChannelAccounts, getInboxData } from "@/lib/queries";
+import { getChannelAccounts, getInboxData, getShopContext } from "@/lib/queries";
 import type { Channel } from "@/lib/types";
 
-export default async function InboxPage() {
-  const [data, accounts] = await Promise.all([getInboxData(), getChannelAccounts()]);
+type InboxPageProps = {
+  searchParams: Promise<{ c?: string }>;
+};
+
+export default async function InboxPage({ searchParams }: InboxPageProps) {
+  const params = await searchParams;
+  const [data, accounts, shop] = await Promise.all([
+    getInboxData(),
+    getChannelAccounts(),
+    getShopContext(),
+  ]);
 
   const activeChannels = [
     ...new Set<Channel>([
@@ -12,5 +21,17 @@ export default async function InboxPage() {
     ]),
   ];
 
-  return <InboxWorkspace {...data} activeChannels={activeChannels} />;
+  const initialConversationId =
+    typeof params.c === "string" && data.conversations.some((item) => item.id === params.c)
+      ? params.c
+      : undefined;
+
+  return (
+    <InboxWorkspace
+      {...data}
+      currentStaffName={shop.staffName}
+      activeChannels={activeChannels}
+      initialConversationId={initialConversationId}
+    />
+  );
 }
