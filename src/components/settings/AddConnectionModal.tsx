@@ -47,6 +47,8 @@ type AddConnectionModalProps = {
   zaloOAuthConfigured: boolean;
   metaMissingEnvVars: string[];
   zaloMissingEnvVars: string[];
+  metaOAuthRedirectUri: string;
+  zaloOAuthRedirectUri: string;
   metaWebhookUrl: string;
   zaloWebhookUrl: string;
   metaWebhookVerifyToken: string;
@@ -143,20 +145,26 @@ function SetupChecklist({
   oauthDone,
   webhookUrlReady,
   messagesSynced,
+  provider,
 }: {
   oauthDone: boolean;
   webhookUrlReady: boolean;
   messagesSynced: boolean;
+  provider: "meta" | "zalo";
 }) {
+  const providerLabel = provider === "zalo" ? "Zalo" : "Meta";
   const items = [
     { done: oauthDone, label: "OAuth — đăng nhập & lưu token" },
     {
       done: webhookUrlReady,
-      label: "Webhook URL sẵn sàng — dán vào Meta và bật field messages",
+      label:
+        provider === "zalo"
+          ? "Webhook URL sẵn sàng — dán vào Zalo OA Admin"
+          : "Webhook URL sẵn sàng — dán vào Meta và bật field messages",
     },
     {
       done: messagesSynced,
-      label: "Đã nhận event từ Meta (tin mới hoặc Thử nghiệm)",
+      label: `Đã nhận event từ ${providerLabel} (tin mới hoặc thử nghiệm)`,
     },
   ];
 
@@ -185,6 +193,8 @@ export function AddConnectionModal({
   zaloOAuthConfigured,
   metaMissingEnvVars,
   zaloMissingEnvVars,
+  metaOAuthRedirectUri,
+  zaloOAuthRedirectUri,
   metaWebhookUrl,
   zaloWebhookUrl,
   metaWebhookVerifyToken,
@@ -274,6 +284,12 @@ export function AddConnectionModal({
       ? zaloWebhookUrl
       : selected.channel === "facebook" || selected.channel === "instagram"
         ? metaWebhookUrl
+        : null;
+  const oauthRedirectUri =
+    selected.channel === "zalo"
+      ? zaloOAuthRedirectUri
+      : selected.channel === "facebook" || selected.channel === "instagram"
+        ? metaOAuthRedirectUri
         : null;
 
   async function handleDisconnect() {
@@ -474,19 +490,27 @@ export function AddConnectionModal({
                       oauthDone={Boolean(account.hasOAuthToken)}
                       webhookUrlReady={Boolean(account.hasOAuthToken && webhookUrl)}
                       messagesSynced={Boolean(account.lastWebhookAt)}
+                      provider={selected.channel === "zalo" ? "zalo" : "meta"}
                     />
                     {account.lastWebhookAt ? (
                       <p className="mt-3 text-xs text-emerald-600">
                         Tin nhắn gần nhất: {formatDateTime(account.lastWebhookAt)}
                       </p>
                     ) : account.hasOAuthToken ? (
-                      <p className="mt-3 text-xs text-amber-700">
-                        Meta chưa gửi event tới ShopInbox. App phải{" "}
-                        <span className="font-medium">phát hành</span>, hoặc bấm{" "}
-                        <span className="font-medium">Thử nghiệm</span> trên field{" "}
-                        <code className="text-[11px]">messages</code> (chọn đúng Fanpage{" "}
-                        {account.displayName ?? "đã nối"}).
-                      </p>
+                      selected.channel === "zalo" ? (
+                        <p className="mt-3 text-xs text-amber-700">
+                          Zalo chưa gửi event tới ShopInbox. Dán Webhook URL vào Zalo OA Admin, bật sự
+                          kiện tin nhắn, rồi nhắn thử từ Zalo vào OA.
+                        </p>
+                      ) : (
+                        <p className="mt-3 text-xs text-amber-700">
+                          Meta chưa gửi event tới ShopInbox. App phải{" "}
+                          <span className="font-medium">phát hành</span>, hoặc bấm{" "}
+                          <span className="font-medium">Thử nghiệm</span> trên field{" "}
+                          <code className="text-[11px]">messages</code> (chọn đúng Fanpage{" "}
+                          {account.displayName ?? "đã nối"}).
+                        </p>
+                      )
                     ) : null}
                   </div>
                 ) : null}
@@ -558,6 +582,21 @@ export function AddConnectionModal({
                           ? "Đăng nhập Zalo OA và cấp quyền cho ứng dụng ShopInbox."
                           : "Đăng nhập Facebook (admin Fanpage / Instagram Business) và cấp quyền."}
                       </p>
+                      {oauthRedirectUri ? (
+                        <div className="mt-3">
+                          <p className="text-xs text-slate-500">
+                            {selected.channel === "zalo"
+                              ? "Redirect URI (dán vào Zalo Developers):"
+                              : "OAuth Redirect URI (dán vào Meta → Facebook Login → Valid OAuth Redirect URIs):"}
+                          </p>
+                          <div className="mt-1 flex items-start gap-2 rounded bg-surface px-2 py-2">
+                            <code className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700">
+                              {oauthRedirectUri}
+                            </code>
+                            <CopyButton value={oauthRedirectUri} />
+                          </div>
+                        </div>
+                      ) : null}
                       {canConnect && oauthConfigured && oauthUrl ? (
                         <a href={oauthUrl} className="btn-primary mt-3 inline-flex">
                           {connectLabel}

@@ -53,6 +53,22 @@ export function listMissingZaloOAuthEnvVars(): string[] {
   return ZALO_OAUTH_REQUIRED_ENV.filter((name) => envMissing(name));
 }
 
+/** Callback OAuth Meta — suy từ NEXT_PUBLIC_APP_URL nếu META_REDIRECT_URI trống / localhost lệch. */
+export function getMetaOAuthRedirectUri() {
+  return resolveOAuthRedirectUri(
+    process.env.META_REDIRECT_URI,
+    "/api/connect/meta/callback",
+  );
+}
+
+/** Callback OAuth Zalo — suy từ NEXT_PUBLIC_APP_URL nếu ZALO_REDIRECT_URI trống / localhost lệch. */
+export function getZaloOAuthRedirectUri() {
+  return resolveOAuthRedirectUri(
+    process.env.ZALO_REDIRECT_URI,
+    "/api/connect/zalo/callback",
+  );
+}
+
 export function getMetaOAuthConfig(): MetaOAuthConfig | null {
   if (listMissingMetaOAuthEnvVars().length > 0) {
     return null;
@@ -61,10 +77,7 @@ export function getMetaOAuthConfig(): MetaOAuthConfig | null {
   return {
     appId: process.env.META_APP_ID!.trim(),
     appSecret: process.env.META_APP_SECRET!.trim(),
-    redirectUri: resolveOAuthRedirectUri(
-      process.env.META_REDIRECT_URI,
-      "/api/connect/meta/callback",
-    ),
+    redirectUri: getMetaOAuthRedirectUri(),
     webhookVerifyToken: process.env.META_WEBHOOK_VERIFY_TOKEN?.trim() ?? "",
   };
 }
@@ -77,10 +90,7 @@ export function getZaloOAuthConfig(): ZaloOAuthConfig | null {
   return {
     appId: process.env.ZALO_APP_ID!.trim(),
     appSecret: process.env.ZALO_APP_SECRET!.trim(),
-    redirectUri: resolveOAuthRedirectUri(
-      process.env.ZALO_REDIRECT_URI,
-      "/api/connect/zalo/callback",
-    ),
+    redirectUri: getZaloOAuthRedirectUri(),
   };
 }
 

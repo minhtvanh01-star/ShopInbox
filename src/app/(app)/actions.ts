@@ -246,7 +246,9 @@ export async function sendMessage(conversationId: string, text: string) {
     },
   });
 
-  revalidatePath("/inbox");
+  // Không revalidatePath("/inbox"): kết hợp với useOptimistic + soft-refresh
+  // dễ làm flight RSC fail (React #441) — tin biến mất / báo gửi lỗi giả.
+  // Client gọi router.refresh() trong cùng transition sau mutation.
 
   await writeAudit({
     actor: session,
@@ -349,7 +351,7 @@ export async function sendImageMessage(conversationId: string, formData: FormDat
     },
   });
 
-  revalidatePath("/inbox");
+  // Không revalidatePath — xem sendMessage (tránh React #441 / tin biến mất).
 
   await writeAudit({
     actor: session,
@@ -491,9 +493,8 @@ export async function markConversationRead(conversationId: string) {
     data: { unread: 0 },
   });
 
-  // Không revalidatePath: client đã optimistic unread=0; soft-refresh Inbox
-  // sẽ cập nhật badge. Revalidate full /inbox sau mark-read dễ làm flight
-  // RSC fail (React #441) hiện banner đỏ trên composer khi mở hội thoại.
+  // Không revalidatePath("/inbox"): dễ React #441 trên composer.
+  // Client giữ read-receipt local + notifyInboxNoticesRefresh cho Sidebar.
   return { ok: true as const };
 }
 

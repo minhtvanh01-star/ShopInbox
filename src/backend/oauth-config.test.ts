@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getMetaOAuthConfig,
+  getMetaOAuthRedirectUri,
   getZaloOAuthConfig,
   listMissingMetaOAuthEnvVars,
   listMissingZaloOAuthEnvVars,
@@ -64,6 +65,21 @@ describe("oauth-config", () => {
       redirectUri: "http://localhost:3000/api/connect/meta/callback",
       webhookVerifyToken: "",
     });
+  });
+
+  it("derives Meta redirect from NEXT_PUBLIC_APP_URL when META_REDIRECT_URI unset", () => {
+    stashEnv(META_KEYS);
+    process.env.META_APP_ID = "meta-app";
+    process.env.META_APP_SECRET = "meta-secret";
+    delete process.env.META_REDIRECT_URI;
+    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox-production.up.railway.app";
+
+    expect(getMetaOAuthRedirectUri()).toBe(
+      "https://shopinbox-production.up.railway.app/api/connect/meta/callback",
+    );
+    expect(getMetaOAuthConfig()?.redirectUri).toBe(
+      "https://shopinbox-production.up.railway.app/api/connect/meta/callback",
+    );
   });
 
   it("overrides localhost Meta redirect when NEXT_PUBLIC_APP_URL is production", () => {

@@ -7,6 +7,7 @@ import { fetchInboxNoticesAction } from "@/app/(app)/inbox-notices";
 import { logoutAction } from "@/app/login/actions";
 import { CHANNEL_LABEL, formatTime } from "@/lib/labels";
 import type { InboxNoticeItem, InboxNoticeSummary } from "@/lib/inbox-notices";
+import { INBOX_NOTICES_REFRESH_EVENT } from "@/lib/inbox-notices";
 import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
@@ -103,9 +104,11 @@ export function Sidebar({
         refresh();
       }
     };
+    window.addEventListener(INBOX_NOTICES_REFRESH_EVENT, refresh);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearInterval(timer);
+      window.removeEventListener(INBOX_NOTICES_REFRESH_EVENT, refresh);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [permissions, startTransition]);
