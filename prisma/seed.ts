@@ -13,6 +13,7 @@ import {
   products,
   quickReplies,
 } from "../src/lib/mock";
+import { resolveSeedMode } from "../src/backend/db-seed-policy";
 import {
   PERMISSIONS,
   ROLE_PERMISSIONS,
@@ -77,20 +78,32 @@ async function syncRbacCatalog() {
 }
 
 async function main() {
-  await prisma.auditLog.deleteMany();
-  await prisma.orderItem.deleteMany();
-  await prisma.order.deleteMany();
-  await prisma.message.deleteMany();
-  await prisma.conversation.deleteMany();
-  await prisma.customerIdentity.deleteMany();
-  await prisma.quickReply.deleteMany();
-  await prisma.product.deleteMany();
-  await prisma.customer.deleteMany();
-  await prisma.channelAccount.deleteMany();
-  await prisma.staff.deleteMany();
-  await prisma.shop.deleteMany();
+  const shopCount = await prisma.shop.count();
+  const mode = resolveSeedMode(process.env, shopCount);
 
   await syncRbacCatalog();
+
+  if (mode === "skip") {
+    console.log("Seed: DB đã có dữ liệu, bỏ qua demo (chỉ đồng bộ RBAC).");
+    return;
+  }
+
+  if (mode === "replace") {
+    await prisma.auditLog.deleteMany();
+    await prisma.orderItem.deleteMany();
+    await prisma.order.deleteMany();
+    await prisma.message.deleteMany();
+    await prisma.conversation.deleteMany();
+    await prisma.customerIdentity.deleteMany();
+    await prisma.quickReply.deleteMany();
+    await prisma.product.deleteMany();
+    await prisma.customer.deleteMany();
+    await prisma.channelAccount.deleteMany();
+    await prisma.staff.deleteMany();
+    await prisma.shop.deleteMany();
+  }
+
+  console.log(mode === "insert" ? "Seed: DB trống, ghi dữ liệu demo." : "Seed: ghi đè dữ liệu demo.");
 
   await prisma.shop.create({
     data: {
