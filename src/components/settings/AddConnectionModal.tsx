@@ -143,20 +143,26 @@ function SetupChecklist({
   oauthDone,
   webhookUrlReady,
   messagesSynced,
+  provider,
 }: {
   oauthDone: boolean;
   webhookUrlReady: boolean;
   messagesSynced: boolean;
+  provider: "meta" | "zalo";
 }) {
+  const providerLabel = provider === "zalo" ? "Zalo" : "Meta";
   const items = [
     { done: oauthDone, label: "OAuth — đăng nhập & lưu token" },
     {
       done: webhookUrlReady,
-      label: "Webhook URL sẵn sàng — dán vào Meta và bật field messages",
+      label:
+        provider === "zalo"
+          ? "Webhook URL sẵn sàng — dán vào Zalo OA Admin"
+          : "Webhook URL sẵn sàng — dán vào Meta và bật field messages",
     },
     {
       done: messagesSynced,
-      label: "Đã nhận event từ Meta (tin mới hoặc Thử nghiệm)",
+      label: `Đã nhận event từ ${providerLabel} (tin mới hoặc thử nghiệm)`,
     },
   ];
 
@@ -474,19 +480,27 @@ export function AddConnectionModal({
                       oauthDone={Boolean(account.hasOAuthToken)}
                       webhookUrlReady={Boolean(account.hasOAuthToken && webhookUrl)}
                       messagesSynced={Boolean(account.lastWebhookAt)}
+                      provider={selected.channel === "zalo" ? "zalo" : "meta"}
                     />
                     {account.lastWebhookAt ? (
                       <p className="mt-3 text-xs text-emerald-600">
                         Tin nhắn gần nhất: {formatDateTime(account.lastWebhookAt)}
                       </p>
                     ) : account.hasOAuthToken ? (
-                      <p className="mt-3 text-xs text-amber-700">
-                        Meta chưa gửi event tới ShopInbox. App phải{" "}
-                        <span className="font-medium">phát hành</span>, hoặc bấm{" "}
-                        <span className="font-medium">Thử nghiệm</span> trên field{" "}
-                        <code className="text-[11px]">messages</code> (chọn đúng Fanpage{" "}
-                        {account.displayName ?? "đã nối"}).
-                      </p>
+                      selected.channel === "zalo" ? (
+                        <p className="mt-3 text-xs text-amber-700">
+                          Zalo chưa gửi event tới ShopInbox. Dán Webhook URL vào Zalo OA Admin, bật sự
+                          kiện tin nhắn, rồi nhắn thử từ Zalo vào OA.
+                        </p>
+                      ) : (
+                        <p className="mt-3 text-xs text-amber-700">
+                          Meta chưa gửi event tới ShopInbox. App phải{" "}
+                          <span className="font-medium">phát hành</span>, hoặc bấm{" "}
+                          <span className="font-medium">Thử nghiệm</span> trên field{" "}
+                          <code className="text-[11px]">messages</code> (chọn đúng Fanpage{" "}
+                          {account.displayName ?? "đã nối"}).
+                        </p>
+                      )
                     ) : null}
                   </div>
                 ) : null}

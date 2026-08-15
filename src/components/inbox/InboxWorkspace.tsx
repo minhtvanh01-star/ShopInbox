@@ -34,6 +34,7 @@ import {
   orderTotal,
 } from "@/lib/labels";
 import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
+import { notifyInboxNoticesRefresh } from "@/lib/inbox-notices";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import type {
   Channel,
@@ -144,6 +145,8 @@ export function InboxWorkspace({
   const [stickToBottom, setStickToBottom] = useState(true);
   const lastClaimTouchRef = useRef(0);
   const readMarkedRef = useRef(new Set<string>());
+  /** id → lastAt lúc đánh dấu đã đọc — giữ badge=0 đến khi server/sync hoặc có tin mới. */
+  const [readReceipts, setReadReceipts] = useState<Record<string, string>>({});
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const [trackedSelectedId, setTrackedSelectedId] = useState(selectedId);
@@ -195,8 +198,15 @@ export function InboxWorkspace({
     () =>
       optimisticConversations
         .filter((item) => selectedFilter === "all" || item.channel === selectedFilter)
+        .map((item) => {
+          const receiptLastAt = readReceipts[item.id];
+          if (receiptLastAt && item.lastAt === receiptLastAt && item.unread > 0) {
+            return { ...item, unread: 0 };
+          }
+          return item;
+        })
         .sort((a, b) => +new Date(b.lastAt) - +new Date(a.lastAt)),
-    [selectedFilter, optimisticConversations],
+    [selectedFilter, optimisticConversations, readReceipts],
   );
 
   const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
@@ -341,6 +351,22 @@ export function InboxWorkspace({
   ]);
 
   useEffect(() => {
+    setReadReceipts((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [id, lastAt] of Object.entries(prev)) {
+        const item = conversations.find((row) => row.id === id);
+        if (!item || item.unread === 0 || item.lastAt !== lastAt) {
+          delete next[id];
+          readMarkedRef.current.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [conversations]);
+
+  useEffect(() => {
     const id = selected?.id;
     const unread = selected?.unread ?? 0;
     if (!id || unread <= 0) {
@@ -350,15 +376,27 @@ export function InboxWorkspace({
       return;
     }
     readMarkedRef.current.add(id);
+    const lastAt = selected.lastAt;
+    setReadReceipts((prev) => ({ ...prev, [id]: lastAt }));
     startBackground(() => {
       patchOptimisticConversation({ id, unread: 0 });
     });
-    void markConversationRead(id).catch((err) => {
-      readMarkedRef.current.delete(id);
-      const message = inboxActionErrorMessage(err, "Không đánh dấu đã đọc được");
-      if (message) setError(message);
-    });
-  }, [selected?.id, selected?.unread, patchOptimisticConversation, startBackground]);
+    void markConversationRead(id)
+      .then(() => {
+        notifyInboxNoticesRefresh();
+      })
+      .catch((err) => {
+        readMarkedRef.current.delete(id);
+        setReadReceipts((prev) => {
+          if (!(id in prev)) return prev;
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        const message = inboxActionErrorMessage(err, "Không đánh dấu đã đọc được");
+        if (message) setError(message);
+      });
+  }, [selected?.id, selected?.unread, selected?.lastAt, patchOptimisticConversation, startBackground]);
 
   function renewClaimActivity(conversationId: string, options?: { force?: boolean; atMs?: number }) {
     if (nowMs === null && options?.atMs === undefined) {
@@ -503,9 +541,10 @@ export function InboxWorkspace({
       return;
     }
 
+    const atMs = nowMs;
     const body = text.trim();
     const tempId = `temp-${crypto.randomUUID()}`;
-    const sentAt = new Date(nowMs).toISOString();
+    const sentAt = new Date(atMs).toISOString();
     const optimistic: Message = {
       id: tempId,
       conversationId: selected.id,
@@ -517,7 +556,8 @@ export function InboxWorkspace({
 
     setError(null);
     setDraft("");
-    lastClaimTouchRef.current = nowMs;
+    lastClaimTouchRef.current = atMs;
+    setReadReceipts((prev) => ({ ...prev, [selected.id]: sentAt }));
 
     startAction(async () => {
       addOptimisticMessage(optimistic);
@@ -533,10 +573,13 @@ export function InboxWorkspace({
 
       try {
         await sendMessage(selected.id, body);
+        notifyInboxNoticesRefresh();
+        // Giữ optimistic đến khi RSC props cập nhật — cùng transition.
+        router.refresh();
       } catch (err) {
         const message = inboxActionErrorMessage(err, "Gửi tin thất bại");
         if (message) setError(message);
-        else router.refresh();
+        router.refresh();
       }
     });
   }
@@ -551,8 +594,9 @@ export function InboxWorkspace({
   function sendImage(file: File) {
     if (!selected || actionPending || !(isAdmin || replyIsMine) || nowMs === null) return;
 
+    const atMs = nowMs;
     const tempId = `temp-${crypto.randomUUID()}`;
-    const sentAt = new Date(nowMs).toISOString();
+    const sentAt = new Date(atMs).toISOString();
     const previewUrl = URL.createObjectURL(file);
     const optimistic: Message = {
       id: tempId,
@@ -567,7 +611,8 @@ export function InboxWorkspace({
     };
 
     setError(null);
-    lastClaimTouchRef.current = nowMs;
+    lastClaimTouchRef.current = atMs;
+    setReadReceipts((prev) => ({ ...prev, [selected.id]: sentAt }));
 
     startAction(async () => {
       addOptimisticMessage(optimistic);
@@ -585,10 +630,12 @@ export function InboxWorkspace({
         const formData = new FormData();
         formData.set("file", file);
         await sendImageMessage(selected.id, formData);
+        notifyInboxNoticesRefresh();
+        router.refresh();
       } catch (err) {
         const message = inboxActionErrorMessage(err, "Gửi ảnh thất bại");
         if (message) setError(message);
-        else router.refresh();
+        router.refresh();
       } finally {
         URL.revokeObjectURL(previewUrl);
       }
@@ -951,8 +998,13 @@ export function InboxWorkspace({
                   disabled={!canCompose}
                   className="input-field-sm min-h-11 flex-1 resize-none py-2.5"
                 />
-                <button type="submit" disabled={!canCompose} className="btn-primary-sm shrink-0">
-                  Gửi
+                <button
+                  type="submit"
+                  disabled={!canCompose}
+                  aria-busy={actionPending}
+                  className="btn-primary-sm shrink-0"
+                >
+                  {actionPending ? "Đang gửi…" : "Gửi"}
                 </button>
               </form>
             </footer>

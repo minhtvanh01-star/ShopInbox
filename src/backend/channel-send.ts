@@ -153,7 +153,7 @@ export async function dispatchOutboundMessage(input: {
   }
 }
 
-/** Gửi ảnh qua Meta (FB/IG). Zalo / web → local only (chưa hỗ trợ outbound ảnh). */
+/** Gửi ảnh qua Meta (FB/IG). Zalo / web → báo lỗi rõ (không lưu “ảo” chỉ trong Inbox). */
 export async function dispatchOutboundImage(input: {
   shopId: string;
   channel: Channel;
@@ -162,6 +162,9 @@ export async function dispatchOutboundImage(input: {
   mimeType: string;
   fileName: string;
 }): Promise<OutboundDispatchResult> {
+  if (input.channel === "zalo") {
+    throw new Error("Chưa hỗ trợ gửi ảnh qua Zalo. Hãy gửi tin nhắn chữ.");
+  }
   if (input.channel !== "facebook" && input.channel !== "instagram") {
     return { mode: "local" };
   }
