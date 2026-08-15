@@ -6,6 +6,7 @@ import {
   updateProfileAction,
   type ProfileActionState,
 } from "@/app/(app)/settings/profile/actions";
+import { GOOGLE_AUTH_ERROR_MESSAGES } from "@/lib/google-auth-errors";
 
 const initialState: ProfileActionState = {};
 
@@ -26,19 +27,7 @@ type ProfileFormProps = {
   };
 };
 
-const AUTH_ERROR_MESSAGES: Record<string, string> = {
-  google_not_configured: "Google OAuth chưa được cấu hình trên server.",
-  google_denied: "Bạn đã hủy đăng nhập Google.",
-  google_invalid: "Phản hồi Google không hợp lệ.",
-  google_state: "Phiên OAuth hết hạn hoặc không khớp — thử lại.",
-  google_failed: "Đăng nhập Google thất bại.",
-  google_email_unverified: "Email Google chưa được xác minh.",
-  google_email_linked_other: "Email đã liên kết tài khoản Google khác.",
-  google_already_linked: "Tài khoản đã liên kết Google.",
-  google_account_taken: "Tài khoản Google này đã được dùng.",
-  google_email_taken: "Email Google trùng với tài khoản khác.",
-  google_linked: "Đã liên kết Google thành công.",
-};
+const AUTH_ERROR_MESSAGES = GOOGLE_AUTH_ERROR_MESSAGES;
 
 function authBadgeLabel(method: ProfileFormProps["profile"]["authMethod"]) {
   if (method === "both") return "Email + Google";
@@ -168,7 +157,8 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
             <section className="card-padded">
               <h2 className="text-base font-semibold text-slate-900">Liên kết Google</h2>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Thêm đăng nhập Google để không cần nhập mật khẩu mỗi lần.
+                Chỉ liên kết khi bạn đã đăng nhập. ShopInbox không tự gắn Google vào tài khoản mật
+                khẩu khi người khác bấm Đăng nhập/Đăng ký với Google.
               </p>
               {profile.googleOAuthConfigured ? (
                 <a

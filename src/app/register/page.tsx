@@ -1,10 +1,11 @@
 import { RegisterForm } from "@/components/auth/RegisterForm";
 import { prisma } from "@/backend/prisma";
+import { getGoogleOAuthConfig } from "@/backend/google-oauth";
 import { DEMO_SHOP_ID } from "@/lib/queries";
 import { safeInternalPath } from "@/backend/safe-path";
 
 type RegisterPageProps = {
-  searchParams: Promise<{ next?: string }>;
+  searchParams: Promise<{ next?: string; auth_error?: string; auth_message?: string }>;
 };
 
 export default async function RegisterPage({ searchParams }: RegisterPageProps) {
@@ -25,10 +26,17 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
           </div>
         </div>
         <p className="rounded-lg bg-surface-muted px-4 py-3 text-sm leading-6 text-slate-600">
-          Đăng ký bằng email và mật khẩu. Mật khẩu được mã hóa (bcrypt). Tài khoản đầu tiên trong hệ
-          thống là admin; các tài khoản sau vào shop mặc định với vai trò nhân viên.
+          Đăng ký bằng Google (OAuth 2.0 + PKCE, email phải đã xác minh) hoặc email/mật khẩu (bcrypt).
+          Tài khoản mật khẩu sẵn có không bị tự liên kết Google — phải đăng nhập rồi liên kết trong
+          Hồ sơ. User đầu tiên là admin; các tài khoản sau vào shop mặc định với vai trò nhân viên.
         </p>
-        <RegisterForm shopName={shop?.name ?? "ShopInbox"} nextPath={nextPath} />
+        <RegisterForm
+          shopName={shop?.name ?? "ShopInbox"}
+          nextPath={nextPath}
+          googleOAuthConfigured={Boolean(getGoogleOAuthConfig())}
+          authError={params.auth_error}
+          authMessage={params.auth_message}
+        />
       </div>
     </main>
   );
