@@ -22,7 +22,7 @@ export default async function StaffPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="page-header">
+      <header className="page-header bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
         <h1 className="page-title">Nhân viên</h1>
         <p className="page-subtitle">
           Phê duyệt tài khoản đăng ký mới / Google, gán vai trò và bật/tắt đăng nhập. Mật khẩu lưu

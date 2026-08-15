@@ -593,8 +593,8 @@ export function InboxWorkspace({
           LAYOUT_CLASS.inboxList
         } ${showList ? "flex min-h-0 flex-1 lg:flex-none" : "hidden lg:flex"}`}
       >
-        <div className="border-b border-border px-4 py-4">
-          <h1 className="text-lg font-semibold text-slate-900">Inbox</h1>
+        <div className="border-b border-border bg-surface/90 px-4 py-4 backdrop-blur-sm">
+          <h1 className="text-lg font-semibold tracking-tight text-teal-950">Inbox</h1>
           <p className="mt-0.5 text-xs text-slate-500">
             {inboxChannelsSubtitle(channelFilters)}
           </p>
@@ -604,6 +604,7 @@ export function InboxWorkspace({
                 key={item.id}
                 type="button"
                 onClick={() => setChannel(item.id)}
+                aria-pressed={selectedFilter === item.id}
                 className={`filter-pill ${
                   selectedFilter === item.id ? "filter-pill-active" : "filter-pill-inactive"
                 }`}
@@ -632,7 +633,7 @@ export function InboxWorkspace({
                 <button
                   type="button"
                   onClick={() => selectConversation(item.id)}
-                  className={`flex w-full flex-col gap-1.5 border-b border-border px-4 py-3.5 text-left transition-colors duration-150 ${
+                  className={`flex w-full cursor-pointer flex-col gap-1.5 border-b border-border px-4 py-3.5 text-left transition-colors duration-200 ${
                     active
                       ? "border-l-[3px] border-l-teal-500 bg-accent-muted"
                       : "border-l-[3px] border-l-transparent hover:bg-surface-muted"
@@ -678,7 +679,7 @@ export function InboxWorkspace({
                       </>
                     ) : null}
                     {item.unread > 0 && (
-                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-teal-600 px-1.5 text-[10px] font-bold text-white">
+                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-600 px-1.5 text-[10px] font-bold text-white">
                         {item.unread}
                       </span>
                     )}
@@ -692,7 +693,7 @@ export function InboxWorkspace({
       </section>
 
       <section
-        className={`flex min-w-0 flex-col bg-surface-muted ${
+        className={`flex min-w-0 flex-col bg-[linear-gradient(180deg,#f0fdfa_0%,#e8f1f4_100%)] ${
           showChat ? "min-h-0 flex-1" : "hidden lg:flex lg:min-h-0 lg:flex-1"
         }`}
       >
@@ -837,7 +838,11 @@ export function InboxWorkspace({
               ))}
             </div>
             <footer className="border-t border-border bg-surface p-3 sm:p-4">
-              {error ? <p className="alert-error mb-2 text-xs">{error}</p> : null}
+              {error ? (
+                <p role="alert" className="alert-error mb-2 text-xs">
+                  {error}
+                </p>
+              ) : null}
               {isAdmin ? (
                 <p className="mb-3 flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
                   <span className="activity-dot activity-dot-mine" aria-hidden />
@@ -907,6 +912,7 @@ export function InboxWorkspace({
                       send(draft);
                     }
                   }}
+                  aria-label="Soạn tin nhắn"
                   placeholder={
                     isAdmin || replyIsMine
                       ? "Nhập tin nhắn… (Enter gửi, Shift+Enter xuống dòng)"
@@ -1012,12 +1018,13 @@ export function InboxWorkspace({
         )}
       </aside>
 
-      <nav className="flex shrink-0 border-t border-border bg-surface lg:hidden">
+      <nav className="flex shrink-0 border-t border-border bg-surface lg:hidden" aria-label="Điều hướng Inbox">
         {MOBILE_TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setMobilePane(tab.id)}
+            aria-current={mobilePane === tab.id ? "page" : undefined}
             className={`nav-tab ${mobilePane === tab.id ? "nav-tab-active" : "nav-tab-inactive"}`}
           >
             <MobileTabIcon pane={tab.id} active={mobilePane === tab.id} />

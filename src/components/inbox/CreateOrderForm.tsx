@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { createOrder } from "@/app/(app)/actions";
 import { formatMoney } from "@/lib/labels";
 import type { Product } from "@/lib/types";
@@ -35,6 +35,10 @@ export function CreateOrderForm({
   ]);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const errorRef = useRef<HTMLParagraphElement>(null);
+  const phoneId = "create-order-phone";
+  const addressId = "create-order-address";
+  const errorId = "create-order-error";
 
   const total = useMemo(() => {
     return lines.reduce((sum, line) => {
@@ -43,6 +47,12 @@ export function CreateOrderForm({
       return sum + product.price * line.qty;
     }, 0);
   }, [lines, products]);
+
+  useEffect(() => {
+    if (error) {
+      errorRef.current?.focus();
+    }
+  }, [error]);
 
   function addLine() {
     setLines((current) => [
@@ -84,30 +94,40 @@ export function CreateOrderForm({
       </div>
 
       <div className="field-group mt-4">
-        <label className="label mb-0">SĐT</label>
+        <label htmlFor={phoneId} className="label mb-0">
+          SĐT
+        </label>
         <input
+          id={phoneId}
           value={phone}
           onChange={(event) => setPhone(event.target.value)}
           className="input-field-sm"
           placeholder="09xx xxx xxx"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
         />
       </div>
 
       <div className="field-group mt-3">
-        <label className="label mb-0">Địa chỉ giao</label>
+        <label htmlFor={addressId} className="label mb-0">
+          Địa chỉ giao
+        </label>
         <textarea
+          id={addressId}
           value={address}
           onChange={(event) => setAddress(event.target.value)}
           rows={2}
           placeholder="Số nhà, đường, quận..."
           className="textarea-field"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
         />
       </div>
 
       <div className="mt-4">
         <p className="section-label mb-2">Sản phẩm</p>
         <div className="space-y-2">
-          {lines.map((line) => (
+          {lines.map((line, index) => (
             <div
               key={line.key}
               className="flex gap-2 rounded-lg border border-border bg-surface p-2 transition-colors duration-150"
@@ -122,6 +142,7 @@ export function CreateOrderForm({
                   )
                 }
                 className="input-field-sm h-10 min-w-0 flex-1 border-0 bg-transparent px-1 focus:ring-0"
+                aria-label={`Sản phẩm dòng ${index + 1}`}
               >
                 {products.map((product) => (
                   <option key={product.id} value={product.id}>
@@ -143,7 +164,7 @@ export function CreateOrderForm({
                   )
                 }
                 className="input-field-sm h-10 w-16 shrink-0"
-                aria-label="Số lượng"
+                aria-label={`Số lượng dòng ${index + 1}`}
               />
             </div>
           ))}
@@ -163,7 +184,17 @@ export function CreateOrderForm({
         <span className="text-base font-semibold text-slate-900">{formatMoney(total)}</span>
       </div>
 
-      {error ? <p className="alert-error mt-3 text-xs">{error}</p> : null}
+      {error ? (
+        <p
+          ref={errorRef}
+          id={errorId}
+          role="alert"
+          tabIndex={-1}
+          className="alert-error mt-3 text-xs outline-none"
+        >
+          {error}
+        </p>
+      ) : null}
 
       <div className="mt-4 flex gap-2">
         <button

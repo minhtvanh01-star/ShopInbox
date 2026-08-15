@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import {
@@ -16,6 +16,7 @@ import {
   PLATFORM_AVAILABILITY_LABEL,
   type PlatformOption,
 } from "@/lib/channels";
+import { activateFocusTrap, getFocusableElements } from "@/lib/focus-trap";
 import { CHANNEL_STATUS_LABEL, formatDateTime } from "@/lib/labels";
 import { LAYOUT_CLASS } from "@/lib/ui-layout";
 import type { Channel, ChannelStatus } from "@/lib/types";
@@ -198,6 +199,8 @@ export function AddConnectionModal({
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const router = useRouter();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const [saveState, saveAction, savePending] = useActionState(
     saveChannelCredentialsAction,
     saveInitialState,
@@ -225,13 +228,23 @@ export function AddConnectionModal({
   }, [search]);
 
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const focusables = getFocusableElements(dialog);
+    const closeBtn = dialog.querySelector<HTMLElement>('[data-modal-close="true"]');
+    (focusables[0] ?? closeBtn ?? dialog).focus();
+
+    const releaseTrap = activateFocusTrap(dialog, onClose);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      releaseTrap();
+      document.body.style.overflow = previousOverflow;
+      restoreFocusRef.current?.focus?.();
+    };
   }, [onClose]);
 
   const connectedPages = channels.filter((item) => item.status === "ready");
@@ -294,10 +307,12 @@ export function AddConnectionModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-connection-title"
-        className="flex h-[min(720px,92vh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-elevated md:flex-row"
+        tabIndex={-1}
+        className="flex h-[min(720px,92vh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-elevated outline-none md:flex-row"
       >
         <aside
           className={`flex max-h-44 shrink-0 flex-col border-b border-border bg-surface-muted md:max-h-none md:border-b-0 md:border-r ${LAYOUT_CLASS.modalSidebar}`}
@@ -359,8 +374,9 @@ export function AddConnectionModal({
             </div>
             <button
               type="button"
+              data-modal-close="true"
               onClick={onClose}
-              className="btn-ghost shrink-0 px-2 py-1 text-lg leading-none"
+              className="icon-btn shrink-0"
               aria-label="Đóng"
             >
               ✕
@@ -521,7 +537,11 @@ export function AddConnectionModal({
                         );
                       })}
                     </fieldset>
-                    {pickState.error ? <p className="alert-error">{pickState.error}</p> : null}
+                    {pickState.error ? (
+                      <p role="alert" className="alert-error">
+                        {pickState.error}
+                      </p>
+                    ) : null}
                     {pickState.success ? <p className="alert-success">{pickState.success}</p> : null}
                     <button type="submit" disabled={!canConnect || pickPending} className="btn-primary">
                       {pickPending ? "Đang lưu..." : "Xác nhận trang"}
@@ -709,7 +729,11 @@ export function AddConnectionModal({
                       />
                     </div>
 
-                    {saveState.error ? <p className="alert-error">{saveState.error}</p> : null}
+                    {saveState.error ? (
+                      <p role="alert" className="alert-error">
+                        {saveState.error}
+                      </p>
+                    ) : null}
                     {saveState.success ? <p className="alert-success">{saveState.success}</p> : null}
 
                     <div className="flex flex-wrap items-center gap-3 pt-2">

@@ -53,7 +53,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="page-header">
+      <header className="page-header bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
         <h1 className="page-title">Hồ sơ cá nhân</h1>
         <p className="page-subtitle">Cập nhật thông tin và phương thức đăng nhập của bạn.</p>
       </header>
@@ -139,7 +139,11 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
               />
             </div>
 
-            {profileState.error ? <p className="alert-error">{profileState.error}</p> : null}
+            {profileState.error ? (
+              <p role="alert" className="alert-error">
+                {profileState.error}
+              </p>
+            ) : null}
             {profileState.success ? (
               <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                 {profileState.success}
@@ -218,7 +222,11 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
                     className="input-field"
                   />
                 </div>
-                {passwordState.error ? <p className="alert-error">{passwordState.error}</p> : null}
+                {passwordState.error ? (
+                  <p role="alert" className="alert-error">
+                    {passwordState.error}
+                  </p>
+                ) : null}
                 {passwordState.success ? (
                   <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
                     {passwordState.success}

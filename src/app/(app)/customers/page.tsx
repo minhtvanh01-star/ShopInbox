@@ -18,10 +18,10 @@ export default async function CustomersPage() {
         ) : (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {customers.map((customer) => (
-              <article key={customer.id} className="card-padded transition hover:border-teal-200">
+              <article key={customer.id} className="card-padded">
                 <div className="flex items-start justify-between gap-3">
-                  <h2 className="text-base font-semibold text-slate-900">{customer.name}</h2>
-                  <span className="shrink-0 rounded-full bg-teal-50 px-2.5 py-0.5 text-[11px] font-semibold text-teal-700">
+                  <h2 className="text-base font-semibold text-teal-950">{customer.name}</h2>
+                  <span className="shrink-0 rounded-full bg-teal-50 px-2.5 py-0.5 text-[11px] font-semibold text-teal-700 ring-1 ring-teal-100">
                     {customer.orderCount} đơn
                   </span>
                 </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   requestPasswordResetAction,
   resendPasswordResetOtpAction,
@@ -39,6 +39,10 @@ export function ForgotPasswordForm({
   const [otpEmail, setOtpEmail] = useState("");
   const [draftEmail, setDraftEmail] = useState("");
   const [resendCooldownSec, setResendCooldownSec] = useState(0);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const otpErrorRef = useRef<HTMLParagraphElement>(null);
+  const formErrorId = "forgot-form-error";
+  const otpErrorId = "forgot-otp-error";
 
   const [prevRequest, setPrevRequest] = useState(requestState);
   if (requestState !== prevRequest) {
@@ -106,6 +110,18 @@ export function ForgotPasswordForm({
 
   const resendBlocked = resendPending || resendCooldownSec > 0;
 
+  useEffect(() => {
+    if (otpError) {
+      otpErrorRef.current?.focus();
+    }
+  }, [otpError]);
+
+  useEffect(() => {
+    if (formError) {
+      formErrorRef.current?.focus();
+    }
+  }, [formError]);
+
   if (view === "otp" && otpEmail) {
     return (
       <div className="mt-6 space-y-5">
@@ -135,9 +151,21 @@ export function ForgotPasswordForm({
               required
               className="input-field tracking-[0.35em] text-center text-lg"
               placeholder="000000"
+              aria-invalid={otpError ? true : undefined}
+              aria-describedby={otpError ? otpErrorId : undefined}
             />
           </div>
-          {otpError ? <p className="alert-error">{otpError}</p> : null}
+          {otpError ? (
+            <p
+              ref={otpErrorRef}
+              id={otpErrorId}
+              role="alert"
+              tabIndex={-1}
+              className="alert-error outline-none"
+            >
+              {otpError}
+            </p>
+          ) : null}
           <button type="submit" disabled={verifyPending} className="btn-primary w-full">
             {verifyPending ? "Đang xác minh..." : "Xác nhận và đổi mật khẩu"}
           </button>
@@ -201,6 +229,8 @@ export function ForgotPasswordForm({
           value={draftEmail}
           onChange={(event) => setDraftEmail(event.target.value)}
           className="input-field"
+          aria-invalid={formError ? true : undefined}
+          aria-describedby={formError ? formErrorId : undefined}
         />
       </div>
       <div className="field-group">
@@ -215,6 +245,8 @@ export function ForgotPasswordForm({
           required
           minLength={REGISTER_MIN_PASSWORD_LENGTH}
           className="input-field"
+          aria-invalid={formError ? true : undefined}
+          aria-describedby={formError ? formErrorId : undefined}
         />
       </div>
       <div className="field-group">
@@ -229,9 +261,21 @@ export function ForgotPasswordForm({
           required
           minLength={REGISTER_MIN_PASSWORD_LENGTH}
           className="input-field"
+          aria-invalid={formError ? true : undefined}
+          aria-describedby={formError ? formErrorId : undefined}
         />
       </div>
-      {formError ? <p className="alert-error">{formError}</p> : null}
+      {formError ? (
+        <p
+          ref={formErrorRef}
+          id={formErrorId}
+          role="alert"
+          tabIndex={-1}
+          className="alert-error outline-none"
+        >
+          {formError}
+        </p>
+      ) : null}
       <button
         type="submit"
         disabled={requestPending || !canSendEmailOtp}
