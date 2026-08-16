@@ -1,8 +1,10 @@
 import {
+  fetchMetaSenderProfile,
   inboundMessagesFromMetaConversations,
   type MetaConversation,
 } from "@/backend/meta-oauth";
 import { prisma } from "@/backend/prisma";
+import { normalizeCustomerAvatarUrl } from "@/lib/customer-avatar";
 import type { Channel } from "@/lib/types";
 
 export type InboundMessageInput = {
@@ -10,6 +12,7 @@ export type InboundMessageInput = {
   externalAccountId: string;
   senderExternalId: string;
   senderName?: string;
+  senderAvatarUrl?: string | null;
   text: string;
   externalMessageId?: string;
   sentAt?: Date;
@@ -52,7 +55,9 @@ export async function findOrCreateCustomer(
   channel: Channel,
   senderExternalId: string,
   senderName?: string,
+  senderAvatarUrl?: string | null,
 ) {
+  const avatarUrl = normalizeCustomerAvatarUrl(senderAvatarUrl);
   const identity = await prisma.customerIdentity.findFirst({
     where: { channel, externalId: senderExternalId, customer: { shopId } },
     include: { customer: true },
@@ -60,12 +65,19 @@ export async function findOrCreateCustomer(
 
   if (identity) {
     const name = senderName?.trim();
+    const patch: { name?: string; avatarUrl?: string } = {};
     if (name && name !== identity.customer.name && identity.customer.name.startsWith("Khách")) {
-      await prisma.customer.update({
+      patch.name = name;
+    }
+    if (avatarUrl && avatarUrl !== identity.customer.avatarUrl) {
+      patch.avatarUrl = avatarUrl;
+    }
+    if (Object.keys(patch).length > 0) {
+      const updated = await prisma.customer.update({
         where: { id: identity.customerId },
-        data: { name },
+        data: patch,
       });
-      return { ...identity.customer, name };
+      return updated;
     }
     return identity.customer;
   }
@@ -78,6 +90,7 @@ export async function findOrCreateCustomer(
       id: customerId,
       shopId,
       name,
+      avatarUrl,
       identities: {
         create: {
           id: `cid-${crypto.randomUUID()}`,
@@ -117,6 +130,39 @@ export async function findOrCreateConversation(
   });
 }
 
+async function enrichCustomerAvatarFromMeta(input: {
+  customerId: string;
+  senderExternalId: string;
+  pageAccessToken: string;
+  currentName: string;
+}) {
+  const profile = await fetchMetaSenderProfile(input.senderExternalId, input.pageAccessToken);
+  if (!profile?.avatarUrl && !profile?.name) {
+    return false;
+  }
+
+  const patch: { avatarUrl?: string; name?: string } = {};
+  if (profile.avatarUrl) {
+    patch.avatarUrl = profile.avatarUrl;
+  }
+  if (
+    profile.name &&
+    input.currentName.startsWith("Khách") &&
+    profile.name !== input.currentName
+  ) {
+    patch.name = profile.name;
+  }
+  if (Object.keys(patch).length === 0) {
+    return false;
+  }
+
+  await prisma.customer.update({
+    where: { id: input.customerId },
+    data: patch,
+  });
+  return true;
+}
+
 export async function ingestInboundMessage(input: InboundMessageInput) {
   const account = await findChannelAccount(input.channel, input.externalAccountId);
   if (!account) {
@@ -140,7 +186,21 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
     input.channel,
     input.senderExternalId,
     input.senderName,
+    input.senderAvatarUrl,
   );
+
+  if (
+    !customer.avatarUrl &&
+    (input.channel === "facebook" || input.channel === "instagram") &&
+    account.accessToken
+  ) {
+    await enrichCustomerAvatarFromMeta({
+      customerId: customer.id,
+      senderExternalId: input.senderExternalId,
+      pageAccessToken: account.accessToken,
+      currentName: customer.name,
+    });
+  }
 
   const conversation = await findOrCreateConversation(
     account.shopId,
@@ -210,6 +270,7 @@ export async function ingestRecentMetaMessages(input: {
       externalAccountId: input.externalAccountId,
       senderExternalId: message.senderExternalId,
       senderName: message.senderName,
+      senderAvatarUrl: message.senderAvatarUrl,
       text: message.text,
       externalMessageId: message.externalMessageId,
       sentAt: message.sentAt,

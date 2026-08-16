@@ -31,6 +31,7 @@ export type Customer = {
   email?: string;
   address?: string;
   note?: string;
+  avatarUrl?: string;
 };
 
 export type Product = {

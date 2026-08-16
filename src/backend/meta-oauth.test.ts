@@ -70,11 +70,44 @@ describe("inboundMessagesFromMetaConversations", () => {
       {
         senderExternalId: "user-1",
         senderName: "Pham Vu Anh Minh",
+        senderAvatarUrl: undefined,
         text: "hello",
         externalMessageId: "m-new",
         sentAt: new Date("2026-08-15T09:08:00+0000"),
       },
     ]);
+  });
+
+  it("lấy avatar từ participants khi có profile_pic", () => {
+    const inbound = inboundMessagesFromMetaConversations(
+      [
+        {
+          id: "c1",
+          participants: {
+            data: [
+              { id: "user-1", name: "Minh", profile_pic: "https://cdn.example.com/u1.jpg" },
+              { id: "page-1", name: "Shop" },
+            ],
+          },
+          messages: {
+            data: [
+              {
+                id: "m1",
+                message: "hi",
+                created_time: "2026-08-15T09:08:00+0000",
+                from: { id: "user-1", name: "Minh" },
+              },
+            ],
+          },
+        },
+      ],
+      ["page-1"],
+    );
+
+    expect(inbound[0]).toMatchObject({
+      senderExternalId: "user-1",
+      senderAvatarUrl: "https://cdn.example.com/u1.jpg",
+    });
   });
 });
 

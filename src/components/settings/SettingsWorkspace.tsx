@@ -172,7 +172,13 @@ export function SettingsWorkspace({
 
   async function handleDisconnect(channel: ChannelAccountView["channel"]) {
     if (!canConnect || disconnecting) return;
-    const confirmed = window.confirm("Ngắt kết nối kênh này? Token OAuth sẽ bị xóa trên server.");
+    const target = channels.find((item) => item.channel === channel);
+    const isCancelOAuth = target?.status === "connecting";
+    const confirmed = window.confirm(
+      isCancelOAuth
+        ? "Hủy phiên OAuth đang chờ? Bạn có thể kết nối lại sau."
+        : "Ngắt kết nối kênh này? Token OAuth sẽ bị xóa trên server.",
+    );
     if (!confirmed) return;
 
     setDisconnecting(channel);
@@ -463,14 +469,20 @@ export function SettingsWorkspace({
                           {syncing === channel.channel ? "Đang đồng bộ..." : "Đồng bộ tin nhắn"}
                         </button>
                       ) : null}
-                      {canConnect && channel.status === "ready" && channel.hasOAuthToken ? (
+                      {canConnect &&
+                      (channel.status === "connecting" ||
+                        (channel.status === "ready" && channel.hasOAuthToken)) ? (
                         <button
                           type="button"
                           onClick={() => handleDisconnect(channel.channel)}
                           disabled={disconnecting === channel.channel}
                           className="btn-ghost text-red-700 hover:bg-red-50"
                         >
-                          {disconnecting === channel.channel ? "Đang ngắt..." : "Ngắt kết nối"}
+                          {disconnecting === channel.channel
+                            ? "Đang hủy..."
+                            : channel.status === "connecting"
+                              ? "Hủy OAuth"
+                              : "Ngắt kết nối"}
                         </button>
                       ) : null}
                     </div>

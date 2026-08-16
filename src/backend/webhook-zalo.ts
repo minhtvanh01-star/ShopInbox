@@ -3,7 +3,7 @@ import { ingestInboundMessage, touchChannelWebhook } from "@/backend/message-syn
 type ZaloWebhookBody = {
   event_name?: string;
   oa_id?: string;
-  sender?: { id?: string; name?: string };
+  sender?: { id?: string; name?: string; avatar?: string };
   message?: {
     text?: string;
     msg_id?: string;
@@ -70,6 +70,7 @@ export async function processZaloWebhook(body: ZaloWebhookBody) {
     externalAccountId: oaId,
     senderExternalId: senderId,
     senderName: body.sender?.name,
+    senderAvatarUrl: body.sender?.avatar,
     text,
     externalMessageId: body.message?.msg_id,
     sentAt: zaloSentAt(body.timestamp),

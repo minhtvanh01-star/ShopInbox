@@ -196,6 +196,8 @@ model Customer {
   email         String?
   address       String?
   note          String?
+  /** Ảnh đại diện từ Meta/Zalo (URL HTTPS). */
+  avatarUrl     String?
   identities    CustomerIdentity[]
   conversations Conversation[]
   orders        Order[]

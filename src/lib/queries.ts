@@ -164,6 +164,7 @@ export async function getInboxData() {
         email: item.email ?? undefined,
         address: item.address ?? undefined,
         note: item.note ?? undefined,
+        avatarUrl: item.avatarUrl ?? undefined,
       }),
     ),
     orders: orders.map(

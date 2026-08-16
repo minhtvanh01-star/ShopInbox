@@ -24,8 +24,10 @@
   --shadow-lg: 0 16px 32px -8px rgb(19 78 74 / 0.14);
   --sidebar-width: 240px;
   --sidebar-collapsed-width: 56px;
-  --inbox-list-min: 260px;
-  --inbox-list-max: 320px;
+  --inbox-list-min: 240px;
+  --inbox-list-max: 420px;
+  --inbox-list-default: 300px;
+  --inbox-list-collapsed: 72px;
   --inbox-panel-min: 240px;
   --inbox-panel-max: 300px;
   --modal-sidebar-width: 280px;
@@ -185,7 +187,7 @@ body {
   }
 
   .nav-tab {
-    @apply flex flex-1 cursor-pointer flex-col items-center gap-0.5 px-2 py-2.5 text-[11px] font-medium transition-colors duration-200;
+    @apply flex min-h-12 flex-1 cursor-pointer flex-col items-center justify-center gap-0.5 px-2 py-2.5 text-[11px] font-medium transition-colors duration-200;
   }
 
   .nav-tab-active {
