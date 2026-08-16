@@ -24,6 +24,7 @@ import {
   hasPermission,
   hasPermissionCodes,
   invalidatePermissionCache,
+  requireActionPermission,
   requirePermission,
   requirePermissionApi,
 } from "@/backend/rbac";
@@ -110,6 +111,15 @@ describe("hasPermission / requirePermission", () => {
 
     await expect(requirePermission(PERMISSION_CODES.channelsConnect)).rejects.toThrow(
       "REDIRECT:/inbox",
+    );
+  });
+
+  it("requireActionPermission throws instead of redirect", async () => {
+    mockStaffPerms("shop1", [PERMISSION_CODES.inboxRead]);
+    vi.mocked(getSession).mockResolvedValue(staffSession);
+
+    await expect(requireActionPermission(PERMISSION_CODES.channelsConnect)).rejects.toThrow(
+      "Bạn không có quyền thực hiện thao tác này.",
     );
   });
 

@@ -152,6 +152,10 @@ export function InboxWorkspace({
   const [stickToBottom, setStickToBottom] = useState(true);
   const lastClaimTouchRef = useRef(0);
   const readMarkedRef = useRef(new Set<string>());
+  /** Đã gọi release idle cho cặp conversation+claimedAt — tránh POST mỗi giây. */
+  const idleReleasedRef = useRef(new Set<string>());
+  /** Claim touch thất bại liên tiếp — backoff để heartbeat không spam. */
+  const claimTouchFailUntilRef = useRef(0);
   /** Claim đang chờ server — send phải await để tránh race "UI mở / DB chưa claim". */
   const claimInFlightRef = useRef<Record<string, Promise<boolean>>>({});
   /** id → lastAt lúc đánh dấu đã đọc — giữ badge=0 đến khi server/sync hoặc có tin mới. */
@@ -387,14 +391,23 @@ export function InboxWorkspace({
       return;
     }
     const id = selected.id;
+    const claimedAt = selected.replyClaimedAt;
+    const releaseKey = `${id}:${claimedAt}`;
+    if (idleReleasedRef.current.has(releaseKey)) {
+      return;
+    }
+    idleReleasedRef.current.add(releaseKey);
     const wasMine = selected.replyStaffId === currentStaffId;
+    // Giữ override "đã nhả" — tránh snap-back về claim hết hạn từ props → spam release mỗi giây.
     queueMicrotask(() => {
-      setClaimOverrides((prev) => {
-        if (!(id in prev)) return prev;
-        const copy = { ...prev };
-        delete copy[id];
-        return copy;
-      });
+      setClaimOverrides((prev) => ({
+        ...prev,
+        [id]: {
+          replyStaffId: null,
+          replyStaffName: null,
+          replyClaimedAt: null,
+        },
+      }));
     });
     startBackground(() => {
       patchOptimisticConversation({
@@ -406,7 +419,7 @@ export function InboxWorkspace({
     });
     if (wasMine && !isAdmin) {
       void releaseConversation(id, "idle_timeout").catch(() => {
-        // Hết hạn phía client — DB có thể đã hết hạn theo TTL.
+        // Không xóa idleReleasedRef — một lần fail không được POST lại mỗi giây.
       });
     }
   }, [
@@ -457,13 +470,8 @@ export function InboxWorkspace({
         notifyInboxNoticesRefresh();
       })
       .catch((err) => {
-        readMarkedRef.current.delete(id);
-        setReadReceipts((prev) => {
-          if (!(id in prev)) return prev;
-          const next = { ...prev };
-          delete next[id];
-          return next;
-        });
+        // Giữ readMarkedRef + readReceipts — xóa ngay sẽ làm effect chạy lại → spam POST 500.
+        // Thử lại khi có tin mới (lastAt đổi) nhờ sync effect xóa receipt.
         const message = inboxActionErrorMessage(err, "Không đánh dấu đã đọc được");
         if (message) setError(message);
       });
@@ -474,6 +482,9 @@ export function InboxWorkspace({
       return;
     }
     const at = options?.atMs ?? nowMs!;
+    if (at < claimTouchFailUntilRef.current) {
+      return;
+    }
     if (!options?.force && at - lastClaimTouchRef.current < CLAIM_TOUCH_MIN_INTERVAL_MS) {
       return;
     }
@@ -489,6 +500,7 @@ export function InboxWorkspace({
     });
     void touchConversationClaim(conversationId)
       .then((result) => {
+        claimTouchFailUntilRef.current = 0;
         startBackground(() => {
           patchOptimisticConversation({
             id: conversationId,
@@ -498,7 +510,8 @@ export function InboxWorkspace({
         setNowMs(Date.now());
       })
       .catch(() => {
-        // Bỏ qua — lần gửi tin / claim kế tiếp sẽ đồng bộ lại.
+        // Backoff 2 phút — khớp nhịp heartbeat, tránh spam khi action đang 500.
+        claimTouchFailUntilRef.current = Date.now() + CLAIM_HEARTBEAT_MS;
       });
   }
 
@@ -574,6 +587,12 @@ export function InboxWorkspace({
       try {
         const result = await claimConversation(conversationId);
         lastClaimTouchRef.current = atMs;
+        claimTouchFailUntilRef.current = 0;
+        for (const key of [...idleReleasedRef.current]) {
+          if (key.startsWith(`${conversationId}:`)) {
+            idleReleasedRef.current.delete(key);
+          }
+        }
         setClaimOverrides((prev) => ({
           ...prev,
           [conversationId]: {

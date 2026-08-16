@@ -94,6 +94,18 @@ export async function requirePermission(
   return enforcePermission(sessionOrCode, code ?? "");
 }
 
+/**
+ * Cho Server Actions: thiếu quyền → throw (không redirect).
+ * redirect() trong action POST dễ thành 500 / vòng lặp client retry.
+ */
+export async function requireActionPermission(code: string): Promise<SessionPayload> {
+  const session = await requireSession();
+  if (!(await hasPermission(session, code))) {
+    throw new Error("Bạn không có quyền thực hiện thao tác này.");
+  }
+  return session;
+}
+
 export async function requirePermissionApi(code: string): Promise<SessionPayload | null> {
   const session = await getSession();
   if (!session || !(await hasPermission(session, code))) {
