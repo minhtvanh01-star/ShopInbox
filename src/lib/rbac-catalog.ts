@@ -190,7 +190,25 @@ export const BOOTSTRAP_ROLE_CODE = ROLE_CODES.admin;
 
 export function normalizeRoleCode(code: string | null | undefined): string {
   if (!code) return DEFAULT_ROLE_CODE;
-  return ROLE_CODE_ALIASES[code] ?? code;
+  const trimmed = code.trim();
+  if (!trimmed) return DEFAULT_ROLE_CODE;
+  const lower = trimmed.toLowerCase();
+  if (lower in ROLE_CODE_ALIASES) {
+    return ROLE_CODE_ALIASES[lower]!;
+  }
+  if (
+    lower === ROLE_CODES.admin ||
+    lower === ROLE_CODES.manager ||
+    lower === ROLE_CODES.staff
+  ) {
+    return lower;
+  }
+  return ROLE_CODE_ALIASES[trimmed] ?? trimmed;
+}
+
+/** Admin / chủ shop (kể cả alias `owner`) — được trả lời Inbox không cần claim. */
+export function isAdminRole(code: string | null | undefined): boolean {
+  return normalizeRoleCode(code) === ROLE_CODES.admin;
 }
 
 export function roleLabel(code: string | null | undefined): string {

@@ -19,6 +19,8 @@ import { safeInternalPath } from "@/backend/safe-path";
 import { setSessionCookie } from "@/backend/session";
 import { toSessionPayload } from "@/backend/session-token";
 import { AUDIT_ACTIONS, normalizeRoleCode } from "@/lib/rbac-catalog";
+import { assertShopHasActiveSeat, countActiveShopUsers } from "@/backend/shop-seats";
+import { MAX_USERS_PER_SHOP, shopSeatLimitMessage } from "@/lib/shop-seats";
 
 export type RegisterActionState = {
   error?: string;
@@ -61,6 +63,20 @@ export async function registerAction(
 
   if (!plan.ok) {
     return { error: plan.error, step: "form" };
+  }
+
+  if (shop) {
+    if (plan.isActive) {
+      const seatError = await assertShopHasActiveSeat(plan.shopId);
+      if (seatError) {
+        return { error: seatError, step: "form" };
+      }
+    } else {
+      const active = await countActiveShopUsers(plan.shopId);
+      if (active >= MAX_USERS_PER_SHOP) {
+        return { error: shopSeatLimitMessage(), step: "form" };
+      }
+    }
   }
 
   try {
@@ -120,6 +136,24 @@ export async function verifyRegisterOtpAction(
   if (!plan.ok) {
     await discardRegisterEmailOtp(verified.email);
     return { error: plan.error, step: "form", email: verified.email };
+  }
+
+  if (plan.isActive) {
+    const seatError = await assertShopHasActiveSeat(plan.shopId);
+    if (seatError) {
+      await discardRegisterEmailOtp(verified.email);
+      return { error: seatError, step: "form", email: verified.email };
+    }
+  } else {
+    const active = await countActiveShopUsers(plan.shopId);
+    if (active >= MAX_USERS_PER_SHOP) {
+      await discardRegisterEmailOtp(verified.email);
+      return {
+        error: shopSeatLimitMessage(),
+        step: "form",
+        email: verified.email,
+      };
+    }
   }
 
   if (plan.createShop) {

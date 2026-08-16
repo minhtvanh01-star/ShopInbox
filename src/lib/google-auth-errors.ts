@@ -17,6 +17,8 @@ export const GOOGLE_AUTH_ERROR_MESSAGES: Record<string, string> = {
   google_linked: "Đã liên kết Google thành công.",
   inactive:
     "Tài khoản chưa được kích hoạt hoặc đã bị tắt. Liên hệ quản trị viên để phê duyệt và phân quyền.",
+  shop_seat_full:
+    "Shop đã đủ số thành viên đang hoạt động. Liên hệ admin để giải phóng ghế trước khi đăng ký thêm.",
 };
 
 /** Flash success trên /login sau đăng ký mở (email OTP / Google). */

@@ -1,6 +1,6 @@
 import { InboxWorkspace } from "@/components/inbox/InboxWorkspace";
 import { getChannelAccounts, getInboxData, getShopContext } from "@/lib/queries";
-import { ROLE_CODES, normalizeRoleCode } from "@/lib/rbac-catalog";
+import { isAdminRole, PERMISSION_CODES } from "@/lib/rbac-catalog";
 import type { Channel } from "@/lib/types";
 
 type InboxPageProps = {
@@ -27,11 +27,15 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
       ? params.c
       : undefined;
 
+  // roleCode + quyền admin-only (staff.manage) — tránh lệch casing / seed quyền.
+  const isAdmin =
+    isAdminRole(shop.role) || shop.permissions.includes(PERMISSION_CODES.staffManage);
+
   return (
     <InboxWorkspace
       {...data}
       currentStaffName={shop.staffName}
-      isAdmin={normalizeRoleCode(shop.role) === ROLE_CODES.admin}
+      isAdmin={isAdmin}
       activeChannels={activeChannels}
       initialConversationId={initialConversationId}
     />

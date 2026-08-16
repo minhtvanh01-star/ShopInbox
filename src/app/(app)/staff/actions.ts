@@ -12,6 +12,7 @@ import {
   PERMISSION_CODES,
   normalizeRoleCode,
 } from "@/lib/rbac-catalog";
+import { assertShopHasActiveSeat } from "@/backend/shop-seats";
 
 export type StaffActionState = {
   error?: string;
@@ -62,6 +63,11 @@ export async function createStaffAction(
   const existing = await prisma.staff.findUnique({ where: { email } });
   if (existing) {
     return { error: "Email này đã được dùng." };
+  }
+
+  const seatError = await assertShopHasActiveSeat(session.shopId);
+  if (seatError) {
+    return { error: seatError };
   }
 
   const created = await prisma.staff.create({
@@ -132,6 +138,15 @@ export async function updateStaffAction(
 
   if (target.id === session.staffId && !isActive) {
     return { error: "Không thể tự vô hiệu hóa tài khoản đang đăng nhập." };
+  }
+
+  if (!target.isActive && isActive) {
+    const seatError = await assertShopHasActiveSeat(session.shopId, {
+      excludeStaffId: target.id,
+    });
+    if (seatError) {
+      return { error: seatError };
+    }
   }
 
   const updated = await prisma.staff.update({
