@@ -9,7 +9,7 @@ import {
   dispatchOutboundReaction,
 } from "@/backend/channel-send";
 import { isReplyClaimActive } from "@/backend/reply-claim";
-import { isAdminSession, requirePermission } from "@/backend/rbac";
+import { hasPermission, isAdminSession, requirePermission } from "@/backend/rbac";
 import { nextOrderCode, normalizeOrderItems, type DraftOrderItem } from "@/backend/order-code";
 import {
   removeMessageReaction,
@@ -19,8 +19,14 @@ import { prisma } from "@/backend/prisma";
 import { saveShopImageUpload } from "@/backend/upload-store";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
 import type { ConversationTag, OrderStatus } from "@/lib/types";
+import type { SessionPayload } from "@/backend/session-token";
 
 export const QUICK_REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"] as const;
+
+/** Khớp Inbox UI: role admin/owner hoặc quyền staff.manage. */
+async function isInboxAdmin(session: SessionPayload) {
+  return isAdminSession(session) || (await hasPermission(session, PERMISSION_CODES.staffManage));
+}
 
 function assertCanReply(input: {
   staffId: string | null;
@@ -39,9 +45,42 @@ function assertCanReply(input: {
   }
 }
 
+/**
+ * Gửi tin: admin luôn được; nhân viên giữ claim còn hạn;
+ * nếu trống/hết hạn thì claim ngay (chống race UI sau "Tôi trả lời").
+ */
+async function assertCanReplyOrClaim(input: {
+  conversationId: string;
+  staffId: string | null;
+  replyClaimedAt: Date | null;
+  currentStaffId: string;
+  isAdmin?: boolean;
+}) {
+  if (input.isAdmin) {
+    return;
+  }
+  if (
+    input.staffId &&
+    input.staffId !== input.currentStaffId &&
+    isReplyClaimActive(input.replyClaimedAt)
+  ) {
+    throw new Error("Hội thoại đang được nhân viên khác trả lời.");
+  }
+  if (input.staffId === input.currentStaffId && isReplyClaimActive(input.replyClaimedAt)) {
+    return;
+  }
+  await prisma.conversation.update({
+    where: { id: input.conversationId },
+    data: {
+      staffId: input.currentStaffId,
+      replyClaimedAt: new Date(),
+    },
+  });
+}
+
 export async function claimConversation(conversationId: string) {
   const session = await requirePermission(PERMISSION_CODES.inboxReply);
-  const admin = isAdminSession(session);
+  const admin = await isInboxAdmin(session);
   if (!conversationId) {
     throw new Error("Thiếu hội thoại");
   }
@@ -102,7 +141,7 @@ export async function releaseConversation(
   reason: "manual" | "idle_timeout" = "manual",
 ) {
   const session = await requirePermission(PERMISSION_CODES.inboxReply);
-  const admin = isAdminSession(session);
+  const admin = await isInboxAdmin(session);
   if (!conversationId) {
     throw new Error("Thiếu hội thoại");
   }
@@ -159,7 +198,7 @@ export async function releaseConversation(
 /** Gia hạn claim khi đang gõ / còn dùng — tránh timeout vì idle. */
 export async function touchConversationClaim(conversationId: string) {
   const session = await requirePermission(PERMISSION_CODES.inboxReply);
-  const admin = isAdminSession(session);
+  const admin = await isInboxAdmin(session);
   if (!conversationId) {
     throw new Error("Thiếu hội thoại");
   }
@@ -194,7 +233,7 @@ export async function touchConversationClaim(conversationId: string) {
 
 export async function sendMessage(conversationId: string, text: string) {
   const session = await requirePermission(PERMISSION_CODES.inboxReply);
-  const admin = isAdminSession(session);
+  const admin = await isInboxAdmin(session);
   const body = text.trim();
   if (!conversationId || !body) {
     throw new Error("Tin nhắn không hợp lệ");
@@ -207,7 +246,8 @@ export async function sendMessage(conversationId: string, text: string) {
     throw new Error("Không tìm thấy hội thoại");
   }
 
-  assertCanReply({
+  await assertCanReplyOrClaim({
+    conversationId,
     staffId: conversation.staffId,
     replyClaimedAt: conversation.replyClaimedAt,
     currentStaffId: session.staffId,
@@ -280,7 +320,7 @@ export async function sendMessage(conversationId: string, text: string) {
 
 export async function sendImageMessage(conversationId: string, formData: FormData) {
   const session = await requirePermission(PERMISSION_CODES.inboxReply);
-  const admin = isAdminSession(session);
+  const admin = await isInboxAdmin(session);
   if (!conversationId) {
     throw new Error("Thiếu hội thoại");
   }
@@ -297,7 +337,8 @@ export async function sendImageMessage(conversationId: string, formData: FormDat
     throw new Error("Không tìm thấy hội thoại");
   }
 
-  assertCanReply({
+  await assertCanReplyOrClaim({
+    conversationId,
     staffId: conversation.staffId,
     replyClaimedAt: conversation.replyClaimedAt,
     currentStaffId: session.staffId,
@@ -384,7 +425,7 @@ export async function sendImageMessage(conversationId: string, formData: FormDat
 
 export async function reactToMessage(messageId: string, emoji: string) {
   const session = await requirePermission(PERMISSION_CODES.inboxReply);
-  const admin = isAdminSession(session);
+  const admin = await isInboxAdmin(session);
   if (!messageId || !emoji.trim()) {
     throw new Error("Reaction không hợp lệ");
   }
@@ -452,7 +493,7 @@ export async function reactToMessage(messageId: string, emoji: string) {
     }
   }
 
-  revalidatePath("/inbox");
+  // Không revalidatePath — client router.refresh(); tránh React #441 trên composer.
 
   await writeAudit({
     actor: session,
@@ -526,7 +567,7 @@ export async function updateConversationTag(
     data: { tag },
   });
 
-  revalidatePath("/inbox");
+  // Không revalidatePath — optimistic + soft-refresh; tránh React #441 khi đang soạn tin.
 
   await writeAudit({
     actor: session,

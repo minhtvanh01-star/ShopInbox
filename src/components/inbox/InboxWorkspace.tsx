@@ -152,6 +152,8 @@ export function InboxWorkspace({
   const [stickToBottom, setStickToBottom] = useState(true);
   const lastClaimTouchRef = useRef(0);
   const readMarkedRef = useRef(new Set<string>());
+  /** Claim đang chờ server — send phải await để tránh race "UI mở / DB chưa claim". */
+  const claimInFlightRef = useRef<Record<string, Promise<boolean>>>({});
   /** id → lastAt lúc đánh dấu đã đọc — giữ badge=0 đến khi server/sync hoặc có tin mới. */
   const [readReceipts, setReadReceipts] = useState<Record<string, string>>({});
   /** Claim bền ngoài useOptimistic — tránh khóa composer lại sau khi bấm "Tôi trả lời". */
@@ -214,6 +216,41 @@ export function InboxWorkspace({
       }),
     [optimisticConversations, claimOverrides],
   );
+
+  // Đồng bộ override với props server (render-time — tránh setState trong effect).
+  const [claimSyncSource, setClaimSyncSource] = useState(conversations);
+  if (conversations !== claimSyncSource) {
+    setClaimSyncSource(conversations);
+    let changed = false;
+    const next = { ...claimOverrides };
+    for (const [id, override] of Object.entries(claimOverrides)) {
+      const server = conversations.find((row) => row.id === id);
+      if (!server) {
+        delete next[id];
+        changed = true;
+        continue;
+      }
+      const sameClaimant =
+        (server.replyStaffId ?? null) === (override.replyStaffId ?? null);
+      const serverCleared = !server.replyStaffId && !server.replyClaimedAt;
+      const overrideCleared = !override.replyStaffId && !override.replyClaimedAt;
+      if (overrideCleared && serverCleared) {
+        delete next[id];
+        changed = true;
+      } else if (
+        sameClaimant &&
+        override.replyStaffId &&
+        server.replyStaffId &&
+        server.replyClaimedAt
+      ) {
+        delete next[id];
+        changed = true;
+      }
+    }
+    if (changed) {
+      setClaimOverrides(next);
+    }
+  }
 
   // Nếu kênh đang chọn biến mất khỏi bộ lọc (ngắt kết nối), về "Tất cả"
   const selectedFilter =
@@ -340,39 +377,6 @@ export function InboxWorkspace({
   }, [conversationsView]);
 
   useEffect(() => {
-    setClaimOverrides((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const [id, override] of Object.entries(prev)) {
-        const server = conversations.find((row) => row.id === id);
-        if (!server) {
-          delete next[id];
-          changed = true;
-          continue;
-        }
-        const sameClaimant =
-          (server.replyStaffId ?? null) === (override.replyStaffId ?? null);
-        const serverCleared = !server.replyStaffId && !server.replyClaimedAt;
-        const overrideCleared = !override.replyStaffId && !override.replyClaimedAt;
-        if (overrideCleared && serverCleared) {
-          delete next[id];
-          changed = true;
-        } else if (
-          sameClaimant &&
-          override.replyStaffId &&
-          server.replyStaffId &&
-          server.replyClaimedAt
-        ) {
-          // Server đã có claim cùng người — bỏ override, tin timestamp server.
-          delete next[id];
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [conversations]);
-
-  useEffect(() => {
     if (nowMs === null) {
       return;
     }
@@ -384,11 +388,13 @@ export function InboxWorkspace({
     }
     const id = selected.id;
     const wasMine = selected.replyStaffId === currentStaffId;
-    setClaimOverrides((prev) => {
-      if (!(id in prev)) return prev;
-      const copy = { ...prev };
-      delete copy[id];
-      return copy;
+    queueMicrotask(() => {
+      setClaimOverrides((prev) => {
+        if (!(id in prev)) return prev;
+        const copy = { ...prev };
+        delete copy[id];
+        return copy;
+      });
     });
     startBackground(() => {
       patchOptimisticConversation({
@@ -549,9 +555,8 @@ export function InboxWorkspace({
   }
 
   function claimReply() {
-    if (!selected || sendBusy || replyLockedByOther) return;
-    const atMs = nowMs ?? Date.now();
-    if (nowMs === null) setNowMs(atMs);
+    if (!selected || sendBusy || replyLockedByOther || nowMs === null) return;
+    const atMs = nowMs;
     const claimedAt = new Date(atMs).toISOString();
     const conversationId = selected.id;
     // Ghi đè claim ngay (ngoài useOptimistic) — không refresh RSC để tránh flash khóa lại composer.
@@ -564,13 +569,8 @@ export function InboxWorkspace({
       },
     }));
     setError(null);
-    startBackground(async () => {
-      patchOptimisticConversation({
-        id: conversationId,
-        replyStaffId: currentStaffId,
-        replyStaffName: currentStaffName,
-        replyClaimedAt: claimedAt,
-      });
+
+    const claimPromise = (async () => {
       try {
         const result = await claimConversation(conversationId);
         lastClaimTouchRef.current = atMs;
@@ -582,11 +582,16 @@ export function InboxWorkspace({
             replyClaimedAt: result.claimedAt,
           },
         }));
-        patchOptimisticConversation({
-          id: conversationId,
-          replyClaimedAt: result.claimedAt,
+        startBackground(() => {
+          patchOptimisticConversation({
+            id: conversationId,
+            replyStaffId: currentStaffId,
+            replyStaffName: currentStaffName,
+            replyClaimedAt: result.claimedAt,
+          });
         });
         queueMicrotask(() => composerRef.current?.focus());
+        return true;
       } catch (err) {
         setClaimOverrides((prev) => {
           if (!(conversationId in prev)) return prev;
@@ -596,8 +601,28 @@ export function InboxWorkspace({
         });
         const message = inboxActionErrorMessage(err, "Không nhận được hội thoại");
         if (message) setError(message);
+        return false;
+      } finally {
+        delete claimInFlightRef.current[conversationId];
       }
+    })();
+    claimInFlightRef.current[conversationId] = claimPromise;
+
+    startBackground(() => {
+      patchOptimisticConversation({
+        id: conversationId,
+        replyStaffId: currentStaffId,
+        replyStaffName: currentStaffName,
+        replyClaimedAt: claimedAt,
+      });
+      void claimPromise;
     });
+  }
+
+  async function waitForClaimIfNeeded(conversationId: string) {
+    const pending = claimInFlightRef.current[conversationId];
+    if (!pending) return true;
+    return pending;
   }
 
   function releaseReply() {
@@ -645,12 +670,11 @@ export function InboxWorkspace({
   }
 
   function send(text: string) {
-    if (!selected || !text.trim() || sendBusy || !canCompose) {
+    if (!selected || !text.trim() || sendBusy || !canCompose || nowMs === null) {
       return;
     }
 
-    const atMs = nowMs ?? Date.now();
-    if (nowMs === null) setNowMs(atMs);
+    const atMs = nowMs;
     const body = text.trim();
     const tempId = `temp-${crypto.randomUUID()}`;
     const sentAt = new Date(atMs).toISOString();
@@ -679,6 +703,13 @@ export function InboxWorkspace({
     }
 
     startAction(async () => {
+      if (!isAdmin) {
+        const claimed = await waitForClaimIfNeeded(selected.id);
+        if (!claimed) {
+          setDraft(body);
+          return;
+        }
+      }
       addOptimisticMessage(optimistic);
       patchOptimisticConversation({
         id: selected.id,
@@ -696,6 +727,7 @@ export function InboxWorkspace({
         // Giữ optimistic đến khi RSC props cập nhật — cùng transition.
         router.refresh();
       } catch (err) {
+        setDraft(body);
         const message = inboxActionErrorMessage(err, "Gửi tin thất bại");
         if (message) setError(message);
         router.refresh();
@@ -711,10 +743,9 @@ export function InboxWorkspace({
   }
 
   function sendImage(file: File) {
-    if (!selected || sendBusy || !canCompose) return;
+    if (!selected || sendBusy || !canCompose || nowMs === null) return;
 
-    const atMs = nowMs ?? Date.now();
-    if (nowMs === null) setNowMs(atMs);
+    const atMs = nowMs;
     const tempId = `temp-${crypto.randomUUID()}`;
     const sentAt = new Date(atMs).toISOString();
     const previewUrl = URL.createObjectURL(file);
@@ -745,6 +776,12 @@ export function InboxWorkspace({
     }
 
     startAction(async () => {
+      if (!isAdmin) {
+        const claimed = await waitForClaimIfNeeded(selected.id);
+        if (!claimed) {
+          return;
+        }
+      }
       addOptimisticMessage(optimistic);
       patchOptimisticConversation({
         id: selected.id,
