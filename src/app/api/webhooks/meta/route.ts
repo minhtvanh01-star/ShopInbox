@@ -35,8 +35,17 @@ export async function POST(request: Request) {
 
   try {
     const result = await processMetaWebhook(body);
-    if (result.processed > 0) {
+    if (result.processed > 0 || result.touched > 0) {
       revalidatePath("/inbox");
+      revalidatePath("/settings");
+    }
+    if (result.processed === 0 && result.touched === 0 && !result.skipped) {
+      console.warn("[webhook/meta] received but no channel matched", {
+        object: (body as { object?: string }).object,
+        entryIds: Array.isArray((body as { entry?: Array<{ id?: string }> }).entry)
+          ? (body as { entry: Array<{ id?: string }> }).entry.map((entry) => entry.id)
+          : [],
+      });
     }
     return NextResponse.json({ received: true, ...result });
   } catch (err) {

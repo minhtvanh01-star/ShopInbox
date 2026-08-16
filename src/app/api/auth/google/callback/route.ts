@@ -21,6 +21,8 @@ import { auditMetaFromRequest, writeAudit } from "@/backend/audit";
 import { absoluteAppUrl } from "@/backend/public-url";
 import { safeInternalPath } from "@/backend/safe-path";
 import { AUDIT_ACTIONS, normalizeRoleCode } from "@/lib/rbac-catalog";
+import { assertShopHasActiveSeat, countActiveShopUsers } from "@/backend/shop-seats";
+import { getShopPolicy } from "@/backend/shop-policy";
 
 function authPageUrl(
   request: Request,
@@ -264,6 +266,25 @@ export async function GET(request: Request) {
       });
     }
 
+    if (resolved.isActive) {
+      const seatError = await assertShopHasActiveSeat(resolved.shopId);
+      if (seatError) {
+        return clearGoogleAuthCookies(
+          redirectWithError(request, "shop_seat_full", mode, nextPath),
+        );
+      }
+    } else {
+      const [active, policy] = await Promise.all([
+        countActiveShopUsers(resolved.shopId),
+        getShopPolicy(resolved.shopId),
+      ]);
+      if (active >= policy.maxUsersPerShop) {
+        return clearGoogleAuthCookies(
+          redirectWithError(request, "shop_seat_full", mode, nextPath),
+        );
+      }
+    }
+
     const staff = await prisma.staff.create({
       data: {
         id: `staff-${crypto.randomUUID()}`,
@@ -273,19 +294,42 @@ export async function GET(request: Request) {
         googleId: resolved.googleId,
         avatarUrl: resolved.avatarUrl,
         roleCode: normalizeRoleCode(resolved.role),
+        isActive: resolved.isActive,
       },
     });
 
-    await createSessionForStaff(staff.id);
-    const session = await loadStaffSession(staff.id);
+    const registerActor = {
+      id: staff.id,
+      email: staff.email,
+      role: staff.roleCode,
+      shopId: staff.shopId,
+    };
+
     await writeAudit({
       ...auditMetaFromRequest(request),
-      actor: session,
+      actor: registerActor,
       action: AUDIT_ACTIONS.authRegister,
       entityType: "Staff",
       entityId: staff.id,
-      metadata: { method: "google", roleCode: staff.roleCode, bootstrap: Boolean(resolved.createShop) },
+      metadata: {
+        method: "google",
+        roleCode: staff.roleCode,
+        isActive: staff.isActive,
+        pendingApproval: !staff.isActive,
+        bootstrap: Boolean(resolved.createShop),
+      },
     });
+
+    if (!resolved.isActive) {
+      return clearGoogleAuthCookies(
+        NextResponse.redirect(
+          authPageUrl(request, "/login", { auth_success: "pending_approval" }),
+        ),
+      );
+    }
+
+    await createSessionForStaff(staff.id);
+    const session = await loadStaffSession(staff.id);
     await writeAudit({
       ...auditMetaFromRequest(request),
       actor: session,

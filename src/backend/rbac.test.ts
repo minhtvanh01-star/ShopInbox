@@ -24,6 +24,7 @@ import {
   hasPermission,
   hasPermissionCodes,
   invalidatePermissionCache,
+  requireActionPermission,
   requirePermission,
   requirePermissionApi,
 } from "@/backend/rbac";
@@ -40,6 +41,7 @@ const adminSession = {
   email: "admin@lily.vn",
   name: "Minh",
   role: "admin",
+  lastActiveAt: Date.now(),
 };
 
 const staffSession = {
@@ -48,6 +50,7 @@ const staffSession = {
   email: "nhanvien@lily.vn",
   name: "Lan",
   role: "staff",
+  lastActiveAt: Date.now(),
 };
 
 function mockStaffPerms(shopId: string, codes: string[]) {
@@ -111,6 +114,15 @@ describe("hasPermission / requirePermission", () => {
     );
   });
 
+  it("requireActionPermission throws instead of redirect", async () => {
+    mockStaffPerms("shop1", [PERMISSION_CODES.inboxRead]);
+    vi.mocked(getSession).mockResolvedValue(staffSession);
+
+    await expect(requireActionPermission(PERMISSION_CODES.channelsConnect)).rejects.toThrow(
+      "Bạn không có quyền thực hiện thao tác này.",
+    );
+  });
+
   it("requirePermissionApi returns null when staff lacks channels.connect", async () => {
     mockStaffPerms("shop1", [PERMISSION_CODES.inboxRead]);
     vi.mocked(getSession).mockResolvedValue(staffSession);
@@ -136,5 +148,27 @@ describe("hasPermission / requirePermission", () => {
     } as never);
 
     expect(await hasPermission(adminSession, PERMISSION_CODES.channelsConnect)).toBe(false);
+  });
+});
+
+describe("isAdminSession", () => {
+  it("detects admin and owner alias", async () => {
+    const { isAdminSession } = await import("@/backend/rbac");
+    expect(isAdminSession({ role: "admin" })).toBe(true);
+    expect(isAdminSession({ role: "owner" })).toBe(true);
+    expect(isAdminSession({ role: "Admin" })).toBe(true);
+    expect(isAdminSession({ role: "staff" })).toBe(false);
+  });
+});
+
+describe("isAdminRole / normalizeRoleCode casing", () => {
+  it("treats Admin/owner casing as admin", async () => {
+    const { isAdminRole, normalizeRoleCode } = await import("@/lib/rbac-catalog");
+    expect(normalizeRoleCode(" Admin ")).toBe(ROLE_CODES.admin);
+    expect(normalizeRoleCode("OWNER")).toBe(ROLE_CODES.admin);
+    expect(isAdminRole("admin")).toBe(true);
+    expect(isAdminRole("Admin")).toBe(true);
+    expect(isAdminRole("owner")).toBe(true);
+    expect(isAdminRole("staff")).toBe(false);
   });
 });

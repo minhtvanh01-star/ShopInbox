@@ -1,11 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+  type PointerEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   claimConversation,
   markConversationRead,
+  reactToMessage,
   releaseConversation,
+  sendImageMessage,
   sendMessage,
   touchConversationClaim,
   updateConversationTag,
@@ -13,20 +24,43 @@ import {
 import {
   formatReplyClaimCountdown,
   replyClaimRemainingMs,
-  REPLY_CLAIM_TTL_MINUTES,
+  REPLY_CLAIM_TTL_MS,
 } from "@/backend/reply-claim";
+import { replyClaimTtlMs, DEFAULT_REPLY_CLAIM_TTL_MINUTES } from "@/lib/shop-policy";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { CreateOrderForm } from "@/components/inbox/CreateOrderForm";
+import { CustomerAvatar } from "@/components/inbox/CustomerAvatar";
+import { MessageBubble } from "@/components/inbox/MessageBubble";
+import {
+  EmojiPickerButton,
+  ImagePickerButton,
+} from "@/components/inbox/MessageComposerTools";
+import {
+  chatDayKey,
+  mergeConversationThread,
+  pruneSyncedOutbound,
+  type LocalOutboundMessage,
+} from "@/lib/inbox-thread";
 import {
   CHANNEL_LABEL,
   TAG_LABEL,
+  formatChatDayLabel,
   formatMoney,
   formatTime,
   getInboxChannelFilters,
   inboxChannelsSubtitle,
   orderTotal,
 } from "@/lib/labels";
-import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
+import {
+  INBOX_LIST_COLLAPSED,
+  INBOX_LIST_DEFAULT,
+  INBOX_LIST_MAX,
+  INBOX_LIST_MIN,
+  LAYOUT_CLASS,
+  STORAGE_KEYS,
+  clampInboxListWidth,
+} from "@/lib/ui-layout";
+import { notifyInboxNoticesRefresh } from "@/lib/inbox-notices";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import type {
   Channel,
@@ -50,6 +84,10 @@ type InboxWorkspaceProps = {
   quickReplies: QuickReply[];
   currentStaffId: string;
   currentStaffName: string;
+  /** Admin / chủ shop — không bị khóa claim / TTL như nhân viên. */
+  isAdmin?: boolean;
+  /** Phút idle trước khi nhả claim — từ cấu hình shop. */
+  replyClaimTtlMinutes?: number;
   /** Kênh đã nối / có hội thoại — để hiện pill từ cấu hình, không hardcode. */
   activeChannels?: Channel[];
   initialConversationId?: string;
@@ -66,6 +104,13 @@ type ConversationPatch = {
   replyClaimedAt?: string | null;
 };
 
+/** Claim giữ ngoài useOptimistic — tránh UI snap-back khi transition kết thúc trước RSC. */
+type ClaimOverride = {
+  replyStaffId: string | null;
+  replyStaffName: string | null;
+  replyClaimedAt: string | null;
+};
+
 const MOBILE_TABS: Array<{ id: MobilePane; label: string }> = [
   { id: "list", label: "Hội thoại" },
   { id: "chat", label: "Chat" },
@@ -77,7 +122,23 @@ const TAG_OPTIONS = Object.keys(TAG_LABEL) as ConversationTag[];
 const CLAIM_TOUCH_MIN_INTERVAL_MS = 45_000;
 /** Heartbeat khi tab còn mở / đang giữ hội thoại — tránh out dù không gõ liên tục. */
 const CLAIM_HEARTBEAT_MS = 2 * 60 * 1000;
-const INBOX_SOFT_REFRESH_MS = 20_000;
+/** Soft sync gần realtime hơn (không WebSocket) — giống messenger poll nhẹ. */
+const INBOX_SOFT_REFRESH_MS = 8_000;
+
+/**
+ * Next/React production ẩn lỗi Server Components thành minified #441.
+ * Mutation thường đã OK — không hiện digest thô trên composer.
+ */
+function inboxActionErrorMessage(err: unknown, fallback: string) {
+  const raw = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  if (
+    /minified React error #441/i.test(raw) ||
+    /error occurred in the Server Components render/i.test(raw)
+  ) {
+    return null;
+  }
+  return raw.trim() || fallback;
+}
 
 export function InboxWorkspace({
   conversations,
@@ -88,10 +149,13 @@ export function InboxWorkspace({
   quickReplies,
   currentStaffId,
   currentStaffName,
+  isAdmin = false,
+  replyClaimTtlMinutes = DEFAULT_REPLY_CLAIM_TTL_MINUTES,
   activeChannels,
   initialConversationId,
 }: InboxWorkspaceProps) {
   const router = useRouter();
+  const claimTtlMs = replyClaimTtlMs(replyClaimTtlMinutes) || REPLY_CLAIM_TTL_MS;
   const channelFilters = useMemo(
     () => getInboxChannelFilters(activeChannels),
     [activeChannels],
@@ -110,22 +174,53 @@ export function InboxWorkspace({
     STORAGE_KEYS.inboxCustomerPanel,
     true,
   );
-  const [isPending, startTransition] = useTransition();
-  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [listWidth, setListWidth] = usePersistedState(
+    STORAGE_KEYS.inboxListWidth,
+    INBOX_LIST_DEFAULT,
+  );
+  const [listCollapsed, setListCollapsed] = usePersistedState(
+    STORAGE_KEYS.inboxListCollapsed,
+    false,
+  );
+  const listResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const desktopListWidth = listCollapsed
+    ? INBOX_LIST_COLLAPSED
+    : clampInboxListWidth(listWidth);
+  /** Chỉ khóa composer khi user đang claim/gửi — không dùng cho poll/mark-read/heartbeat. */
+  const [actionPending, startAction] = useTransition();
+  const [, startBackground] = useTransition();
+  /** null đến khi mount — tránh hydration mismatch từ đồng hồ client. */
+  const [nowMs, setNowMs] = useState<number | null>(null);
   const [pendingNewCount, setPendingNewCount] = useState(0);
   const [stickToBottom, setStickToBottom] = useState(true);
   const lastClaimTouchRef = useRef(0);
+  const readMarkedRef = useRef(new Set<string>());
+  /** Đã gọi release idle cho cặp conversation+claimedAt — tránh POST mỗi giây. */
+  const idleReleasedRef = useRef(new Set<string>());
+  /** Claim touch thất bại liên tiếp — backoff để heartbeat không spam. */
+  const claimTouchFailUntilRef = useRef(0);
+  /** Claim đang chờ server — send phải await để tránh race "UI mở / DB chưa claim". */
+  const claimInFlightRef = useRef<Record<string, Promise<boolean>>>({});
+  /** File ảnh theo tempId — cho phép Gửi lại khi fail. */
+  const pendingImageFilesRef = useRef<Record<string, File>>({});
+  /** id → lastAt lúc đánh dấu đã đọc — giữ badge=0 đến khi server/sync hoặc có tin mới. */
+  const [readReceipts, setReadReceipts] = useState<Record<string, string>>({});
+  /** Claim bền ngoài useOptimistic — tránh khóa composer lại sau khi bấm "Tôi trả lời". */
+  const [claimOverrides, setClaimOverrides] = useState<Record<string, ClaimOverride>>({});
+  /** Tin đang gửi / thất bại — giữ bubble kiểu messenger (status + gửi lại). */
+  const [localOutbound, setLocalOutbound] = useState<LocalOutboundMessage[]>([]);
+  const [outboundSyncSource, setOutboundSyncSource] = useState(messages);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const [trackedSelectedId, setTrackedSelectedId] = useState(selectedId);
+  const initialThreadId = initialConversationId || conversations[0]?.id || "";
+  const initialThreadLen = initialThreadId
+    ? messages.filter((item) => item.conversationId === initialThreadId).length
+    : 0;
   const [trackedThreadKey, setTrackedThreadKey] = useState(
-    `${initialConversationId || conversations[0]?.id || ""}:0`,
+    `${initialThreadId}:${initialThreadLen}`,
   );
   const [prevInitialConversationId, setPrevInitialConversationId] = useState(initialConversationId);
-  const [optimisticMessages, addOptimisticMessage] = useOptimistic(
-    messages,
-    (current, message: Message) => [...current, message],
-  );
   const [optimisticConversations, patchOptimisticConversation] = useOptimistic(
     conversations,
     (current, patch: ConversationPatch) =>
@@ -149,10 +244,70 @@ export function InboxWorkspace({
       ),
   );
 
+  // Khi RSC mang tin shop mới về — bỏ local đã khớp (kể cả failed do race).
+  if (messages !== outboundSyncSource) {
+    setOutboundSyncSource(messages);
+    const next = pruneSyncedOutbound(localOutbound, messages);
+    if (next.length !== localOutbound.length) {
+      setLocalOutbound(next);
+    }
+  }
+
   const customerById = useMemo(() => {
     const map = new Map(customers.map((item) => [item.id, item]));
     return (id: string) => map.get(id);
   }, [customers]);
+
+  const conversationsView = useMemo(
+    () =>
+      optimisticConversations.map((item) => {
+        const override = claimOverrides[item.id];
+        return override
+          ? {
+              ...item,
+              replyStaffId: override.replyStaffId,
+              replyStaffName: override.replyStaffName,
+              replyClaimedAt: override.replyClaimedAt,
+            }
+          : item;
+      }),
+    [optimisticConversations, claimOverrides],
+  );
+
+  // Đồng bộ override với props server (render-time — tránh setState trong effect).
+  const [claimSyncSource, setClaimSyncSource] = useState(conversations);
+  if (conversations !== claimSyncSource) {
+    setClaimSyncSource(conversations);
+    let changed = false;
+    const next = { ...claimOverrides };
+    for (const [id, override] of Object.entries(claimOverrides)) {
+      const server = conversations.find((row) => row.id === id);
+      if (!server) {
+        delete next[id];
+        changed = true;
+        continue;
+      }
+      const sameClaimant =
+        (server.replyStaffId ?? null) === (override.replyStaffId ?? null);
+      const serverCleared = !server.replyStaffId && !server.replyClaimedAt;
+      const overrideCleared = !override.replyStaffId && !override.replyClaimedAt;
+      if (overrideCleared && serverCleared) {
+        delete next[id];
+        changed = true;
+      } else if (
+        sameClaimant &&
+        override.replyStaffId &&
+        server.replyStaffId &&
+        server.replyClaimedAt
+      ) {
+        delete next[id];
+        changed = true;
+      }
+    }
+    if (changed) {
+      setClaimOverrides(next);
+    }
+  }
 
   // Nếu kênh đang chọn biến mất khỏi bộ lọc (ngắt kết nối), về "Tất cả"
   const selectedFilter =
@@ -160,33 +315,53 @@ export function InboxWorkspace({
 
   const visible = useMemo(
     () =>
-      optimisticConversations
+      conversationsView
         .filter((item) => selectedFilter === "all" || item.channel === selectedFilter)
+        .map((item) => {
+          const receiptLastAt = readReceipts[item.id];
+          if (receiptLastAt && item.lastAt === receiptLastAt && item.unread > 0) {
+            return { ...item, unread: 0 };
+          }
+          return item;
+        })
         .sort((a, b) => +new Date(b.lastAt) - +new Date(a.lastAt)),
-    [selectedFilter, optimisticConversations],
+    [selectedFilter, conversationsView, readReceipts],
   );
 
   const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
   const customer = selected ? customerById(selected.customerId) : undefined;
   const thread = selected
-    ? optimisticMessages.filter((item) => item.conversationId === selected.id)
+    ? mergeConversationThread(messages, localOutbound, selected.id)
     : [];
   const customerOrders = customer
     ? orders.filter((item) => item.customerId === customer.id)
     : [];
 
-  const claimRemainingMs = selected?.replyClaimedAt
-    ? replyClaimRemainingMs(selected.replyClaimedAt, nowMs)
-    : 0;
-  const claimActive = Boolean(selected?.replyStaffId) && claimRemainingMs > 0;
+  const claimRemainingMs =
+    nowMs !== null && selected?.replyClaimedAt
+      ? replyClaimRemainingMs(selected.replyClaimedAt, nowMs, claimTtlMs)
+      : 0;
+  /** Trước khi mount: tin server (đã lọc TTL). Sau mount: đếm theo đồng hồ client. */
+  const claimActive =
+    nowMs === null
+      ? Boolean(selected?.replyStaffId && selected?.replyClaimedAt)
+      : Boolean(selected?.replyStaffId) && claimRemainingMs > 0;
   const replyLockedByOther = Boolean(
-    claimActive && selected?.replyStaffId && selected.replyStaffId !== currentStaffId,
+    !isAdmin &&
+      claimActive &&
+      selected?.replyStaffId &&
+      selected.replyStaffId !== currentStaffId,
   );
   const replyIsMine = Boolean(
     claimActive && selected?.replyStaffId && selected.replyStaffId === currentStaffId,
   );
-  const canCompose = replyIsMine && !isPending;
-  const claimCountdown = claimActive ? formatReplyClaimCountdown(claimRemainingMs) : null;
+  /** Admin trả lời mọi lúc; nhân viên phải claim còn hạn. Không khóa theo actionPending — claim/refresh không được làm ô nhập bị disabled. */
+  const canCompose = isAdmin || replyIsMine;
+  const sendBusy = actionPending;
+  const claimCountdown =
+    nowMs !== null && !isAdmin && claimActive && claimRemainingMs > 0
+      ? formatReplyClaimCountdown(claimRemainingMs)
+      : null;
 
   if (initialConversationId && initialConversationId !== prevInitialConversationId) {
     setPrevInitialConversationId(initialConversationId);
@@ -217,6 +392,27 @@ export function InboxWorkspace({
   }
 
   useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setNowMs(Date.now());
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  // Thu hồi blob / file tạm khi local outbound bị xóa (gửi OK, prune, hủy).
+  const prevLocalOutboundRef = useRef(localOutbound);
+  useEffect(() => {
+    const prev = prevLocalOutboundRef.current;
+    prevLocalOutboundRef.current = localOutbound;
+    for (const item of prev) {
+      if (localOutbound.some((row) => row.id === item.id)) continue;
+      if (item.attachmentUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(item.attachmentUrl);
+      }
+      delete pendingImageFilesRef.current[item.id];
+    }
+  }, [localOutbound]);
+
+  useEffect(() => {
     if (!stickToBottom || pendingNewCount > 0) {
       return;
     }
@@ -241,7 +437,7 @@ export function InboxWorkspace({
   }, [router]);
 
   useEffect(() => {
-    const hasClaimFields = optimisticConversations.some(
+    const hasClaimFields = conversationsView.some(
       (item) => Boolean(item.replyStaffId && item.replyClaimedAt),
     );
     if (!hasClaimFields) {
@@ -249,9 +445,12 @@ export function InboxWorkspace({
     }
     const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [optimisticConversations]);
+  }, [conversationsView]);
 
   useEffect(() => {
+    if (nowMs === null) {
+      return;
+    }
     if (!selected?.replyStaffId || !selected.replyClaimedAt) {
       return;
     }
@@ -259,8 +458,25 @@ export function InboxWorkspace({
       return;
     }
     const id = selected.id;
+    const claimedAt = selected.replyClaimedAt;
+    const releaseKey = `${id}:${claimedAt}`;
+    if (idleReleasedRef.current.has(releaseKey)) {
+      return;
+    }
+    idleReleasedRef.current.add(releaseKey);
     const wasMine = selected.replyStaffId === currentStaffId;
-    startTransition(() => {
+    // Giữ override "đã nhả" — tránh snap-back về claim hết hạn từ props → spam release mỗi giây.
+    queueMicrotask(() => {
+      setClaimOverrides((prev) => ({
+        ...prev,
+        [id]: {
+          replyStaffId: null,
+          replyStaffName: null,
+          replyClaimedAt: null,
+        },
+      }));
+    });
+    startBackground(() => {
       patchOptimisticConversation({
         id,
         replyStaffId: null,
@@ -268,20 +484,38 @@ export function InboxWorkspace({
         replyClaimedAt: null,
       });
     });
-    if (wasMine) {
-      void releaseConversation(id).catch(() => {
-        // Hết hạn phía client — DB có thể đã hết hạn theo TTL.
+    if (wasMine && !isAdmin) {
+      void releaseConversation(id, "idle_timeout").catch(() => {
+        // Không xóa idleReleasedRef — một lần fail không được POST lại mỗi giây.
       });
     }
   }, [
+    nowMs,
     claimRemainingMs,
     selected?.id,
     selected?.replyStaffId,
     selected?.replyClaimedAt,
     currentStaffId,
+    isAdmin,
     patchOptimisticConversation,
-    startTransition,
+    startBackground,
   ]);
+
+  useEffect(() => {
+    setReadReceipts((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [id, lastAt] of Object.entries(prev)) {
+        const item = conversations.find((row) => row.id === id);
+        if (!item || item.unread === 0 || item.lastAt !== lastAt) {
+          delete next[id];
+          readMarkedRef.current.delete(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [conversations]);
 
   useEffect(() => {
     const id = selected?.id;
@@ -289,22 +523,41 @@ export function InboxWorkspace({
     if (!id || unread <= 0) {
       return;
     }
-    startTransition(() => {
+    if (readMarkedRef.current.has(id)) {
+      return;
+    }
+    readMarkedRef.current.add(id);
+    const lastAt = selected.lastAt;
+    setReadReceipts((prev) => ({ ...prev, [id]: lastAt }));
+    startBackground(() => {
       patchOptimisticConversation({ id, unread: 0 });
     });
-    void markConversationRead(id).catch((err) => {
-      setError(err instanceof Error ? err.message : "Không đánh dấu đã đọc được");
-    });
-  }, [selected?.id, selected?.unread, patchOptimisticConversation, startTransition]);
+    void markConversationRead(id)
+      .then(() => {
+        notifyInboxNoticesRefresh();
+      })
+      .catch((err) => {
+        // Giữ readMarkedRef + readReceipts — xóa ngay sẽ làm effect chạy lại → spam POST 500.
+        // Thử lại khi có tin mới (lastAt đổi) nhờ sync effect xóa receipt.
+        const message = inboxActionErrorMessage(err, "Không đánh dấu đã đọc được");
+        if (message) setError(message);
+      });
+  }, [selected?.id, selected?.unread, selected?.lastAt, patchOptimisticConversation, startBackground]);
 
   function renewClaimActivity(conversationId: string, options?: { force?: boolean; atMs?: number }) {
-    const at = options?.atMs ?? nowMs;
+    if (nowMs === null && options?.atMs === undefined) {
+      return;
+    }
+    const at = options?.atMs ?? nowMs!;
+    if (at < claimTouchFailUntilRef.current) {
+      return;
+    }
     if (!options?.force && at - lastClaimTouchRef.current < CLAIM_TOUCH_MIN_INTERVAL_MS) {
       return;
     }
     lastClaimTouchRef.current = at;
     const claimedAt = new Date(at).toISOString();
-    startTransition(() => {
+    startBackground(() => {
       patchOptimisticConversation({
         id: conversationId,
         replyStaffId: currentStaffId,
@@ -314,7 +567,8 @@ export function InboxWorkspace({
     });
     void touchConversationClaim(conversationId)
       .then((result) => {
-        startTransition(() => {
+        claimTouchFailUntilRef.current = 0;
+        startBackground(() => {
           patchOptimisticConversation({
             id: conversationId,
             replyClaimedAt: result.claimedAt,
@@ -323,7 +577,8 @@ export function InboxWorkspace({
         setNowMs(Date.now());
       })
       .catch(() => {
-        // Bỏ qua — lần gửi tin / claim kế tiếp sẽ đồng bộ lại.
+        // Backoff 2 phút — khớp nhịp heartbeat, tránh spam khi action đang 500.
+        claimTouchFailUntilRef.current = Date.now() + CLAIM_HEARTBEAT_MS;
       });
   }
 
@@ -364,102 +619,418 @@ export function InboxWorkspace({
     setError(null);
   }
 
-  function changeTag(tag: ConversationTag) {
-    if (!selected || selected.tag === tag || isPending) return;
+  function onListResizePointerDown(event: PointerEvent<HTMLDivElement>) {
+    if (listCollapsed) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    listResizeRef.current = {
+      startX: event.clientX,
+      startWidth: clampInboxListWidth(listWidth),
+    };
+  }
 
-    startTransition(async () => {
+  function onListResizePointerMove(event: PointerEvent<HTMLDivElement>) {
+    const drag = listResizeRef.current;
+    if (!drag) return;
+    setListWidth(clampInboxListWidth(drag.startWidth + (event.clientX - drag.startX)));
+  }
+
+  function onListResizePointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (!listResizeRef.current) return;
+    listResizeRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // already released
+    }
+  }
+
+  function nudgeListWidth(delta: number) {
+    setListCollapsed(false);
+    setListWidth((prev) => clampInboxListWidth(clampInboxListWidth(prev) + delta));
+  }
+
+  function changeTag(tag: ConversationTag) {
+    if (!selected || selected.tag === tag || actionPending) return;
+
+    startAction(async () => {
       patchOptimisticConversation({ id: selected.id, tag });
       try {
         await updateConversationTag(selected.id, tag);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Đổi nhãn thất bại");
+        const message = inboxActionErrorMessage(err, "Đổi nhãn thất bại");
+        if (message) setError(message);
+        else router.refresh();
       }
     });
   }
 
   function claimReply() {
-    if (!selected || isPending || replyLockedByOther) return;
-    const claimedAt = new Date(nowMs).toISOString();
-    startTransition(async () => {
+    if (!selected || sendBusy || replyLockedByOther || nowMs === null) return;
+    const atMs = nowMs;
+    const claimedAt = new Date(atMs).toISOString();
+    const conversationId = selected.id;
+    // Ghi đè claim ngay (ngoài useOptimistic) — không refresh RSC để tránh flash khóa lại composer.
+    setClaimOverrides((prev) => ({
+      ...prev,
+      [conversationId]: {
+        replyStaffId: currentStaffId,
+        replyStaffName: currentStaffName,
+        replyClaimedAt: claimedAt,
+      },
+    }));
+    setError(null);
+
+    const claimPromise = (async () => {
+      try {
+        const result = await claimConversation(conversationId);
+        lastClaimTouchRef.current = atMs;
+        claimTouchFailUntilRef.current = 0;
+        for (const key of [...idleReleasedRef.current]) {
+          if (key.startsWith(`${conversationId}:`)) {
+            idleReleasedRef.current.delete(key);
+          }
+        }
+        setClaimOverrides((prev) => ({
+          ...prev,
+          [conversationId]: {
+            replyStaffId: currentStaffId,
+            replyStaffName: currentStaffName,
+            replyClaimedAt: result.claimedAt,
+          },
+        }));
+        startBackground(() => {
+          patchOptimisticConversation({
+            id: conversationId,
+            replyStaffId: currentStaffId,
+            replyStaffName: currentStaffName,
+            replyClaimedAt: result.claimedAt,
+          });
+        });
+        queueMicrotask(() => composerRef.current?.focus());
+        return true;
+      } catch (err) {
+        setClaimOverrides((prev) => {
+          if (!(conversationId in prev)) return prev;
+          const next = { ...prev };
+          delete next[conversationId];
+          return next;
+        });
+        const message = inboxActionErrorMessage(err, "Không nhận được hội thoại");
+        if (message) setError(message);
+        return false;
+      } finally {
+        delete claimInFlightRef.current[conversationId];
+      }
+    })();
+    claimInFlightRef.current[conversationId] = claimPromise;
+
+    startBackground(() => {
       patchOptimisticConversation({
-        id: selected.id,
+        id: conversationId,
         replyStaffId: currentStaffId,
         replyStaffName: currentStaffName,
         replyClaimedAt: claimedAt,
       });
-      try {
-        const result = await claimConversation(selected.id);
-        lastClaimTouchRef.current = nowMs;
-        patchOptimisticConversation({
-          id: selected.id,
-          replyClaimedAt: result.claimedAt,
-        });
-        queueMicrotask(() => composerRef.current?.focus());
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Không nhận được hội thoại");
-      }
+      void claimPromise;
     });
   }
 
+  async function waitForClaimIfNeeded(conversationId: string) {
+    const pending = claimInFlightRef.current[conversationId];
+    if (!pending) return true;
+    return pending;
+  }
+
   function releaseReply() {
-    if (!selected || isPending || !replyIsMine) return;
-    startTransition(async () => {
+    if (!selected || sendBusy || (!replyIsMine && !isAdmin)) return;
+    const conversationId = selected.id;
+    const previous = {
+      replyStaffId: selected.replyStaffId ?? null,
+      replyStaffName: selected.replyStaffName ?? null,
+      replyClaimedAt: selected.replyClaimedAt ?? null,
+    };
+    setClaimOverrides((prev) => ({
+      ...prev,
+      [conversationId]: {
+        replyStaffId: null,
+        replyStaffName: null,
+        replyClaimedAt: null,
+      },
+    }));
+    startBackground(async () => {
       patchOptimisticConversation({
-        id: selected.id,
+        id: conversationId,
         replyStaffId: null,
         replyStaffName: null,
         replyClaimedAt: null,
       });
       try {
-        await releaseConversation(selected.id);
+        await releaseConversation(conversationId);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Không nhả được hội thoại");
+        setClaimOverrides((prev) => ({
+          ...prev,
+          [conversationId]: previous,
+        }));
+        const message = inboxActionErrorMessage(err, "Không nhả được hội thoại");
+        if (message) setError(message);
       }
     });
   }
 
   function onDraftChange(value: string) {
     setDraft(value);
-    if (!selected || !replyIsMine || !value.trim()) {
+    if (!selected || isAdmin || !replyIsMine || !value.trim()) {
       return;
     }
     renewClaimActivity(selected.id);
   }
 
   function send(text: string) {
-    if (!selected || !text.trim() || isPending || !replyIsMine) return;
+    if (!selected || !text.trim() || sendBusy || !canCompose || nowMs === null) {
+      return;
+    }
 
+    const atMs = nowMs;
     const body = text.trim();
     const tempId = `temp-${crypto.randomUUID()}`;
-    const sentAt = new Date(nowMs).toISOString();
-    const optimistic: Message = {
+    const sentAt = new Date(atMs).toISOString();
+    const conversationId = selected.id;
+    const optimistic: LocalOutboundMessage = {
       id: tempId,
-      conversationId: selected.id,
+      conversationId,
       sender: "shop",
       text: body,
       createdAt: sentAt,
+      reactions: [],
+      localStatus: "sending",
     };
 
     setError(null);
     setDraft("");
-    lastClaimTouchRef.current = nowMs;
+    lastClaimTouchRef.current = atMs;
+    setReadReceipts((prev) => ({ ...prev, [conversationId]: sentAt }));
+    setLocalOutbound((prev) => [...prev.filter((item) => item.id !== tempId), optimistic]);
+    setStickToBottom(true);
+    setPendingNewCount(0);
+    if (!isAdmin) {
+      setClaimOverrides((prev) => ({
+        ...prev,
+        [conversationId]: {
+          replyStaffId: currentStaffId,
+          replyStaffName: currentStaffName,
+          replyClaimedAt: sentAt,
+        },
+      }));
+    }
 
-    startTransition(async () => {
-      addOptimisticMessage(optimistic);
+    startAction(async () => {
+      if (!isAdmin) {
+        const claimed = await waitForClaimIfNeeded(conversationId);
+        if (!claimed) {
+          setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
+          setDraft(body);
+          return;
+        }
+      }
       patchOptimisticConversation({
-        id: selected.id,
+        id: conversationId,
         lastMessage: body,
         lastAt: sentAt,
         unread: 0,
-        replyStaffId: currentStaffId,
-        replyStaffName: currentStaffName,
-        replyClaimedAt: sentAt,
+        ...(isAdmin
+          ? replyIsMine
+            ? {
+                replyStaffId: null,
+                replyStaffName: null,
+                replyClaimedAt: null,
+              }
+            : {}
+          : {
+              replyStaffId: currentStaffId,
+              replyStaffName: currentStaffName,
+              replyClaimedAt: sentAt,
+            }),
       });
+      if (isAdmin && replyIsMine) {
+        setClaimOverrides((prev) => ({
+          ...prev,
+          [conversationId]: {
+            replyStaffId: null,
+            replyStaffName: null,
+            replyClaimedAt: null,
+          },
+        }));
+      }
 
       try {
-        await sendMessage(selected.id, body);
+        await sendMessage(conversationId, body);
+        setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
+        notifyInboxNoticesRefresh();
+        router.refresh();
+        queueMicrotask(() => composerRef.current?.focus());
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Gửi tin thất bại");
+        setLocalOutbound((prev) =>
+          prev.map((item) =>
+            item.id === tempId ? { ...item, localStatus: "failed" as const } : item,
+          ),
+        );
+        const message = inboxActionErrorMessage(err, "Gửi tin thất bại");
+        if (message) setError(message);
+      }
+    });
+  }
+
+  function retryFailedMessage(messageId: string) {
+    const failed = localOutbound.find(
+      (item) => item.id === messageId && item.localStatus === "failed",
+    );
+    if (!failed || !canCompose || nowMs === null) return;
+    if (sendBusy) {
+      setError("Đang gửi tin khác — bấm Gửi lại sau giây lát.");
+      return;
+    }
+
+    const pendingFile = pendingImageFilesRef.current[messageId];
+    if (failed.attachmentType === "image") {
+      if (!pendingFile) {
+        setError("Ảnh tạm đã hết — chọn lại ảnh để gửi.");
+        return;
+      }
+      if (failed.attachmentUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(failed.attachmentUrl);
+      }
+      delete pendingImageFilesRef.current[messageId];
+      setLocalOutbound((prev) => prev.filter((item) => item.id !== messageId));
+      sendImage(pendingFile);
+      return;
+    }
+
+    setLocalOutbound((prev) => prev.filter((item) => item.id !== messageId));
+    send(failed.text);
+  }
+
+  function insertEmoji(emoji: string) {
+    if (!canCompose || !selected) return;
+    setDraft((value) => `${value}${emoji}`);
+    if (!isAdmin && replyIsMine) {
+      renewClaimActivity(selected.id);
+    }
+    queueMicrotask(() => composerRef.current?.focus());
+  }
+
+  function sendImage(file: File) {
+    if (!selected || sendBusy || !canCompose || nowMs === null) return;
+
+    const atMs = nowMs;
+    const tempId = `temp-${crypto.randomUUID()}`;
+    const sentAt = new Date(atMs).toISOString();
+    const conversationId = selected.id;
+    const previewUrl = URL.createObjectURL(file);
+    const optimistic: LocalOutboundMessage = {
+      id: tempId,
+      conversationId,
+      sender: "shop",
+      text: "[Ảnh]",
+      createdAt: sentAt,
+      attachmentType: "image",
+      attachmentUrl: previewUrl,
+      attachmentName: file.name,
+      reactions: [],
+      localStatus: "sending",
+    };
+
+    setError(null);
+    lastClaimTouchRef.current = atMs;
+    setReadReceipts((prev) => ({ ...prev, [conversationId]: sentAt }));
+    setLocalOutbound((prev) => [...prev, optimistic]);
+    pendingImageFilesRef.current[tempId] = file;
+    setStickToBottom(true);
+    setPendingNewCount(0);
+    if (!isAdmin) {
+      setClaimOverrides((prev) => ({
+        ...prev,
+        [conversationId]: {
+          replyStaffId: currentStaffId,
+          replyStaffName: currentStaffName,
+          replyClaimedAt: sentAt,
+        },
+      }));
+    }
+
+    startAction(async () => {
+      if (!isAdmin) {
+        const claimed = await waitForClaimIfNeeded(conversationId);
+        if (!claimed) {
+          setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
+          delete pendingImageFilesRef.current[tempId];
+          URL.revokeObjectURL(previewUrl);
+          return;
+        }
+      }
+      patchOptimisticConversation({
+        id: conversationId,
+        lastMessage: "[Ảnh]",
+        lastAt: sentAt,
+        unread: 0,
+        ...(isAdmin
+          ? replyIsMine
+            ? {
+                replyStaffId: null,
+                replyStaffName: null,
+                replyClaimedAt: null,
+              }
+            : {}
+          : {
+              replyStaffId: currentStaffId,
+              replyStaffName: currentStaffName,
+              replyClaimedAt: sentAt,
+            }),
+      });
+      if (isAdmin && replyIsMine) {
+        setClaimOverrides((prev) => ({
+          ...prev,
+          [conversationId]: {
+            replyStaffId: null,
+            replyStaffName: null,
+            replyClaimedAt: null,
+          },
+        }));
+      }
+
+      try {
+        const formData = new FormData();
+        formData.set("file", file);
+        await sendImageMessage(conversationId, formData);
+        setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
+        delete pendingImageFilesRef.current[tempId];
+        notifyInboxNoticesRefresh();
+        router.refresh();
+        URL.revokeObjectURL(previewUrl);
+      } catch (err) {
+        setLocalOutbound((prev) =>
+          prev.map((item) =>
+            item.id === tempId ? { ...item, localStatus: "failed" as const } : item,
+          ),
+        );
+        const message = inboxActionErrorMessage(err, "Gửi ảnh thất bại");
+        if (message) setError(message);
+        // Giữ blob URL để xem lại ảnh lỗi; revoke khi user bỏ / gửi lại.
+      }
+    });
+  }
+
+  function react(messageId: string, emoji: string) {
+    if (!canCompose || sendBusy) return;
+    setError(null);
+    startAction(async () => {
+      try {
+        await reactToMessage(messageId, emoji);
+        router.refresh();
+      } catch (err) {
+        const message = inboxActionErrorMessage(err, "Không gửi được reaction");
+        if (message) setError(message);
+        else router.refresh();
       }
     });
   }
@@ -471,167 +1042,325 @@ export function InboxWorkspace({
   return (
     <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
       <section
-        className={`flex flex-col border-border-strong bg-surface transition-opacity duration-150 lg:border-r ${
-          LAYOUT_CLASS.inboxList
-        } ${showList ? "flex min-h-0 flex-1 lg:flex-none" : "hidden lg:flex"}`}
+        aria-label="Danh sách hội thoại"
+        className={`relative flex flex-col border-border-strong bg-surface transition-[width] duration-150 lg:border-r ${
+          showList ? "flex min-h-0 w-full flex-1" : "hidden"
+        } lg:flex lg:min-h-0 lg:w-[var(--inbox-list-current)] lg:max-w-[var(--inbox-list-current)] lg:flex-none lg:shrink-0`}
+        style={{ ["--inbox-list-current" as string]: `${desktopListWidth}px` }}
       >
-        <div className="border-b border-border px-4 py-4">
-          <h1 className="text-lg font-semibold text-slate-900">Inbox</h1>
-          <p className="mt-0.5 text-xs text-slate-500">
-            {inboxChannelsSubtitle(channelFilters)}
-          </p>
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            {channelFilters.map((item) => (
+        {listCollapsed ? (
+          <div className="hidden h-full min-h-0 w-full flex-col lg:flex">
+            <div className="flex shrink-0 justify-center border-b border-border py-3">
               <button
-                key={item.id}
                 type="button"
-                onClick={() => setChannel(item.id)}
-                className={`filter-pill ${
-                  selectedFilter === item.id ? "filter-pill-active" : "filter-pill-inactive"
-                }`}
+                onClick={() => setListCollapsed(false)}
+                className="icon-btn"
+                aria-label="Mở rộng danh sách hội thoại"
+                title="Mở rộng danh sách"
               >
-                {item.label}
+                <ListExpandIcon />
               </button>
-            ))}
+            </div>
+            <ul className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto px-1.5 py-2">
+              {visible.map((item) => {
+                const person = customerById(item.customerId);
+                const active = selected?.id === item.id;
+                const name = person?.name ?? "Khách";
+                return (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      onClick={() => selectConversation(item.id)}
+                      className={`relative flex h-11 w-11 items-center justify-center rounded-xl transition-colors ${
+                        active ? "bg-accent-muted ring-2 ring-teal-500" : "hover:bg-surface-muted"
+                      }`}
+                      aria-label={name}
+                      aria-current={active ? "true" : undefined}
+                      title={name}
+                    >
+                        <CustomerAvatar
+                          name={name}
+                          channel={item.channel}
+                          avatarUrl={person?.avatarUrl}
+                          size="sm"
+                        />
+                      {item.unread > 0 ? (
+                        <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[9px] font-bold text-white">
+                          {item.unread > 9 ? "9+" : item.unread}
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
-        </div>
-        <ul className="min-h-0 flex-1 overflow-y-auto">
-          {visible.length === 0 ? (
-            <li className="px-4 py-8 text-center text-sm text-slate-500">
-              Không có hội thoại phù hợp bộ lọc
-            </li>
-          ) : null}
-          {visible.map((item) => {
-            const person = customerById(item.customerId);
-            const active = selected?.id === item.id;
-            const itemClaimActive =
-              Boolean(item.replyStaffId) &&
-              replyClaimRemainingMs(item.replyClaimedAt, nowMs) > 0;
-            return (
-              <li key={item.id}>
+        ) : null}
+
+        <div
+          className={`min-h-0 w-full flex-col ${
+            listCollapsed ? "flex lg:hidden" : "flex"
+          } ${showList || !listCollapsed ? "flex-1" : ""}`}
+        >
+          <div className="border-b border-border bg-surface/90 px-3 py-3 backdrop-blur-sm sm:px-4 sm:py-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h1 className="text-lg font-semibold tracking-tight text-teal-950">Inbox</h1>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {inboxChannelsSubtitle(channelFilters)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setListCollapsed(true)}
+                className="icon-btn hidden shrink-0 lg:inline-flex"
+                aria-label="Thu gọn danh sách hội thoại"
+                title="Thu gọn danh sách"
+              >
+                <ListCollapseIcon />
+              </button>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {channelFilters.map((item) => (
                 <button
+                  key={item.id}
                   type="button"
-                  onClick={() => selectConversation(item.id)}
-                  className={`flex w-full flex-col gap-1.5 border-b border-border px-4 py-3.5 text-left transition-colors duration-150 ${
-                    active
-                      ? "border-l-[3px] border-l-teal-500 bg-accent-muted"
-                      : "border-l-[3px] border-l-transparent hover:bg-surface-muted"
+                  onClick={() => setChannel(item.id)}
+                  aria-pressed={selectedFilter === item.id}
+                  className={`filter-pill min-h-9 ${
+                    selectedFilter === item.id ? "filter-pill-active" : "filter-pill-inactive"
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-semibold text-slate-900">
-                      {person?.name ?? "Khách"}
-                    </span>
-                    <span className="shrink-0 text-[11px] text-slate-400">
-                      {formatTime(item.lastAt)}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ChannelBadge channel={item.channel} />
-                    <span className="text-[11px] text-slate-500">{TAG_LABEL[item.tag]}</span>
-                    {itemClaimActive ? (
-                      <>
-                        <span
-                          className={`activity-dot ${
-                            item.replyStaffId === currentStaffId
-                              ? "activity-dot-mine"
-                              : "activity-dot-other"
-                          }`}
-                          title={
-                            item.replyStaffId === currentStaffId
-                              ? "Bạn đang trả lời"
-                              : `${item.replyStaffName ?? "Nhân viên"} đang trả lời`
-                          }
-                          aria-label="Đang hoạt động"
-                        />
-                        <span
-                          className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
-                            item.replyStaffId === currentStaffId
-                              ? "bg-teal-50 text-teal-700"
-                              : "bg-amber-50 text-amber-800"
-                          }`}
-                        >
-                          {item.replyStaffId === currentStaffId
-                            ? "Bạn đang trả lời"
-                            : item.replyStaffName ?? "Đang trả lời"}
-                        </span>
-                      </>
-                    ) : null}
-                    {item.unread > 0 && (
-                      <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-teal-600 px-1.5 text-[10px] font-bold text-white">
-                        {item.unread}
-                      </span>
-                    )}
-                  </div>
-                  <p className="truncate text-xs text-slate-500">{item.lastMessage}</p>
+                  {item.label}
                 </button>
+              ))}
+            </div>
+          </div>
+          <ul className="min-h-0 flex-1 overflow-y-auto">
+            {visible.length === 0 ? (
+              <li className="px-4 py-8 text-center text-sm text-slate-500">
+                Không có hội thoại phù hợp bộ lọc
               </li>
-            );
-          })}
-        </ul>
+            ) : null}
+            {visible.map((item) => {
+              const person = customerById(item.customerId);
+              const active = selected?.id === item.id;
+              const name = person?.name ?? "Khách";
+              const itemClaimActive =
+                nowMs === null
+                  ? Boolean(item.replyStaffId && item.replyClaimedAt)
+                  : Boolean(item.replyStaffId) &&
+                    replyClaimRemainingMs(item.replyClaimedAt, nowMs, claimTtlMs) > 0;
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => selectConversation(item.id)}
+                    className={`flex min-h-14 w-full cursor-pointer items-start gap-3 border-b border-border px-3 py-3 text-left transition-colors duration-200 sm:px-4 sm:py-3.5 ${
+                      active
+                        ? "border-l-[3px] border-l-teal-500 bg-accent-muted"
+                        : "border-l-[3px] border-l-transparent hover:bg-surface-muted"
+                    }`}
+                  >
+                    <CustomerAvatar
+                      name={name}
+                      channel={item.channel}
+                      avatarUrl={person?.avatarUrl}
+                      size="md"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-sm font-semibold text-slate-900">{name}</span>
+                        <span className="shrink-0 text-[11px] text-slate-400">
+                          {formatTime(item.lastAt)}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <ChannelBadge channel={item.channel} />
+                        <span className="text-[11px] text-slate-500">{TAG_LABEL[item.tag]}</span>
+                        {itemClaimActive ? (
+                          <>
+                            <span
+                              className={`activity-dot ${
+                                item.replyStaffId === currentStaffId
+                                  ? "activity-dot-mine"
+                                  : "activity-dot-other"
+                              }`}
+                              title={
+                                item.replyStaffId === currentStaffId
+                                  ? "Bạn đang trả lời"
+                                  : `${item.replyStaffName ?? "Nhân viên"} đang trả lời`
+                              }
+                              aria-label="Đang hoạt động"
+                            />
+                            <span
+                              className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                item.replyStaffId === currentStaffId
+                                  ? "bg-teal-50 text-teal-700"
+                                  : "bg-amber-50 text-amber-800"
+                              }`}
+                            >
+                              {item.replyStaffId === currentStaffId
+                                ? "Bạn đang trả lời"
+                                : item.replyStaffName ?? "Đang trả lời"}
+                            </span>
+                          </>
+                        ) : null}
+                        {item.unread > 0 ? (
+                          <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-600 px-1.5 text-[10px] font-bold text-white">
+                            {item.unread}
+                          </span>
+                        ) : null}
+                      </div>
+                      <p className="mt-1 truncate text-xs text-slate-500">{item.lastMessage}</p>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+
+        {!listCollapsed ? (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuemin={INBOX_LIST_MIN}
+            aria-valuemax={INBOX_LIST_MAX}
+            aria-valuenow={clampInboxListWidth(listWidth)}
+            aria-label="Kéo để đổi độ rộng danh sách hội thoại. Mũi tên trái/phải để chỉnh."
+            tabIndex={0}
+            onPointerDown={onListResizePointerDown}
+            onPointerMove={onListResizePointerMove}
+            onPointerUp={onListResizePointerUp}
+            onPointerCancel={onListResizePointerUp}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                nudgeListWidth(-16);
+              } else if (event.key === "ArrowRight") {
+                event.preventDefault();
+                nudgeListWidth(16);
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                setListWidth(INBOX_LIST_MIN);
+              } else if (event.key === "End") {
+                event.preventDefault();
+                setListWidth(INBOX_LIST_MAX);
+              }
+            }}
+            className="absolute inset-y-0 right-0 z-10 hidden w-1.5 cursor-col-resize touch-none bg-transparent hover:bg-teal-400/40 focus-visible:bg-teal-500/50 focus-visible:outline-none lg:block"
+          />
+        ) : null}
       </section>
 
       <section
-        className={`flex min-w-0 flex-col bg-surface-muted ${
+        className={`flex min-w-0 flex-col bg-[linear-gradient(180deg,#f0fdfa_0%,#e8f1f4_100%)] ${
           showChat ? "min-h-0 flex-1" : "hidden lg:flex lg:min-h-0 lg:flex-1"
         }`}
       >
         {selected && customer ? (
           <>
-            <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-4 py-3 sm:px-5 sm:py-4">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  {claimActive ? (
-                    <span
-                      className={`activity-dot ${replyIsMine ? "activity-dot-mine" : "activity-dot-other"}`}
-                      aria-label={replyIsMine ? "Bạn đang trả lời" : "Đang có người trả lời"}
-                    />
-                  ) : null}
-                  <p className="truncate text-base font-semibold text-slate-900">{customer.name}</p>
-                </div>
-                <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  <span className="truncate">{CHANNEL_LABEL[selected.channel]}</span>
-                  <label className="inline-flex items-center gap-1.5">
-                    <span className="sr-only">Nhãn hội thoại</span>
-                    <select
-                      value={selected.tag}
-                      disabled={isPending}
-                      onChange={(event) => changeTag(event.target.value as ConversationTag)}
-                      className="rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-slate-700 outline-none focus:border-teal-500"
-                    >
-                      {TAG_OPTIONS.map((tag) => (
-                        <option key={tag} value={tag}>
-                          {TAG_LABEL[tag]}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+            <header className="flex items-center justify-between gap-3 border-b border-border bg-surface px-3 py-3 sm:px-5 sm:py-4">
+              <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                <button
+                  type="button"
+                  onClick={() => setMobilePane("list")}
+                  className="icon-btn shrink-0 lg:hidden"
+                  aria-label="Quay lại danh sách hội thoại"
+                >
+                  <BackIcon />
+                </button>
+                {listCollapsed ? (
+                  <button
+                    type="button"
+                    onClick={() => setListCollapsed(false)}
+                    className="icon-btn hidden shrink-0 lg:inline-flex"
+                    aria-label="Mở rộng danh sách hội thoại"
+                    title="Mở danh sách"
+                  >
+                    <ListExpandIcon />
+                  </button>
+                ) : null}
+                <CustomerAvatar
+                  name={customer.name}
+                  channel={selected.channel}
+                  avatarUrl={customer.avatarUrl}
+                  size="sm"
+                  className="hidden sm:inline-flex"
+                />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    {claimActive ? (
+                      <span
+                        className={`activity-dot ${replyIsMine ? "activity-dot-mine" : "activity-dot-other"}`}
+                        aria-label={replyIsMine ? "Bạn đang trả lời" : "Đang có người trả lời"}
+                      />
+                    ) : null}
+                    <p className="truncate text-base font-semibold text-slate-900">{customer.name}</p>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span className="truncate">{CHANNEL_LABEL[selected.channel]}</span>
+                    <label className="inline-flex items-center gap-1.5">
+                      <span className="sr-only">Nhãn hội thoại</span>
+                      <select
+                        value={selected.tag}
+                        disabled={actionPending}
+                        onChange={(event) => changeTag(event.target.value as ConversationTag)}
+                        className="min-h-9 rounded-md border border-border bg-surface px-2 py-1 text-xs font-medium text-slate-700 outline-none focus:border-teal-500"
+                      >
+                        {TAG_OPTIONS.map((tag) => (
+                          <option key={tag} value={tag}>
+                            {TAG_LABEL[tag]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1">
                 {!claimActive ? (
-                  <button
-                    type="button"
-                    disabled={isPending}
-                    onClick={claimReply}
-                    className="btn-primary-sm"
-                  >
-                    Tôi trả lời
-                  </button>
+                  isAdmin ? null : (
+                    <button
+                      type="button"
+                      disabled={actionPending}
+                      onClick={claimReply}
+                      className="btn-primary-sm"
+                    >
+                      Tôi trả lời
+                    </button>
+                  )
                 ) : replyIsMine ? (
                   <div className="flex items-center gap-2">
                     {claimCountdown ? (
                       <span className="text-[11px] tabular-nums text-slate-500" title="Hết hạn nếu không dùng">
                         Còn {claimCountdown}
                       </span>
+                    ) : isAdmin ? (
+                      <span className="text-[11px] text-teal-700">Admin · không timeout claim</span>
                     ) : null}
                     <button
                       type="button"
-                      disabled={isPending}
+                      disabled={actionPending}
                       onClick={releaseReply}
                       className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-surface-muted disabled:opacity-50"
                     >
                       Nhả hội thoại
+                    </button>
+                  </div>
+                ) : isAdmin ? (
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-800">
+                      {selected.replyStaffName ?? "NV khác"} đang trả lời
+                    </span>
+                    <button
+                      type="button"
+                      disabled={actionPending}
+                      onClick={claimReply}
+                      className="btn-primary-sm"
+                    >
+                      Tiếp quản
                     </button>
                   </div>
                 ) : (
@@ -686,38 +1415,66 @@ export function InboxWorkspace({
                     setStickToBottom(true);
                     setPendingNewCount(0);
                   }}
-                  className="sticky top-0 z-10 mx-auto mb-2 block rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-800 shadow-sm"
+                  className="sticky top-2 z-10 mx-auto mb-2 block rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-800 shadow-sm"
+                  aria-live="polite"
                 >
                   {pendingNewCount} tin mới — xem ngay
                 </button>
               ) : null}
-              {thread.map((item) => (
-                <div
-                  key={item.id}
-                  className={`flex ${item.sender === "shop" ? "justify-end" : "justify-start"}`}
-                >
-                  <div
-                    className={`max-w-[var(--chat-bubble-max)] rounded-2xl px-4 py-2.5 text-sm leading-relaxed shadow-sm transition-colors duration-150 ${
-                      item.sender === "shop"
-                        ? "rounded-br-md bg-teal-600 text-white"
-                        : "rounded-bl-md border border-border bg-surface text-slate-800"
-                    }`}
-                  >
-                    <p className="whitespace-pre-wrap">{item.text}</p>
-                    <p
-                      className={`mt-1.5 text-[10px] ${
-                        item.sender === "shop" ? "text-teal-100" : "text-slate-400"
-                      }`}
-                    >
-                      {formatTime(item.createdAt)}
-                    </p>
-                  </div>
+              {thread.length === 0 ? (
+                <div className="flex h-full min-h-40 flex-col items-center justify-center text-center">
+                  <p className="text-sm font-medium text-slate-600">Chưa có tin nhắn</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Tin đồng bộ từ kênh sẽ hiện tại đây
+                  </p>
                 </div>
-              ))}
+              ) : null}
+              {thread.map((item, index) => {
+                const day = chatDayKey(item.createdAt);
+                const prevDay = index > 0 ? chatDayKey(thread[index - 1]!.createdAt) : null;
+                const showDay = day !== prevDay;
+                return (
+                  <Fragment key={item.id}>
+                    {showDay ? (
+                      <div className="flex justify-center py-1">
+                        <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/80">
+                          {nowMs != null
+                            ? formatChatDayLabel(item.createdAt, new Date(nowMs))
+                            : "\u00a0"}
+                        </span>
+                      </div>
+                    ) : null}
+                    <MessageBubble
+                      message={item}
+                      canReact={Boolean(
+                        (isAdmin || replyIsMine) &&
+                          !item.id.startsWith("temp-") &&
+                          !item.localStatus,
+                      )}
+                      onReact={react}
+                      onRetry={retryFailedMessage}
+                    />
+                  </Fragment>
+                );
+              })}
             </div>
             <footer className="border-t border-border bg-surface p-3 sm:p-4">
-              {error ? <p className="alert-error mb-2 text-xs">{error}</p> : null}
-              {replyLockedByOther ? (
+              {error ? (
+                <p role="alert" className="alert-error mb-2 text-xs">
+                  {error}
+                </p>
+              ) : null}
+              {isAdmin ? (
+                <p className="mb-3 flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
+                  <span className="activity-dot activity-dot-mine" aria-hidden />
+                  <span>
+                    Admin: trả lời mọi lúc, không bị khóa và không khóa hội thoại khi gửi tin
+                    {claimActive && !replyIsMine && selected.replyStaffName
+                      ? ` · ${selected.replyStaffName} đang giữ (bấm Tiếp quản chỉ khi cần chiếm claim).`
+                      : "."}
+                  </span>
+                </p>
+              ) : replyLockedByOther ? (
                 <p className="mb-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   <span className="activity-dot activity-dot-other" aria-hidden />
                   <span>
@@ -732,9 +1489,8 @@ export function InboxWorkspace({
                   <span>
                     Bạn đang trả lời
                     {claimCountdown
-                      ? ` · tự nhả sau ${claimCountdown} nếu không hoạt động (${REPLY_CLAIM_TTL_MINUTES} phút)`
-                      : ""}
-                    .
+                      ? ` · tự nhả sau ${claimCountdown} nếu không hoạt động (${replyClaimTtlMinutes} phút).`
+                      : "."}
                   </span>
                 </p>
               ) : (
@@ -762,6 +1518,10 @@ export function InboxWorkspace({
                   send(draft);
                 }}
               >
+                <div className="flex shrink-0 gap-1 pb-1">
+                  <EmojiPickerButton disabled={!canCompose} onPick={insertEmoji} />
+                  <ImagePickerButton disabled={!canCompose} onFile={sendImage} />
+                </div>
                 <textarea
                   ref={composerRef}
                   value={draft}
@@ -773,8 +1533,9 @@ export function InboxWorkspace({
                       send(draft);
                     }
                   }}
+                  aria-label="Soạn tin nhắn"
                   placeholder={
-                    replyIsMine
+                    isAdmin || replyIsMine
                       ? "Nhập tin nhắn… (Enter gửi, Shift+Enter xuống dòng)"
                       : replyLockedByOther
                         ? "Đang bị khóa..."
@@ -783,8 +1544,13 @@ export function InboxWorkspace({
                   disabled={!canCompose}
                   className="input-field-sm min-h-11 flex-1 resize-none py-2.5"
                 />
-                <button type="submit" disabled={!canCompose} className="btn-primary-sm shrink-0">
-                  Gửi
+                <button
+                  type="submit"
+                  disabled={!canCompose || sendBusy}
+                  aria-busy={sendBusy}
+                  className="btn-primary-sm shrink-0"
+                >
+                  {sendBusy ? "Đang gửi…" : "Gửi"}
                 </button>
               </form>
             </footer>
@@ -823,8 +1589,18 @@ export function InboxWorkspace({
                 <CloseIcon />
               </button>
             </div>
-            <p className="mt-3 text-lg font-semibold text-slate-900">{customer.name}</p>
-            <p className="mt-1 text-sm text-slate-600">{customer.phone ?? "Chưa có SĐT"}</p>
+            <div className="mt-3 flex items-center gap-3">
+              <CustomerAvatar
+                name={customer.name}
+                channel={selected?.channel}
+                avatarUrl={customer.avatarUrl}
+                size="md"
+              />
+              <div className="min-w-0">
+                <p className="truncate text-lg font-semibold text-slate-900">{customer.name}</p>
+                <p className="mt-0.5 text-sm text-slate-600">{customer.phone ?? "Chưa có SĐT"}</p>
+              </div>
+            </div>
             {customer.note ? (
               <p className="mt-3 rounded-lg bg-surface-muted px-3 py-2.5 text-sm leading-6 text-slate-600">
                 {customer.note}
@@ -878,12 +1654,13 @@ export function InboxWorkspace({
         )}
       </aside>
 
-      <nav className="flex shrink-0 border-t border-border bg-surface lg:hidden">
+      <nav className="flex shrink-0 border-t border-border bg-surface lg:hidden" aria-label="Điều hướng Inbox">
         {MOBILE_TABS.map((tab) => (
           <button
             key={tab.id}
             type="button"
             onClick={() => setMobilePane(tab.id)}
+            aria-current={mobilePane === tab.id ? "page" : undefined}
             className={`nav-tab ${mobilePane === tab.id ? "nav-tab-active" : "nav-tab-inactive"}`}
           >
             <MobileTabIcon pane={tab.id} active={mobilePane === tab.id} />
@@ -909,6 +1686,32 @@ function PanelIcon({ open }: { open: boolean }) {
           <path d="M9 3v18" />
         </>
       )}
+    </svg>
+  );
+}
+
+function ListCollapseIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18M14 9l-3 3 3 3" />
+    </svg>
+  );
+}
+
+function ListExpandIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="18" height="18" rx="2" />
+      <path d="M9 3v18M13 15l3-3-3-3" />
+    </svg>
+  );
+}
+
+function BackIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M15 18l-6-6 6-6" />
     </svg>
   );
 }

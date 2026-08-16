@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   registerAction,
   resendRegisterOtpAction,
@@ -55,6 +55,10 @@ export function RegisterForm({
   const [draftName, setDraftName] = useState("");
   const [draftEmail, setDraftEmail] = useState("");
   const [resendCooldownSec, setResendCooldownSec] = useState(0);
+  const formErrorRef = useRef<HTMLParagraphElement>(null);
+  const otpErrorRef = useRef<HTMLParagraphElement>(null);
+  const formErrorId = "register-form-error";
+  const otpErrorId = "register-otp-error";
 
   const [prevRegister, setPrevRegister] = useState(registerState);
   if (registerState !== prevRegister) {
@@ -125,6 +129,19 @@ export function RegisterForm({
       : undefined;
 
   const resendBlocked = resendPending || resendCooldownSec > 0;
+  const formAlert = formError || oauthErrorText;
+
+  useEffect(() => {
+    if (otpError) {
+      otpErrorRef.current?.focus();
+    }
+  }, [otpError]);
+
+  useEffect(() => {
+    if (formAlert) {
+      formErrorRef.current?.focus();
+    }
+  }, [formAlert]);
 
   if (view === "otp" && otpEmail) {
     return (
@@ -156,9 +173,21 @@ export function RegisterForm({
               required
               className="input-field tracking-[0.35em] text-center text-lg"
               placeholder="000000"
+              aria-invalid={otpError ? true : undefined}
+              aria-describedby={otpError ? otpErrorId : undefined}
             />
           </div>
-          {otpError ? <p className="alert-error">{otpError}</p> : null}
+          {otpError ? (
+            <p
+              ref={otpErrorRef}
+              id={otpErrorId}
+              role="alert"
+              tabIndex={-1}
+              className="alert-error outline-none"
+            >
+              {otpError}
+            </p>
+          ) : null}
           <button type="submit" disabled={verifyPending} className="btn-primary w-full">
             {verifyPending ? "Đang xác thực..." : "Xác nhận và tạo tài khoản"}
           </button>
@@ -253,6 +282,8 @@ export function RegisterForm({
             maxLength={100}
             defaultValue={draftName}
             className="input-field"
+            aria-invalid={formAlert ? true : undefined}
+            aria-describedby={formAlert ? formErrorId : undefined}
           />
         </div>
         <div className="field-group">
@@ -267,6 +298,8 @@ export function RegisterForm({
             required
             defaultValue={draftEmail}
             className="input-field"
+            aria-invalid={formAlert ? true : undefined}
+            aria-describedby={formAlert ? formErrorId : undefined}
           />
         </div>
         <div className="field-group">
@@ -281,6 +314,8 @@ export function RegisterForm({
             required
             minLength={8}
             className="input-field"
+            aria-invalid={formAlert ? true : undefined}
+            aria-describedby={formAlert ? formErrorId : undefined}
           />
         </div>
         <div className="field-group">
@@ -295,13 +330,24 @@ export function RegisterForm({
             required
             minLength={8}
             className="input-field"
+            aria-invalid={formAlert ? true : undefined}
+            aria-describedby={formAlert ? formErrorId : undefined}
           />
         </div>
-        {formError ? <p className="alert-error">{formError}</p> : null}
-        {oauthErrorText ? (
-          <p className="alert-error">
-            {oauthErrorText}
-            {authMessage ? ` (${authMessage})` : null}
+        {formAlert ? (
+          <p
+            ref={formErrorRef}
+            id={formErrorId}
+            role="alert"
+            tabIndex={-1}
+            className="alert-error outline-none"
+          >
+            {formError ?? (
+              <>
+                {oauthErrorText}
+                {authMessage ? ` (${authMessage})` : null}
+              </>
+            )}
           </p>
         ) : null}
         <button

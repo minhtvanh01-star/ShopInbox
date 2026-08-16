@@ -1,4 +1,8 @@
-import { sendMetaMessage } from "@/backend/meta-oauth";
+import {
+  sendMetaMessage,
+  sendMetaReaction,
+  uploadMetaImageAttachment,
+} from "@/backend/meta-oauth";
 import { getZaloOAuthConfig } from "@/backend/oauth-config";
 import { prisma } from "@/backend/prisma";
 import { refreshZaloAccessToken, sendZaloOaMessage } from "@/backend/zalo-oauth";
@@ -70,6 +74,19 @@ function metaSendPageId(account: ChannelAccountRow) {
   return account.pageId ?? account.linkedPageId;
 }
 
+async function loadReadyAccount(shopId: string, channel: Channel) {
+  return prisma.channelAccount.findUnique({
+    where: { shopId_channel: { shopId, channel } },
+  });
+}
+
+async function loadRecipientId(customerId: string, channel: Channel) {
+  const identity = await prisma.customerIdentity.findUnique({
+    where: { customerId_channel: { customerId, channel } },
+  });
+  return identity?.externalId?.trim() || null;
+}
+
 /**
  * Gửi tin ra kênh ngoài nếu đã OAuth; web / demo (chưa token) chỉ báo local.
  * Ném Error tiếng Việt khi API thất bại — caller không ghi DB.
@@ -84,29 +101,13 @@ export async function dispatchOutboundMessage(input: {
     return { mode: "local" };
   }
 
-  const account = await prisma.channelAccount.findUnique({
-    where: {
-      shopId_channel: {
-        shopId: input.shopId,
-        channel: input.channel,
-      },
-    },
-  });
+  const account = await loadReadyAccount(input.shopId, input.channel);
 
   if (!accountReadyForRemote(account)) {
     return { mode: "local" };
   }
 
-  const identity = await prisma.customerIdentity.findUnique({
-    where: {
-      customerId_channel: {
-        customerId: input.customerId,
-        channel: input.channel,
-      },
-    },
-  });
-
-  const recipientId = identity?.externalId?.trim();
+  const recipientId = await loadRecipientId(input.customerId, input.channel);
   if (!recipientId) {
     throw new Error(
       "Không tìm thấy ID khách trên kênh này. Cần tin nhắn inbound trước khi trả lời qua API.",
@@ -150,4 +151,94 @@ export async function dispatchOutboundMessage(input: {
           : "Facebook";
     throw new Error(`Gửi tin ${label} thất bại: ${detail}`);
   }
+}
+
+/** Gửi ảnh qua Meta (FB/IG). Zalo / web → báo lỗi rõ (không lưu “ảo” chỉ trong Inbox). */
+export async function dispatchOutboundImage(input: {
+  shopId: string;
+  channel: Channel;
+  customerId: string;
+  bytes: Buffer;
+  mimeType: string;
+  fileName: string;
+}): Promise<OutboundDispatchResult> {
+  if (input.channel === "zalo") {
+    throw new Error("Chưa hỗ trợ gửi ảnh qua Zalo. Hãy gửi tin nhắn chữ.");
+  }
+  if (input.channel !== "facebook" && input.channel !== "instagram") {
+    return { mode: "local" };
+  }
+
+  const account = await loadReadyAccount(input.shopId, input.channel);
+  if (!accountReadyForRemote(account)) {
+    return { mode: "local" };
+  }
+
+  const recipientId = await loadRecipientId(input.customerId, input.channel);
+  if (!recipientId) {
+    throw new Error(
+      "Không tìm thấy ID khách trên kênh này. Cần tin nhắn inbound trước khi gửi ảnh.",
+    );
+  }
+
+  const pageId = metaSendPageId(account);
+  if (!pageId) {
+    throw new Error("Thiếu Page ID. Kết nối lại kênh Meta.");
+  }
+
+  try {
+    const uploaded = await uploadMetaImageAttachment({
+      pageId,
+      accessToken: account.accessToken,
+      bytes: input.bytes,
+      mimeType: input.mimeType,
+      fileName: input.fileName,
+    });
+    const sent = await sendMetaMessage({
+      pageId,
+      accessToken: account.accessToken,
+      recipientId,
+      attachmentId: uploaded.attachmentId,
+    });
+    return { mode: "remote", externalMessageId: sent.externalMessageId };
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : "lỗi không xác định";
+    throw new Error(`Gửi ảnh thất bại: ${detail}`);
+  }
+}
+
+export async function dispatchOutboundReaction(input: {
+  shopId: string;
+  channel: Channel;
+  customerId: string;
+  externalMessageId: string;
+  emoji: string | null;
+}): Promise<{ mode: "local" | "remote" }> {
+  if (input.channel !== "facebook" && input.channel !== "instagram") {
+    return { mode: "local" };
+  }
+
+  const account = await loadReadyAccount(input.shopId, input.channel);
+  if (!accountReadyForRemote(account)) {
+    return { mode: "local" };
+  }
+
+  const recipientId = await loadRecipientId(input.customerId, input.channel);
+  if (!recipientId) {
+    return { mode: "local" };
+  }
+
+  const pageId = metaSendPageId(account);
+  if (!pageId) {
+    return { mode: "local" };
+  }
+
+  await sendMetaReaction({
+    pageId,
+    accessToken: account.accessToken,
+    recipientId,
+    messageId: input.externalMessageId,
+    emoji: input.emoji,
+  });
+  return { mode: "remote" };
 }

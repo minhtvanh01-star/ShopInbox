@@ -1,5 +1,11 @@
 import { prisma } from "@/backend/prisma";
-import { subscribeMetaPageWebhook } from "@/backend/meta-oauth";
+import {
+  fetchRecentMetaConversations,
+  subscribeMetaAppWebhook,
+  subscribeMetaPageWebhook,
+} from "@/backend/meta-oauth";
+import { ingestRecentMetaMessages } from "@/backend/message-sync";
+import { getMetaOAuthConfig, getMetaWebhookUrl } from "@/backend/oauth-config";
 import type { Channel } from "@/lib/types";
 
 type SaveOAuthConnectionInput = {
@@ -15,6 +21,107 @@ type SaveOAuthConnectionInput = {
   note?: string;
 };
 
+function metaGraphPageId(channel: Channel, pageId?: string | null, linkedPageId?: string | null) {
+  if (channel === "instagram") {
+    return linkedPageId ?? pageId ?? null;
+  }
+  return pageId ?? linkedPageId ?? null;
+}
+
+async function registerMetaWebhooks(input: {
+  channel: Channel;
+  accessToken: string;
+  pageId?: string | null;
+  linkedPageId?: string | null;
+}) {
+  const notes: string[] = [];
+  const config = getMetaOAuthConfig();
+  if (config?.webhookVerifyToken) {
+    try {
+      const subscribed = await subscribeMetaAppWebhook(config, getMetaWebhookUrl());
+      notes.push(
+        subscribed
+          ? " Webhook app đã được đăng ký tự động."
+          : " Cần dán Webhook URL trong Meta Developers (app chưa nhận callback).",
+      );
+    } catch {
+      notes.push(" Không tự đăng ký webhook app được — dán URL trong Meta Developers.");
+    }
+  } else {
+    notes.push(" Thiếu META_WEBHOOK_VERIFY_TOKEN — chưa tự đăng ký webhook app.");
+  }
+
+  const subscribePageId = metaGraphPageId(input.channel, input.pageId, input.linkedPageId);
+  if (subscribePageId) {
+    try {
+      const subscribed = await subscribeMetaPageWebhook(subscribePageId, input.accessToken);
+      notes.push(
+        subscribed
+          ? " Webhook page đã được đăng ký tự động."
+          : " Cần đăng ký webhook page thủ công trong Meta Developers.",
+      );
+    } catch {
+      notes.push(" Không tự đăng ký webhook page được — cấu hình thủ công trong Meta Developers.");
+    }
+  } else if (input.channel === "instagram") {
+    notes.push(
+      " Instagram dùng chung webhook Meta app — đăng ký Page liên kết IG trong Meta Developers.",
+    );
+  }
+
+  return notes.join("");
+}
+
+export async function syncConnectedMetaInbox(shopId: string, channel: Channel) {
+  if (channel !== "facebook" && channel !== "instagram") {
+    throw new Error("Chỉ đồng bộ được Facebook hoặc Instagram.");
+  }
+
+  const account = await prisma.channelAccount.findUniqueOrThrow({
+    where: { shopId_channel: { shopId, channel } },
+  });
+
+  if (account.status !== "ready" || !account.accessToken) {
+    throw new Error("Kênh chưa kết nối OAuth.");
+  }
+
+  const graphPageId = metaGraphPageId(channel, account.pageId, account.linkedPageId);
+  if (!graphPageId || !account.pageId) {
+    throw new Error("Thiếu Page ID trên kênh.");
+  }
+
+  const webhookNote = await registerMetaWebhooks({
+    channel,
+    accessToken: account.accessToken,
+    pageId: account.pageId,
+    linkedPageId: account.linkedPageId,
+  });
+
+  const conversations = await fetchRecentMetaConversations(graphPageId, account.accessToken, {
+    platform: channel === "instagram" ? "instagram" : "MESSENGER",
+  });
+  const ingested = await ingestRecentMetaMessages({
+    channel,
+    externalAccountId: account.pageId,
+    pageIdsToSkip: [account.pageId, account.linkedPageId],
+    conversations,
+  });
+
+  const ingestNote =
+    ingested > 0
+      ? ` Đã kéo ${ingested} tin nhắn gần đây vào Inbox.`
+      : " Chưa có tin khách trong hội thoại gần đây — nhắn thử từ nick tester.";
+
+  await prisma.channelAccount.update({
+    where: { id: account.id },
+    data: {
+      note: `Đã kết nối OAuth — ${account.displayName ?? account.name}.${webhookNote}${ingestNote}`,
+    },
+  });
+
+  return { ingested, webhookNote };
+}
+
 export async function saveOAuthConnection(input: SaveOAuthConnectionInput) {
   const account = await prisma.channelAccount.findUniqueOrThrow({
     where: {
@@ -25,28 +132,8 @@ export async function saveOAuthConnection(input: SaveOAuthConnectionInput) {
     },
   });
 
-  let webhookNote = "";
-  if (input.channel === "facebook" || input.channel === "instagram") {
-    const subscribePageId =
-      input.channel === "instagram"
-        ? input.linkedPageId ?? null
-        : input.pageId ?? input.linkedPageId ?? null;
-    if (subscribePageId) {
-      try {
-        const subscribed = await subscribeMetaPageWebhook(subscribePageId, input.accessToken);
-        webhookNote = subscribed
-          ? " Webhook page đã được đăng ký tự động."
-          : " Cần đăng ký webhook thủ công trong Meta Developers.";
-      } catch {
-        webhookNote = " Không tự đăng ký webhook được — cấu hình thủ công trong Meta Developers.";
-      }
-    } else if (input.channel === "instagram") {
-      webhookNote =
-        " Instagram dùng chung webhook Meta app — đăng ký Page liên kết IG trong Meta Developers.";
-    }
-  } else if (input.channel === "zalo") {
-    webhookNote = " Đăng ký webhook URL trong Zalo OA Admin.";
-  }
+  const webhookNote =
+    input.channel === "zalo" ? " Đăng ký webhook URL trong Zalo OA Admin." : "";
 
   await prisma.channelAccount.update({
     where: { id: account.id },
@@ -65,6 +152,14 @@ export async function saveOAuthConnection(input: SaveOAuthConnectionInput) {
         `Đã kết nối OAuth — ${input.displayName}.${webhookNote}`,
     },
   });
+
+  if (input.channel === "facebook" || input.channel === "instagram") {
+    try {
+      await syncConnectedMetaInbox(input.shopId, input.channel);
+    } catch {
+      // Kết nối OAuth vẫn thành công nếu kéo tin lịch sử thất bại.
+    }
+  }
 }
 
 const CHANNEL_DRAFT_NAME: Record<Channel, string> = {

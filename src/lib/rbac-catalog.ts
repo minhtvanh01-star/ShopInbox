@@ -190,7 +190,25 @@ export const BOOTSTRAP_ROLE_CODE = ROLE_CODES.admin;
 
 export function normalizeRoleCode(code: string | null | undefined): string {
   if (!code) return DEFAULT_ROLE_CODE;
-  return ROLE_CODE_ALIASES[code] ?? code;
+  const trimmed = code.trim();
+  if (!trimmed) return DEFAULT_ROLE_CODE;
+  const lower = trimmed.toLowerCase();
+  if (lower in ROLE_CODE_ALIASES) {
+    return ROLE_CODE_ALIASES[lower]!;
+  }
+  if (
+    lower === ROLE_CODES.admin ||
+    lower === ROLE_CODES.manager ||
+    lower === ROLE_CODES.staff
+  ) {
+    return lower;
+  }
+  return ROLE_CODE_ALIASES[trimmed] ?? trimmed;
+}
+
+/** Admin / chủ shop (kể cả alias `owner`) — được trả lời Inbox không cần claim. */
+export function isAdminRole(code: string | null | undefined): boolean {
+  return normalizeRoleCode(code) === ROLE_CODES.admin;
 }
 
 export function roleLabel(code: string | null | undefined): string {
@@ -223,6 +241,7 @@ export const AUDIT_ACTIONS = {
   authLogin: "auth.login",
   authLoginFail: "auth.login_fail",
   authRegister: "auth.register",
+  authPasswordReset: "auth.password_reset",
   staffCreate: "staff.create",
   staffUpdate: "staff.update",
   staffDisable: "staff.disable",
@@ -234,9 +253,13 @@ export const AUDIT_ACTIONS = {
   profileUpdate: "profile.update",
   profilePasswordChange: "profile.password_change",
   messageSend: "message.send",
+  messageReact: "message.react",
   conversationTagChange: "conversation.tag_change",
   conversationClaim: "conversation.claim",
   conversationRelease: "conversation.release",
+  authLogout: "auth.logout",
+  authSessionTimeout: "auth.session_timeout",
+  settingsUpdate: "settings.update",
 } as const;
 
 export type AuditActionCode = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
@@ -245,6 +268,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   [AUDIT_ACTIONS.authLogin]: "Đăng nhập",
   [AUDIT_ACTIONS.authLoginFail]: "Đăng nhập thất bại",
   [AUDIT_ACTIONS.authRegister]: "Đăng ký tài khoản",
+  [AUDIT_ACTIONS.authPasswordReset]: "Đặt lại mật khẩu",
   [AUDIT_ACTIONS.staffCreate]: "Tạo nhân viên",
   [AUDIT_ACTIONS.staffUpdate]: "Cập nhật nhân viên",
   [AUDIT_ACTIONS.staffDisable]: "Vô hiệu hóa nhân viên",
@@ -256,12 +280,17 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   [AUDIT_ACTIONS.profileUpdate]: "Cập nhật hồ sơ",
   [AUDIT_ACTIONS.profilePasswordChange]: "Đổi mật khẩu",
   [AUDIT_ACTIONS.messageSend]: "Gửi tin nhắn",
+  [AUDIT_ACTIONS.messageReact]: "Reaction tin nhắn",
   [AUDIT_ACTIONS.conversationTagChange]: "Đổi nhãn hội thoại",
   [AUDIT_ACTIONS.conversationClaim]: "Nhận trả lời hội thoại",
   [AUDIT_ACTIONS.conversationRelease]: "Nhả hội thoại",
+  [AUDIT_ACTIONS.authLogout]: "Đăng xuất",
+  [AUDIT_ACTIONS.authSessionTimeout]: "Hết phiên (không hoạt động)",
+  [AUDIT_ACTIONS.settingsUpdate]: "Cập nhật cấu hình vận hành",
 };
 
 export const AUDIT_ENTITY_LABEL: Record<string, string> = {
+  Shop: "Cửa hàng",
   Staff: "Nhân viên",
   Order: "Đơn hàng",
   Conversation: "Hội thoại",
@@ -282,4 +311,9 @@ export function auditEntityLabel(entityType: string | null | undefined): string 
 
 export function roleCodeForNewStaff(existingStaffCount: number): RoleCode {
   return existingStaffCount === 0 ? BOOTSTRAP_ROLE_CODE : DEFAULT_ROLE_CODE;
+}
+
+/** User đầu tiên tự kích hoạt; mọi đăng ký mở sau đó cần admin bật + phân quyền. */
+export function isActiveForOpenRegistration(existingStaffCount: number): boolean {
+  return existingStaffCount === 0;
 }

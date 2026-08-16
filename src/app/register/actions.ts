@@ -19,6 +19,9 @@ import { safeInternalPath } from "@/backend/safe-path";
 import { setSessionCookie } from "@/backend/session";
 import { toSessionPayload } from "@/backend/session-token";
 import { AUDIT_ACTIONS, normalizeRoleCode } from "@/lib/rbac-catalog";
+import { assertShopHasActiveSeat, countActiveShopUsers } from "@/backend/shop-seats";
+import { getShopPolicy } from "@/backend/shop-policy";
+import { shopSeatLimitMessage } from "@/lib/shop-seats";
 
 export type RegisterActionState = {
   error?: string;
@@ -61,6 +64,23 @@ export async function registerAction(
 
   if (!plan.ok) {
     return { error: plan.error, step: "form" };
+  }
+
+  if (shop) {
+    if (plan.isActive) {
+      const seatError = await assertShopHasActiveSeat(plan.shopId);
+      if (seatError) {
+        return { error: seatError, step: "form" };
+      }
+    } else {
+      const [active, policy] = await Promise.all([
+        countActiveShopUsers(plan.shopId),
+        getShopPolicy(plan.shopId),
+      ]);
+      if (active >= policy.maxUsersPerShop) {
+        return { error: shopSeatLimitMessage(policy.maxUsersPerShop), step: "form" };
+      }
+    }
   }
 
   try {
@@ -122,6 +142,27 @@ export async function verifyRegisterOtpAction(
     return { error: plan.error, step: "form", email: verified.email };
   }
 
+  if (plan.isActive) {
+    const seatError = await assertShopHasActiveSeat(plan.shopId);
+    if (seatError) {
+      await discardRegisterEmailOtp(verified.email);
+      return { error: seatError, step: "form", email: verified.email };
+    }
+  } else {
+    const [active, policy] = await Promise.all([
+      countActiveShopUsers(plan.shopId),
+      getShopPolicy(plan.shopId),
+    ]);
+    if (active >= policy.maxUsersPerShop) {
+      await discardRegisterEmailOtp(verified.email);
+      return {
+        error: shopSeatLimitMessage(policy.maxUsersPerShop),
+        step: "form",
+        email: verified.email,
+      };
+    }
+  }
+
   if (plan.createShop) {
     await prisma.shop.create({
       data: {
@@ -142,7 +183,7 @@ export async function verifyRegisterOtpAction(
         email: verified.email,
         passwordHash: verified.payload.passwordHash,
         roleCode,
-        isActive: true,
+        isActive: plan.isActive,
       },
     });
   } catch {
@@ -152,19 +193,33 @@ export async function verifyRegisterOtpAction(
 
   await consumeRegisterEmailOtp(verified.challengeId);
 
-  const session = toSessionPayload(staff);
-  await setSessionCookie(session);
   await writeAudit({
-    actor: session,
+    actor: plan.isActive
+      ? toSessionPayload(staff)
+      : {
+          id: staff.id,
+          email: staff.email,
+          role: staff.roleCode,
+          shopId: staff.shopId,
+        },
     action: AUDIT_ACTIONS.authRegister,
     entityType: "Staff",
     entityId: staff.id,
     metadata: {
       method: "password_email_otp",
       roleCode: staff.roleCode,
+      isActive: staff.isActive,
+      pendingApproval: !staff.isActive,
       bootstrap: Boolean(plan.createShop) || staffCount === 0,
     },
   });
+
+  if (!plan.isActive) {
+    redirect("/login?auth_success=pending_approval");
+  }
+
+  const session = toSessionPayload(staff);
+  await setSessionCookie(session);
 
   redirect(nextPath);
 }

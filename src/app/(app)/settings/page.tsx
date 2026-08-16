@@ -1,7 +1,9 @@
 import {
   getMetaOAuthConfig,
+  getMetaOAuthRedirectUri,
   getMetaWebhookUrl,
   getZaloOAuthConfig,
+  getZaloOAuthRedirectUri,
   getZaloWebhookUrl,
   listMissingMetaOAuthEnvVars,
   listMissingZaloOAuthEnvVars,
@@ -38,15 +40,20 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       <SettingsWorkspace
         channels={channels}
         canConnect={shop.permissions.includes(PERMISSION_CODES.channelsConnect)}
+        canUpdateSettings={shop.permissions.includes(PERMISSION_CODES.settingsUpdate)}
+        replyClaimTtlMinutes={shop.replyClaimTtlMinutes}
+        maxUsersPerShop={shop.maxUsersPerShop}
         metaOAuthConfigured={Boolean(metaConfig)}
         zaloOAuthConfigured={Boolean(zaloConfig)}
         metaMissingEnvVars={metaMissingEnvVars}
         zaloMissingEnvVars={zaloMissingEnvVars}
+        metaOAuthRedirectUri={getMetaOAuthRedirectUri()}
+        zaloOAuthRedirectUri={getZaloOAuthRedirectUri()}
         metaWebhookUrl={getMetaWebhookUrl()}
         zaloWebhookUrl={getZaloWebhookUrl()}
         metaWebhookVerifyToken={
           shop.permissions.includes(PERMISSION_CODES.channelsConnect)
-            ? (metaConfig?.webhookVerifyToken ?? "")
+            ? (metaConfig?.webhookVerifyToken ?? process.env.META_WEBHOOK_VERIFY_TOKEN?.trim() ?? "")
             : ""
         }
         pendingMetaPages={pendingMetaPages}

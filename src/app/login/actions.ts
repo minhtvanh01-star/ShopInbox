@@ -5,7 +5,7 @@ import { writeAudit } from "@/backend/audit";
 import { prisma } from "@/backend/prisma";
 import { verifyPassword } from "@/backend/password";
 import { toSessionPayload } from "@/backend/session-token";
-import { clearSessionCookie, setSessionCookie } from "@/backend/session";
+import { clearSessionCookie, getSession, setSessionCookie } from "@/backend/session";
 import { safeInternalPath } from "@/backend/safe-path";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
 
@@ -68,7 +68,7 @@ export async function loginAction(
       entityId: staff.id,
       metadata: { reason: "inactive", method: "password" },
     });
-    return { error: "Tài khoản đã bị vô hiệu hóa. Liên hệ admin shop." };
+    return { error: "Tài khoản chưa được kích hoạt hoặc đã bị tắt. Liên hệ quản trị viên để phê duyệt và phân quyền." };
   }
 
   const ok = await verifyPassword(password, staff.passwordHash);
@@ -101,7 +101,22 @@ export async function loginAction(
   redirect(nextPath);
 }
 
-export async function logoutAction() {
+export async function logoutAction(formData?: FormData) {
+  const reason = String(formData?.get("reason") ?? "manual");
+  const session = await getSession();
+  if (session) {
+    await writeAudit({
+      actor: session,
+      action:
+        reason === "idle" ? AUDIT_ACTIONS.authSessionTimeout : AUDIT_ACTIONS.authLogout,
+      entityType: "Session",
+      entityId: session.staffId,
+      metadata: {
+        actorName: session.name,
+        reason: reason === "idle" ? "idle_30m" : "manual",
+      },
+    });
+  }
   await clearSessionCookie();
-  redirect("/login");
+  redirect(reason === "idle" ? "/login?reason=idle" : "/login");
 }

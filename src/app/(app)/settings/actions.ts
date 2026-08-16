@@ -5,7 +5,11 @@ import { revalidatePath } from "next/cache";
 import { writeAudit } from "@/backend/audit";
 import { hasPermission, requirePermission } from "@/backend/rbac";
 import { getSession } from "@/backend/session";
-import { disconnectChannel, saveOAuthConnection } from "@/backend/channel-connect";
+import {
+  disconnectChannel,
+  saveOAuthConnection,
+  syncConnectedMetaInbox,
+} from "@/backend/channel-connect";
 import { pickMetaPageForChannel } from "@/backend/meta-oauth";
 import {
   OAUTH_PAGES_COOKIE,
@@ -222,8 +226,90 @@ export async function disconnectChannelAction(
   }
 }
 
+export type SyncMetaChannelState = {
+  error?: string;
+  success?: string;
+};
+
+export async function syncMetaChannelAction(
+  _prev: SyncMetaChannelState,
+  formData: FormData,
+): Promise<SyncMetaChannelState> {
+  const session = await requirePermission(PERMISSION_CODES.channelsConnect);
+  const channel = formData.get("channel");
+  if (channel !== "facebook" && channel !== "instagram") {
+    return { error: "Chỉ đồng bộ được Facebook hoặc Instagram." };
+  }
+
+  try {
+    const result = await syncConnectedMetaInbox(session.shopId, channel);
+    revalidatePath("/settings");
+    revalidatePath("/inbox");
+    return {
+      success:
+        result.ingested > 0
+          ? `Đã kéo ${result.ingested} tin nhắn vào Inbox. Gửi thêm tin mới để kiểm tra webhook.`
+          : "Đã thử đăng ký webhook. Inbox chưa có tin khách — nhắn thử từ nick đã thêm làm Tester trên Meta app.",
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không đồng bộ được tin nhắn Meta." };
+  }
+}
+
 export async function clearOAuthPagesCookie() {
   await requirePermission(PERMISSION_CODES.channelsConnect);
   const jar = await cookies();
   jar.delete(OAUTH_PAGES_COOKIE);
+}
+
+export type UpdateShopPolicyState = {
+  error?: string;
+  success?: string;
+  replyClaimTtlMinutes?: number;
+  maxUsersPerShop?: number;
+};
+
+export async function updateShopPolicyAction(
+  _prev: UpdateShopPolicyState,
+  formData: FormData,
+): Promise<UpdateShopPolicyState> {
+  const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
+  const { parseShopPolicyInput } = await import("@/lib/shop-policy");
+  const parsed = parseShopPolicyInput({
+    replyClaimTtlMinutes: formData.get("replyClaimTtlMinutes"),
+    maxUsersPerShop: formData.get("maxUsersPerShop"),
+  });
+  if (!parsed.ok) {
+    return { error: parsed.error };
+  }
+
+  await prisma.shop.update({
+    where: { id: session.shopId },
+    data: {
+      replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
+      maxUsersPerShop: parsed.policy.maxUsersPerShop,
+    },
+  });
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.settingsUpdate,
+    entityType: "Shop",
+    entityId: session.shopId,
+    metadata: {
+      actorName: session.name,
+      replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
+      maxUsersPerShop: parsed.policy.maxUsersPerShop,
+    },
+  });
+
+  revalidatePath("/settings");
+  revalidatePath("/inbox");
+  revalidatePath("/staff");
+
+  return {
+    success: "Đã lưu cấu hình vận hành.",
+    replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
+    maxUsersPerShop: parsed.policy.maxUsersPerShop,
+  };
 }

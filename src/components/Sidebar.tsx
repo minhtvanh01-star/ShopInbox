@@ -7,6 +7,7 @@ import { fetchInboxNoticesAction } from "@/app/(app)/inbox-notices";
 import { logoutAction } from "@/app/login/actions";
 import { CHANNEL_LABEL, formatTime } from "@/lib/labels";
 import type { InboxNoticeItem, InboxNoticeSummary } from "@/lib/inbox-notices";
+import { INBOX_NOTICES_REFRESH_EVENT } from "@/lib/inbox-notices";
 import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
@@ -103,9 +104,11 @@ export function Sidebar({
         refresh();
       }
     };
+    window.addEventListener(INBOX_NOTICES_REFRESH_EVENT, refresh);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       window.clearInterval(timer);
+      window.removeEventListener(INBOX_NOTICES_REFRESH_EVENT, refresh);
       document.removeEventListener("visibilitychange", onVisible);
     };
   }, [permissions, startTransition]);
@@ -113,6 +116,13 @@ export function Sidebar({
   const iconOnly = collapsed;
   const unreadBadge =
     summary.unreadTotal > 99 ? "99+" : summary.unreadTotal > 0 ? String(summary.unreadTotal) : null;
+  // Khớp prefix dài nhất — tránh `/settings/profile` sáng cả `/settings`.
+  const activeHref = items
+    .filter(
+      (candidate) =>
+        pathname === candidate.href || pathname.startsWith(`${candidate.href}/`),
+    )
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
 
   return (
     <>
@@ -135,19 +145,19 @@ export function Sidebar({
       ) : null}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-surface shadow-lg transition-[width,transform] duration-200 ease-out md:static md:z-auto md:shadow-none ${
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col border-r border-border bg-surface/95 shadow-lg backdrop-blur-sm transition-[width,transform] duration-200 ease-out md:static md:z-auto md:bg-surface md:shadow-none md:backdrop-blur-none ${
           iconOnly ? LAYOUT_CLASS.sidebarCollapsed : LAYOUT_CLASS.sidebar
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
       >
         <div
           className={`flex items-center border-b border-border py-4 ${iconOnly ? "flex-col gap-2 px-2" : "gap-3 px-4"}`}
         >
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-teal-600 text-sm font-bold text-white shadow-sm">
+          <div className="brand-mark h-9 w-9 text-sm" aria-hidden="true">
             S
           </div>
           {!iconOnly ? (
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold text-slate-900">ShopInbox</p>
+              <p className="truncate text-sm font-semibold tracking-tight text-teal-950">ShopInbox</p>
               <p className="truncate text-xs text-slate-500">{shopName}</p>
             </div>
           ) : null}
@@ -164,8 +174,14 @@ export function Sidebar({
               >
                 <BellIcon />
                 {unreadBadge ? (
-                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-teal-600 px-1 text-[10px] font-bold text-white">
-                    {unreadBadge}
+                  <span
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[10px] font-bold text-white"
+                  >
+                    <span className="sr-only">{summary.unreadTotal} tin chưa đọc</span>
+                    <span aria-hidden="true">{unreadBadge}</span>
                   </span>
                 ) : null}
                 {iconOnly ? (
@@ -260,34 +276,48 @@ export function Sidebar({
 
         <nav className={`flex flex-1 flex-col gap-1 py-4 ${iconOnly ? "px-2" : "px-3"}`}>
           {items.map((item) => {
-            const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const active = item.href === activeHref;
             const showInboxBadge = item.href === "/inbox" && unreadBadge;
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 onClick={() => setMobileOpen(false)}
-                aria-label={item.label}
+                aria-label={
+                  showInboxBadge
+                    ? `${item.label}, ${summary.unreadTotal} tin chưa đọc`
+                    : item.label
+                }
+                aria-current={active ? "page" : undefined}
                 title={item.label}
-                className={`group relative flex items-center rounded-lg text-sm font-medium transition-colors duration-150 ${
+                className={`group relative flex cursor-pointer items-center rounded-lg text-sm font-medium transition-colors duration-200 ${
                   iconOnly ? "justify-center px-2 py-2.5" : "gap-3 px-3 py-2.5"
                 } ${
                   active
-                    ? "bg-teal-50 text-teal-800 ring-1 ring-teal-200"
+                    ? "bg-teal-50 text-teal-900 shadow-sm ring-1 ring-teal-200/80"
                     : "text-slate-600 hover:bg-surface-muted hover:text-slate-900"
                 }`}
               >
+                {active && !iconOnly ? (
+                  <span
+                    className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-teal-600"
+                    aria-hidden="true"
+                  />
+                ) : null}
                 <span className={`relative ${active ? "text-teal-600" : "text-slate-400"}`}>
                   <item.icon />
                   {iconOnly && showInboxBadge ? (
-                    <span className="absolute -right-1.5 -top-1.5 h-2 w-2 rounded-full bg-teal-600" />
+                    <span className="absolute -right-1.5 -top-1.5 h-2 w-2 rounded-full bg-orange-500" />
                   ) : null}
                 </span>
                 {!iconOnly ? (
                   <>
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {showInboxBadge ? (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-teal-600 px-1.5 text-[10px] font-bold text-white">
+                      <span
+                        className="flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-600 px-1.5 text-[10px] font-bold text-white"
+                        aria-hidden="true"
+                      >
                         {unreadBadge}
                       </span>
                     ) : null}
@@ -304,8 +334,8 @@ export function Sidebar({
 
         <div className={`border-t border-border py-4 ${iconOnly ? "px-2" : "px-4"}`}>
           {!iconOnly ? (
-            <div className="rounded-lg bg-surface-muted px-3 py-2.5">
-              <p className="truncate text-sm font-medium text-slate-900">{staffName}</p>
+            <div className="rounded-xl border border-border bg-accent-muted/60 px-3 py-2.5">
+              <p className="truncate text-sm font-medium text-teal-950">{staffName}</p>
               <p className="text-xs text-slate-500">{roleLabel}</p>
             </div>
           ) : null}
@@ -347,7 +377,7 @@ function NoticeRow({ item }: { item: InboxNoticeItem }) {
             {item.replyStaffName ?? "Đang trả lời"}
           </span>
         ) : null}
-        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-teal-600 px-1.5 text-[10px] font-bold text-white">
+        <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-600 px-1.5 text-[10px] font-bold text-white">
           {item.unread}
         </span>
       </div>

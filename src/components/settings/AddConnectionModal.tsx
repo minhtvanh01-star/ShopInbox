@@ -1,12 +1,13 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import {
   completeMetaPageAction,
   disconnectChannelAction,
   saveChannelCredentialsAction,
+  syncMetaChannelAction,
   type CompleteMetaPageState,
   type SaveChannelCredentialsState,
 } from "@/app/(app)/settings/actions";
@@ -15,6 +16,7 @@ import {
   PLATFORM_AVAILABILITY_LABEL,
   type PlatformOption,
 } from "@/lib/channels";
+import { activateFocusTrap, getFocusableElements } from "@/lib/focus-trap";
 import { CHANNEL_STATUS_LABEL, formatDateTime } from "@/lib/labels";
 import { LAYOUT_CLASS } from "@/lib/ui-layout";
 import type { Channel, ChannelStatus } from "@/lib/types";
@@ -45,6 +47,8 @@ type AddConnectionModalProps = {
   zaloOAuthConfigured: boolean;
   metaMissingEnvVars: string[];
   zaloMissingEnvVars: string[];
+  metaOAuthRedirectUri: string;
+  zaloOAuthRedirectUri: string;
   metaWebhookUrl: string;
   zaloWebhookUrl: string;
   metaWebhookVerifyToken: string;
@@ -139,17 +143,29 @@ function CopyButton({ value, label }: { value: string; label?: string }) {
 
 function SetupChecklist({
   oauthDone,
-  webhookRegistered,
+  webhookUrlReady,
   messagesSynced,
+  provider,
 }: {
   oauthDone: boolean;
-  webhookRegistered: boolean;
+  webhookUrlReady: boolean;
   messagesSynced: boolean;
+  provider: "meta" | "zalo";
 }) {
+  const providerLabel = provider === "zalo" ? "Zalo" : "Meta";
   const items = [
     { done: oauthDone, label: "OAuth — đăng nhập & lưu token" },
-    { done: webhookRegistered, label: "Webhook URL — đăng ký trong Meta/Zalo dashboard" },
-    { done: messagesSynced, label: "Tin nhắn đã đồng bộ vào Inbox" },
+    {
+      done: webhookUrlReady,
+      label:
+        provider === "zalo"
+          ? "Webhook URL sẵn sàng — dán vào Zalo OA Admin"
+          : "Webhook URL sẵn sàng — dán vào Meta và bật field messages",
+    },
+    {
+      done: messagesSynced,
+      label: `Đã nhận event từ ${providerLabel} (tin mới hoặc thử nghiệm)`,
+    },
   ];
 
   return (
@@ -177,6 +193,8 @@ export function AddConnectionModal({
   zaloOAuthConfigured,
   metaMissingEnvVars,
   zaloMissingEnvVars,
+  metaOAuthRedirectUri,
+  zaloOAuthRedirectUri,
   metaWebhookUrl,
   zaloWebhookUrl,
   metaWebhookVerifyToken,
@@ -188,7 +206,11 @@ export function AddConnectionModal({
   const [search, setSearch] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const router = useRouter();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const [saveState, saveAction, savePending] = useActionState(
     saveChannelCredentialsAction,
     saveInitialState,
@@ -216,13 +238,23 @@ export function AddConnectionModal({
   }, [search]);
 
   useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const focusables = getFocusableElements(dialog);
+    const closeBtn = dialog.querySelector<HTMLElement>('[data-modal-close="true"]');
+    (focusables[0] ?? closeBtn ?? dialog).focus();
+
+    const releaseTrap = activateFocusTrap(dialog, onClose);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      releaseTrap();
+      document.body.style.overflow = previousOverflow;
+      restoreFocusRef.current?.focus?.();
+    };
   }, [onClose]);
 
   const connectedPages = channels.filter((item) => item.status === "ready");
@@ -253,6 +285,12 @@ export function AddConnectionModal({
       : selected.channel === "facebook" || selected.channel === "instagram"
         ? metaWebhookUrl
         : null;
+  const oauthRedirectUri =
+    selected.channel === "zalo"
+      ? zaloOAuthRedirectUri
+      : selected.channel === "facebook" || selected.channel === "instagram"
+        ? metaOAuthRedirectUri
+        : null;
 
   async function handleDisconnect() {
     if (!account || !canConnect || disconnecting) return;
@@ -266,13 +304,31 @@ export function AddConnectionModal({
     router.refresh();
   }
 
+  async function handleSyncMeta() {
+    if (!account || !canConnect || syncing) return;
+    if (account.channel !== "facebook" && account.channel !== "instagram") return;
+
+    setSyncing(true);
+    const formData = new FormData();
+    formData.set("channel", account.channel);
+    const result = await syncMetaChannelAction({}, formData);
+    setSyncing(false);
+    setSyncMessage({
+      ok: Boolean(result.success),
+      text: result.success ?? result.error ?? "Không đồng bộ được.",
+    });
+    router.refresh();
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="add-connection-title"
-        className="flex h-[min(720px,92vh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-elevated md:flex-row"
+        tabIndex={-1}
+        className="flex h-[min(720px,92vh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-elevated outline-none md:flex-row"
       >
         <aside
           className={`flex max-h-44 shrink-0 flex-col border-b border-border bg-surface-muted md:max-h-none md:border-b-0 md:border-r ${LAYOUT_CLASS.modalSidebar}`}
@@ -334,8 +390,9 @@ export function AddConnectionModal({
             </div>
             <button
               type="button"
+              data-modal-close="true"
               onClick={onClose}
-              className="btn-ghost shrink-0 px-2 py-1 text-lg leading-none"
+              className="icon-btn shrink-0"
               aria-label="Đóng"
             >
               ✕
@@ -431,13 +488,29 @@ export function AddConnectionModal({
                     <p className="section-label mb-3">Tiến độ thiết lập</p>
                     <SetupChecklist
                       oauthDone={Boolean(account.hasOAuthToken)}
-                      webhookRegistered={Boolean(account.lastWebhookAt)}
+                      webhookUrlReady={Boolean(account.hasOAuthToken && webhookUrl)}
                       messagesSynced={Boolean(account.lastWebhookAt)}
+                      provider={selected.channel === "zalo" ? "zalo" : "meta"}
                     />
                     {account.lastWebhookAt ? (
                       <p className="mt-3 text-xs text-emerald-600">
                         Tin nhắn gần nhất: {formatDateTime(account.lastWebhookAt)}
                       </p>
+                    ) : account.hasOAuthToken ? (
+                      selected.channel === "zalo" ? (
+                        <p className="mt-3 text-xs text-amber-700">
+                          Zalo chưa gửi event tới ShopInbox. Dán Webhook URL vào Zalo OA Admin, bật sự
+                          kiện tin nhắn, rồi nhắn thử từ Zalo vào OA.
+                        </p>
+                      ) : (
+                        <p className="mt-3 text-xs text-amber-700">
+                          Meta chưa gửi event tới ShopInbox. App phải{" "}
+                          <span className="font-medium">phát hành</span>, hoặc bấm{" "}
+                          <span className="font-medium">Thử nghiệm</span> trên field{" "}
+                          <code className="text-[11px]">messages</code> (chọn đúng Fanpage{" "}
+                          {account.displayName ?? "đã nối"}).
+                        </p>
+                      )
                     ) : null}
                   </div>
                 ) : null}
@@ -488,7 +561,11 @@ export function AddConnectionModal({
                         );
                       })}
                     </fieldset>
-                    {pickState.error ? <p className="alert-error">{pickState.error}</p> : null}
+                    {pickState.error ? (
+                      <p role="alert" className="alert-error">
+                        {pickState.error}
+                      </p>
+                    ) : null}
                     {pickState.success ? <p className="alert-success">{pickState.success}</p> : null}
                     <button type="submit" disabled={!canConnect || pickPending} className="btn-primary">
                       {pickPending ? "Đang lưu..." : "Xác nhận trang"}
@@ -505,6 +582,21 @@ export function AddConnectionModal({
                           ? "Đăng nhập Zalo OA và cấp quyền cho ứng dụng ShopInbox."
                           : "Đăng nhập Facebook (admin Fanpage / Instagram Business) và cấp quyền."}
                       </p>
+                      {oauthRedirectUri ? (
+                        <div className="mt-3">
+                          <p className="text-xs text-slate-500">
+                            {selected.channel === "zalo"
+                              ? "Redirect URI (dán vào Zalo Developers):"
+                              : "OAuth Redirect URI (dán vào Meta → Facebook Login → Valid OAuth Redirect URIs):"}
+                          </p>
+                          <div className="mt-1 flex items-start gap-2 rounded bg-surface px-2 py-2">
+                            <code className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700">
+                              {oauthRedirectUri}
+                            </code>
+                            <CopyButton value={oauthRedirectUri} />
+                          </div>
+                        </div>
+                      ) : null}
                       {canConnect && oauthConfigured && oauthUrl ? (
                         <a href={oauthUrl} className="btn-primary mt-3 inline-flex">
                           {connectLabel}
@@ -572,6 +664,31 @@ export function AddConnectionModal({
                           <p className="mt-2 text-xs text-teal-700">
                             Facebook: app tự thử đăng ký webhook page sau OAuth (nếu token cho phép).
                           </p>
+                        ) : null}
+                        {(selected.channel === "facebook" || selected.channel === "instagram") &&
+                        account.hasOAuthToken ? (
+                          <div className="mt-3 space-y-2">
+                            <button
+                              type="button"
+                              onClick={handleSyncMeta}
+                              disabled={!canConnect || syncing}
+                              className="btn-secondary"
+                            >
+                              {syncing ? "Đang đồng bộ..." : "Đồng bộ tin nhắn gần đây"}
+                            </button>
+                            {syncMessage ? (
+                              <p
+                                className={`text-xs ${syncMessage.ok ? "text-emerald-600" : "text-amber-700"}`}
+                              >
+                                {syncMessage.text}
+                              </p>
+                            ) : (
+                              <p className="text-xs text-slate-500">
+                                OAuth không kéo tin cũ. Bấm đồng bộ để lấy hội thoại gần đây từ
+                                Facebook, rồi nhắn thử để kiểm tra webhook.
+                              </p>
+                            )}
+                          </div>
                         ) : null}
                       </div>
                     ) : null}
@@ -651,7 +768,11 @@ export function AddConnectionModal({
                       />
                     </div>
 
-                    {saveState.error ? <p className="alert-error">{saveState.error}</p> : null}
+                    {saveState.error ? (
+                      <p role="alert" className="alert-error">
+                        {saveState.error}
+                      </p>
+                    ) : null}
                     {saveState.success ? <p className="alert-success">{saveState.success}</p> : null}
 
                     <div className="flex flex-wrap items-center gap-3 pt-2">

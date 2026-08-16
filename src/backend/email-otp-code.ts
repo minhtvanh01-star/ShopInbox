@@ -1,6 +1,7 @@
 import { createHash, randomInt } from "node:crypto";
 
 export const EMAIL_OTP_PURPOSE_REGISTER = "register";
+export const EMAIL_OTP_PURPOSE_PASSWORD_RESET = "password_reset";
 export const EMAIL_OTP_TTL_MS = 10 * 60 * 1000;
 export const EMAIL_OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 export const EMAIL_OTP_MAX_ATTEMPTS = 5;
@@ -8,6 +9,10 @@ export const EMAIL_OTP_CODE_LENGTH = 6;
 
 export type RegisterOtpPayload = {
   name: string;
+  passwordHash: string;
+};
+
+export type PasswordResetOtpPayload = {
   passwordHash: string;
 };
 
@@ -30,6 +35,18 @@ export function parseRegisterOtpPayload(raw: string): RegisterOtpPayload | null 
       data.passwordHash
     ) {
       return { name: data.name.trim(), passwordHash: data.passwordHash };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export function parsePasswordResetOtpPayload(raw: string): PasswordResetOtpPayload | null {
+  try {
+    const data = JSON.parse(raw) as Partial<PasswordResetOtpPayload>;
+    if (typeof data.passwordHash === "string" && data.passwordHash) {
+      return { passwordHash: data.passwordHash };
     }
   } catch {
     // ignore

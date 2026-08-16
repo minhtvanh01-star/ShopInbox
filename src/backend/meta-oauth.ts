@@ -1,4 +1,5 @@
 import type { MetaOAuthConfig } from "@/backend/oauth-config";
+import { normalizeCustomerAvatarUrl } from "@/lib/customer-avatar";
 import type { MetaPageOption } from "@/lib/oauth-types";
 import type { Channel } from "@/lib/types";
 
@@ -158,6 +159,14 @@ export function pickMetaPageForChannel(channel: Channel, page: MetaPageOption) {
   };
 }
 
+const META_PAGE_WEBHOOK_FIELDS = [
+  "messages",
+  "messaging_postbacks",
+  "message_deliveries",
+  "message_reads",
+  "message_reactions",
+] as const;
+
 export async function subscribeMetaPageWebhook(pageId: string, pageAccessToken: string) {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/subscribed_apps`);
   url.searchParams.set("access_token", pageAccessToken);
@@ -166,17 +175,122 @@ export async function subscribeMetaPageWebhook(pageId: string, pageAccessToken: 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      subscribed_fields: [
-        "messages",
-        "messaging_postbacks",
-        "message_deliveries",
-        "message_reads",
-      ],
+      subscribed_fields: [...META_PAGE_WEBHOOK_FIELDS],
     }),
   });
 
   const data = await readJson<{ success?: boolean }>(response);
   return Boolean(data.success);
+}
+
+/**
+ * Đăng ký callback URL cấp app (Graph `{app-id}/subscriptions`).
+ * `subscribed_apps` trên Page chỉ gửi event tới app — thiếu bước này thì Inbox không nhận tin.
+ */
+export async function subscribeMetaAppWebhook(config: MetaOAuthConfig, callbackUrl: string) {
+  if (!config.webhookVerifyToken) {
+    return false;
+  }
+
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${config.appId}/subscriptions`);
+  url.searchParams.set("access_token", `${config.appId}|${config.appSecret}`);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      object: "page",
+      callback_url: callbackUrl,
+      fields: META_PAGE_WEBHOOK_FIELDS.join(","),
+      verify_token: config.webhookVerifyToken,
+    }),
+  });
+
+  const data = await readJson<{ success?: boolean }>(response);
+  return Boolean(data.success);
+}
+
+export type MetaConversation = {
+  id?: string;
+  participants?: {
+    data?: Array<{ id?: string; name?: string; profile_pic?: string }>;
+  };
+  messages?: {
+    data?: Array<{
+      id?: string;
+      message?: string;
+      created_time?: string;
+      from?: { id?: string; name?: string };
+    }>;
+  };
+};
+
+type MetaConversationsResponse = {
+  data?: MetaConversation[];
+  error?: { message: string };
+};
+
+export type MetaInboundHistoryMessage = {
+  senderExternalId: string;
+  senderName?: string;
+  senderAvatarUrl?: string;
+  text: string;
+  externalMessageId?: string;
+  sentAt?: Date;
+};
+
+export function inboundMessagesFromMetaConversations(
+  conversations: MetaConversation[],
+  pageIdsToSkip: Array<string | null | undefined>,
+): MetaInboundHistoryMessage[] {
+  const skip = new Set(pageIdsToSkip.filter((id): id is string => Boolean(id)));
+  const inbound: MetaInboundHistoryMessage[] = [];
+
+  for (const conversation of conversations) {
+    const avatarById = new Map<string, string>();
+    for (const participant of conversation.participants?.data ?? []) {
+      if (participant.id && participant.profile_pic) {
+        avatarById.set(participant.id, participant.profile_pic);
+      }
+    }
+
+    const chronological = [...(conversation.messages?.data ?? [])].reverse();
+    for (const message of chronological) {
+      const fromId = message.from?.id;
+      const text = message.message?.trim();
+      if (!fromId || !text || skip.has(fromId)) continue;
+
+      inbound.push({
+        senderExternalId: fromId,
+        senderName: message.from?.name,
+        senderAvatarUrl: avatarById.get(fromId),
+        text,
+        externalMessageId: message.id,
+        sentAt: message.created_time ? new Date(message.created_time) : undefined,
+      });
+    }
+  }
+
+  return inbound;
+}
+
+export async function fetchRecentMetaConversations(
+  pageId: string,
+  pageAccessToken: string,
+  options?: { platform?: "MESSENGER" | "instagram"; limit?: number },
+) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/conversations`);
+  url.searchParams.set("platform", options?.platform ?? "MESSENGER");
+  url.searchParams.set("limit", String(options?.limit ?? 15));
+  url.searchParams.set(
+    "fields",
+    "participants{id,name,profile_pic},updated_time,messages.limit(20){id,message,from,created_time}",
+  );
+  url.searchParams.set("access_token", pageAccessToken);
+
+  const response = await fetch(url.toString());
+  const data = await readJson<MetaConversationsResponse>(response);
+  return data.data ?? [];
 }
 
 type MetaSendResponse = {
@@ -185,15 +299,43 @@ type MetaSendResponse = {
   error?: { message?: string; code?: number };
 };
 
+type MetaAttachmentUploadResponse = {
+  attachment_id?: string;
+  error?: { message?: string };
+};
+
 /** Gửi tin Messenger / Instagram DM qua Graph Send API (Page access token). */
 export async function sendMetaMessage(input: {
   pageId: string;
   accessToken: string;
   recipientId: string;
-  text: string;
+  text?: string;
+  attachmentId?: string;
+  imageUrl?: string;
 }) {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${input.pageId}/messages`);
   url.searchParams.set("access_token", input.accessToken);
+
+  let message: Record<string, unknown>;
+  if (input.attachmentId) {
+    message = {
+      attachment: {
+        type: "image",
+        payload: { attachment_id: input.attachmentId },
+      },
+    };
+  } else if (input.imageUrl) {
+    message = {
+      attachment: {
+        type: "image",
+        payload: { url: input.imageUrl, is_reusable: true },
+      },
+    };
+  } else if (input.text?.trim()) {
+    message = { text: input.text.trim() };
+  } else {
+    throw new Error("Thiếu nội dung tin nhắn Meta.");
+  }
 
   const response = await fetch(url.toString(), {
     method: "POST",
@@ -201,7 +343,7 @@ export async function sendMetaMessage(input: {
     body: JSON.stringify({
       recipient: { id: input.recipientId },
       messaging_type: "RESPONSE",
-      message: { text: input.text },
+      message,
     }),
   });
 
@@ -211,4 +353,125 @@ export async function sendMetaMessage(input: {
   }
 
   return { externalMessageId: data.message_id };
+}
+
+/** Upload ảnh lên Meta → attachment_id (không cần URL công khai khi gửi). */
+export async function uploadMetaImageAttachment(input: {
+  pageId: string;
+  accessToken: string;
+  bytes: Buffer;
+  mimeType: string;
+  fileName: string;
+}) {
+  const url = new URL(
+    `https://graph.facebook.com/${GRAPH_VERSION}/${input.pageId}/message_attachments`,
+  );
+  url.searchParams.set("access_token", input.accessToken);
+
+  const form = new FormData();
+  form.set(
+    "message",
+    JSON.stringify({
+      attachment: {
+        type: "image",
+        payload: { is_reusable: true },
+      },
+    }),
+  );
+  form.set(
+    "filedata",
+    new Blob([new Uint8Array(input.bytes)], { type: input.mimeType }),
+    input.fileName,
+  );
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    body: form,
+  });
+  const data = await readJson<MetaAttachmentUploadResponse>(response);
+  if (!data.attachment_id) {
+    throw new Error(data.error?.message ?? "Meta không trả về attachment_id");
+  }
+  return { attachmentId: data.attachment_id };
+}
+
+const META_REACTION_MAP: Record<string, string> = {
+  "👍": "like",
+  "❤️": "love",
+  "😂": "laugh",
+  "😮": "wow",
+  "😢": "sorry",
+  "🙏": "other",
+};
+
+export function metaReactionAction(emoji: string): string {
+  return META_REACTION_MAP[emoji] ?? "other";
+}
+
+/** Gửi / gỡ reaction trên tin Messenger (cần mid). */
+export async function sendMetaReaction(input: {
+  pageId: string;
+  accessToken: string;
+  recipientId: string;
+  messageId: string;
+  emoji: string | null;
+}) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${input.pageId}/messages`);
+  url.searchParams.set("access_token", input.accessToken);
+
+  const body =
+    input.emoji === null
+      ? {
+          recipient: { id: input.recipientId },
+          sender_action: "unreact",
+          payload: { message_id: input.messageId },
+        }
+      : {
+          recipient: { id: input.recipientId },
+          sender_action: "react",
+          payload: {
+            message_id: input.messageId,
+            reaction: metaReactionAction(input.emoji),
+          },
+        };
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+
+  const data = await readJson<{ recipient_id?: string; error?: { message?: string } }>(response);
+  if (data.error?.message) {
+    throw new Error(data.error.message);
+  }
+  return { ok: true as const };
+}
+
+type MetaSenderProfileResponse = {
+  id?: string;
+  name?: string;
+  profile_pic?: string;
+  error?: { message?: string };
+};
+
+/** Lấy tên + avatar PSID từ Graph (Page token). Lỗi → null, không ném. */
+export async function fetchMetaSenderProfile(psid: string, pageAccessToken: string) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${psid}`);
+  url.searchParams.set("fields", "name,profile_pic");
+  url.searchParams.set("access_token", pageAccessToken);
+
+  try {
+    const response = await fetch(url.toString());
+    const data = await readJson<MetaSenderProfileResponse>(response);
+    if (!response.ok || data.error?.message) {
+      return null;
+    }
+    return {
+      name: data.name?.trim() || undefined,
+      avatarUrl: normalizeCustomerAvatarUrl(data.profile_pic),
+    };
+  } catch {
+    return null;
+  }
 }

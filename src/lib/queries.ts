@@ -3,8 +3,10 @@ import { prisma } from "@/backend/prisma";
 import { requireSession } from "@/backend/auth";
 import { getPermissionCodes, hasPermission } from "@/backend/rbac";
 import { resolveReplyClaim } from "@/backend/reply-claim";
+import { getShopPolicy } from "@/backend/shop-policy";
 import { roleLabel } from "@/lib/labels";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { replyClaimTtlMs } from "@/lib/shop-policy";
 import type { InboxNoticeSummary } from "@/lib/inbox-notices";
 import type {
   Conversation,
@@ -26,6 +28,8 @@ export type ShopContext = {
   role: string;
   roleLabel: string;
   permissions: string[];
+  replyClaimTtlMinutes: number;
+  maxUsersPerShop: number;
 };
 
 function toIso(value: Date) {
@@ -48,13 +52,16 @@ export async function getShopContext(): Promise<ShopContext> {
     role: staff.roleCode,
     roleLabel: staff.role?.name ?? roleLabel(staff.roleCode),
     permissions: await getPermissionCodes(session),
+    replyClaimTtlMinutes: staff.shop.replyClaimTtlMinutes,
+    maxUsersPerShop: staff.shop.maxUsersPerShop,
   };
 }
 
 export async function getInboxData() {
   const session = await requireSession();
   const shopId = session.shopId;
-  const [conversations, messages, customers, orders, products, quickReplies] = await Promise.all([
+  const [conversations, messages, customers, orders, products, quickReplies, reactions, policy] =
+    await Promise.all([
     prisma.conversation.findMany({
       where: { shopId },
       include: { staff: { select: { id: true, name: true } } },
@@ -81,16 +88,46 @@ export async function getInboxData() {
       where: { shopId },
       orderBy: { title: "asc" },
     }),
+    prisma.messageReaction.findMany({
+      where: { shopId },
+      select: { messageId: true, emoji: true, reactorKey: true },
+    }),
+    getShopPolicy(shopId),
   ]);
+
+  const claimTtlMs = replyClaimTtlMs(policy.replyClaimTtlMinutes);
+
+  const reactionsByMessage = new Map<
+    string,
+    { emoji: string; count: number; reactedByMe: boolean }[]
+  >();
+  const mineKey = `staff:${session.staffId}`;
+  for (const row of reactions) {
+    const list = reactionsByMessage.get(row.messageId) ?? [];
+    const existing = list.find((item) => item.emoji === row.emoji);
+    if (existing) {
+      existing.count += 1;
+      if (row.reactorKey === mineKey) existing.reactedByMe = true;
+    } else {
+      list.push({
+        emoji: row.emoji,
+        count: 1,
+        reactedByMe: row.reactorKey === mineKey,
+      });
+    }
+    reactionsByMessage.set(row.messageId, list);
+  }
 
   return {
     currentStaffId: session.staffId,
+    replyClaimTtlMinutes: policy.replyClaimTtlMinutes,
     conversations: conversations.map((item): Conversation => {
       const claim = resolveReplyClaim({
         staffId: item.staffId,
         staffName: item.staff?.name,
         replyClaimedAt: item.replyClaimedAt,
         currentStaffId: session.staffId,
+        ttlMs: claimTtlMs,
       });
       return {
         id: item.id,
@@ -112,6 +149,11 @@ export async function getInboxData() {
         sender: item.sender,
         text: item.text,
         createdAt: toIso(item.createdAt),
+        attachmentType: item.attachmentType,
+        attachmentUrl: item.attachmentUrl,
+        attachmentName: item.attachmentName,
+        externalMessageId: item.externalMessageId,
+        reactions: reactionsByMessage.get(item.id) ?? [],
       }),
     ),
     customers: customers.map(
@@ -122,6 +164,7 @@ export async function getInboxData() {
         email: item.email ?? undefined,
         address: item.address ?? undefined,
         note: item.note ?? undefined,
+        avatarUrl: item.avatarUrl ?? undefined,
       }),
     ),
     orders: orders.map(
@@ -164,7 +207,7 @@ export async function getInboxNotificationSummary(): Promise<InboxNoticeSummary>
   const session = await requireSession();
   const shopId = session.shopId;
 
-  const [unreadRows, noticeRows] = await Promise.all([
+  const [unreadRows, noticeRows, policy] = await Promise.all([
     prisma.conversation.findMany({
       where: { shopId, unread: { gt: 0 } },
       select: { unread: true },
@@ -178,9 +221,11 @@ export async function getInboxNotificationSummary(): Promise<InboxNoticeSummary>
       orderBy: { lastAt: "desc" },
       take: 12,
     }),
+    getShopPolicy(shopId),
   ]);
 
   const unreadTotal = unreadRows.reduce((sum, row) => sum + row.unread, 0);
+  const claimTtlMs = replyClaimTtlMs(policy.replyClaimTtlMinutes);
 
   return {
     unreadTotal,
@@ -191,6 +236,7 @@ export async function getInboxNotificationSummary(): Promise<InboxNoticeSummary>
         staffName: item.staff?.name,
         replyClaimedAt: item.replyClaimedAt,
         currentStaffId: session.staffId,
+        ttlMs: claimTtlMs,
       });
       return {
         conversationId: item.id,

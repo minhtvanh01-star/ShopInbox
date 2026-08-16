@@ -34,7 +34,10 @@ export function AuditLogTable({ rows }: { rows: AuditRow[] }) {
     return (
       <div className="empty-state">
         <p className="text-base font-medium text-slate-700">Chưa có nhật ký</p>
-        <p className="mt-1 text-sm text-slate-500">Thao tác đăng nhập, đơn hàng, kênh, nhân viên sẽ hiện ở đây.</p>
+        <p className="mt-1 text-sm text-slate-500">
+          Thao tác đăng nhập/đăng xuất, nhận-nhả hội thoại, gửi tin, đơn hàng, kênh sẽ hiện ở đây —
+          lọc theo người và hành động để truy vết.
+        </p>
       </div>
     );
   }

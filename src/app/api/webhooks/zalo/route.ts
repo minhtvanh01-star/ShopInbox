@@ -23,6 +23,7 @@ export async function POST(request: Request) {
     const result = await processZaloWebhook(body);
     if (result.processed > 0) {
       revalidatePath("/inbox");
+      revalidatePath("/settings");
     }
     return NextResponse.json({ received: true, ...result });
   } catch (err) {

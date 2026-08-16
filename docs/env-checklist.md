@@ -10,10 +10,10 @@ Sau mỗi lần sửa `.env`, **restart** `npm run dev` để Next.js đọc l�
 |------|----------------|
 | `DATABASE_URL` | Postgres `127.0.0.1:5432/shopinbox` |
 | `SESSION_SECRET` | Chuỗi ngẫu nhiên mạnh |
-| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` |
-| `META_REDIRECT_URI` | `http://localhost:3000/api/connect/meta/callback` |
+| `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` (ngrok/production: domain HTTPS) |
+| `META_REDIRECT_URI` | Tuỳ chọn — trống thì = `{NEXT_PUBLIC_APP_URL}/api/connect/meta/callback` |
 | `META_WEBHOOK_VERIFY_TOKEN` | Chuỗi ngẫu nhiên (dùng khi verify webhook) |
-| `ZALO_REDIRECT_URI` | `http://localhost:3000/api/connect/zalo/callback` |
+| `ZALO_REDIRECT_URI` | Tuỳ chọn — trống thì = `{NEXT_PUBLIC_APP_URL}/api/connect/zalo/callback` |
 | `GOOGLE_REDIRECT_URI` | `http://localhost:3000/api/auth/google/callback` |
 
 ## Bạn phải dán thủ công (từ developer console)
@@ -31,15 +31,20 @@ OAuth **không hoạt động** nếu chỉ để trống hoặc bịa ID/Secret
      ```
      https://shopinbox-production.up.railway.app/api/connect/meta/callback
      ```
-4. Local: **Facebook Login → Valid OAuth Redirect URIs** → thêm đúng `META_REDIRECT_URI` (localhost hoặc ngrok HTTPS).
-5. Dán vào `.env` / Railway Variables:
+4. Local / ngrok: **Facebook Login → Valid OAuth Redirect URIs** → dán đúng
+   `{NEXT_PUBLIC_APP_URL}/api/connect/meta/callback` (copy từ **Cài đặt** trong ShopInbox).
+5. Webhook: **Messenger → Settings → Webhooks** → Callback URL =
+   `{NEXT_PUBLIC_APP_URL}/api/webhooks/meta`, Verify token = `META_WEBHOOK_VERIFY_TOKEN`.
+6. Dán vào `.env` / Railway Variables:
 
 ```env
 META_APP_ID=<App ID từ Meta>
 META_APP_SECRET=<App Secret từ Meta>
+META_WEBHOOK_VERIFY_TOKEN=<chuỗi bí mật bạn tự đặt>
+NEXT_PUBLIC_APP_URL=<http://localhost:3000 hoặc https://ngrok-or-railway>
 ```
 
-6. Restart `npm run dev` (local) hoặc **Deploy** trên Railway. Nút **Kết nối với Facebook/Instagram** sẽ hết báo thiếu biến.
+7. Restart `npm run dev` (local) hoặc **Deploy** trên Railway. Nút **Kết nối với Facebook/Instagram** sẽ hết báo thiếu biến.
 
 Chi tiết webhook / ngrok / App Domains: [ket-noi-kenh.md](./ket-noi-kenh.md).
 

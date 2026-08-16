@@ -3,7 +3,7 @@ import { requireSession } from "@/backend/auth";
 import { prisma } from "@/backend/prisma";
 import { getSession } from "@/backend/session";
 import type { SessionPayload } from "@/backend/session-token";
-import { normalizeRoleCode } from "@/lib/rbac-catalog";
+import { isAdminRole, normalizeRoleCode } from "@/lib/rbac-catalog";
 
 const CACHE_TTL_MS = 15_000;
 
@@ -94,6 +94,18 @@ export async function requirePermission(
   return enforcePermission(sessionOrCode, code ?? "");
 }
 
+/**
+ * Cho Server Actions: thiếu quyền → throw (không redirect).
+ * redirect() trong action POST dễ thành 500 / vòng lặp client retry.
+ */
+export async function requireActionPermission(code: string): Promise<SessionPayload> {
+  const session = await requireSession();
+  if (!(await hasPermission(session, code))) {
+    throw new Error("Bạn không có quyền thực hiện thao tác này.");
+  }
+  return session;
+}
+
 export async function requirePermissionApi(code: string): Promise<SessionPayload | null> {
   const session = await getSession();
   if (!session || !(await hasPermission(session, code))) {
@@ -104,4 +116,8 @@ export async function requirePermissionApi(code: string): Promise<SessionPayload
 
 export function sessionRoleCode(session: SessionPayload): string {
   return normalizeRoleCode(session.role);
+}
+
+export function isAdminSession(session: { role: string }): boolean {
+  return isAdminRole(sessionRoleCode(session as SessionPayload));
 }

@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "shops" ADD COLUMN "replyClaimTtlMinutes" INTEGER NOT NULL DEFAULT 15;
+ALTER TABLE "shops" ADD COLUMN "maxUsersPerShop" INTEGER NOT NULL DEFAULT 3;

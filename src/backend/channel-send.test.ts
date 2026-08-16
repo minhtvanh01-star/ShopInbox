@@ -32,7 +32,7 @@ vi.mock("@/backend/oauth-config", () => ({
 import { prisma } from "@/backend/prisma";
 import { sendMetaMessage } from "@/backend/meta-oauth";
 import { refreshZaloAccessToken, sendZaloOaMessage } from "@/backend/zalo-oauth";
-import { dispatchOutboundMessage } from "@/backend/channel-send";
+import { dispatchOutboundImage, dispatchOutboundMessage } from "@/backend/channel-send";
 
 describe("dispatchOutboundMessage", () => {
   beforeEach(() => {
@@ -205,5 +205,20 @@ describe("dispatchOutboundMessage", () => {
     ).resolves.toEqual({ mode: "local" });
 
     expect(sendMetaMessage).not.toHaveBeenCalled();
+  });
+});
+
+describe("dispatchOutboundImage", () => {
+  it("zalo → lỗi rõ ràng (không gửi ảo local)", async () => {
+    await expect(
+      dispatchOutboundImage({
+        shopId: "shop1",
+        channel: "zalo",
+        customerId: "cust1",
+        bytes: Buffer.from("img"),
+        mimeType: "image/png",
+        fileName: "a.png",
+      }),
+    ).rejects.toThrow(/Chưa hỗ trợ gửi ảnh qua Zalo/);
   });
 });
