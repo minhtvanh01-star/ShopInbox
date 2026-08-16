@@ -4,8 +4,21 @@ import {
   type MetaConversation,
 } from "@/backend/meta-oauth";
 import { prisma } from "@/backend/prisma";
+import { isMissingDbColumnError } from "@/backend/prisma-errors";
 import { normalizeCustomerAvatarUrl } from "@/lib/customer-avatar";
 import type { Channel } from "@/lib/types";
+
+const CUSTOMER_CORE_SELECT = {
+  id: true,
+  shopId: true,
+  name: true,
+  phone: true,
+  email: true,
+  address: true,
+  note: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
 export type InboundMessageInput = {
   channel: Channel;
@@ -50,6 +63,50 @@ export async function findChannelAccount(channel: Channel, externalAccountId: st
   });
 }
 
+async function findCustomerIdentity(shopId: string, channel: Channel, senderExternalId: string) {
+  try {
+    return await prisma.customerIdentity.findFirst({
+      where: { channel, externalId: senderExternalId, customer: { shopId } },
+      include: { customer: true },
+    });
+  } catch (error) {
+    if (!isMissingDbColumnError(error, "avatarUrl")) {
+      throw error;
+    }
+    return prisma.customerIdentity.findFirst({
+      where: { channel, externalId: senderExternalId, customer: { shopId } },
+      include: { customer: { select: CUSTOMER_CORE_SELECT } },
+    });
+  }
+}
+
+async function updateCustomerSafe(
+  customerId: string,
+  patch: { name?: string; avatarUrl?: string },
+) {
+  try {
+    return await prisma.customer.update({
+      where: { id: customerId },
+      data: patch,
+    });
+  } catch (error) {
+    if (!patch.avatarUrl || !isMissingDbColumnError(error, "avatarUrl")) {
+      throw error;
+    }
+    const { avatarUrl: _omit, ...rest } = patch;
+    if (Object.keys(rest).length === 0) {
+      return prisma.customer.findUniqueOrThrow({
+        where: { id: customerId },
+        select: CUSTOMER_CORE_SELECT,
+      });
+    }
+    return prisma.customer.update({
+      where: { id: customerId },
+      data: rest,
+    });
+  }
+}
+
 export async function findOrCreateCustomer(
   shopId: string,
   channel: Channel,
@@ -58,10 +115,7 @@ export async function findOrCreateCustomer(
   senderAvatarUrl?: string | null,
 ) {
   const avatarUrl = normalizeCustomerAvatarUrl(senderAvatarUrl);
-  const identity = await prisma.customerIdentity.findFirst({
-    where: { channel, externalId: senderExternalId, customer: { shopId } },
-    include: { customer: true },
-  });
+  const identity = await findCustomerIdentity(shopId, channel, senderExternalId);
 
   if (identity) {
     const name = senderName?.trim();
@@ -69,37 +123,52 @@ export async function findOrCreateCustomer(
     if (name && name !== identity.customer.name && identity.customer.name.startsWith("Khách")) {
       patch.name = name;
     }
-    if (avatarUrl && avatarUrl !== identity.customer.avatarUrl) {
+    const currentAvatar =
+      "avatarUrl" in identity.customer
+        ? (identity.customer as { avatarUrl?: string | null }).avatarUrl
+        : null;
+    if (avatarUrl && avatarUrl !== currentAvatar) {
       patch.avatarUrl = avatarUrl;
     }
     if (Object.keys(patch).length > 0) {
-      const updated = await prisma.customer.update({
-        where: { id: identity.customerId },
-        data: patch,
-      });
-      return updated;
+      return updateCustomerSafe(identity.customerId, patch);
     }
     return identity.customer;
   }
 
   const customerId = `cust-${crypto.randomUUID()}`;
   const name = senderName?.trim() || defaultSenderName(channel, senderExternalId);
-
-  return prisma.customer.create({
-    data: {
-      id: customerId,
-      shopId,
-      name,
-      avatarUrl,
-      identities: {
-        create: {
-          id: `cid-${crypto.randomUUID()}`,
-          channel,
-          externalId: senderExternalId,
-        },
-      },
+  const identityCreate = {
+    create: {
+      id: `cid-${crypto.randomUUID()}`,
+      channel,
+      externalId: senderExternalId,
     },
-  });
+  };
+
+  try {
+    return await prisma.customer.create({
+      data: {
+        id: customerId,
+        shopId,
+        name,
+        avatarUrl,
+        identities: identityCreate,
+      },
+    });
+  } catch (error) {
+    if (!isMissingDbColumnError(error, "avatarUrl")) {
+      throw error;
+    }
+    return prisma.customer.create({
+      data: {
+        id: customerId,
+        shopId,
+        name,
+        identities: identityCreate,
+      },
+    });
+  }
 }
 
 export async function findOrCreateConversation(
@@ -156,10 +225,7 @@ async function enrichCustomerAvatarFromMeta(input: {
     return false;
   }
 
-  await prisma.customer.update({
-    where: { id: input.customerId },
-    data: patch,
-  });
+  await updateCustomerSafe(input.customerId, patch);
   return true;
 }
 
@@ -189,17 +255,26 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
     input.senderAvatarUrl,
   );
 
+  const customerAvatar =
+    "avatarUrl" in customer
+      ? (customer as { avatarUrl?: string | null }).avatarUrl
+      : null;
+
   if (
-    !customer.avatarUrl &&
+    !customerAvatar &&
     (input.channel === "facebook" || input.channel === "instagram") &&
     account.accessToken
   ) {
-    await enrichCustomerAvatarFromMeta({
-      customerId: customer.id,
-      senderExternalId: input.senderExternalId,
-      pageAccessToken: account.accessToken,
-      currentName: customer.name,
-    });
+    try {
+      await enrichCustomerAvatarFromMeta({
+        customerId: customer.id,
+        senderExternalId: input.senderExternalId,
+        pageAccessToken: account.accessToken,
+        currentName: customer.name,
+      });
+    } catch (error) {
+      console.error("[ingestInboundMessage] enrich avatar failed", error);
+    }
   }
 
   const conversation = await findOrCreateConversation(

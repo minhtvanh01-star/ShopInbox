@@ -3,7 +3,9 @@ import {
   buildMetaOAuthUrl,
   fetchRecentMetaConversations,
   inboundMessagesFromMetaConversations,
+  isOutsideMessagingWindowError,
   metaScopesForChannel,
+  sendMetaMessage,
   subscribeMetaAppWebhook,
 } from "@/backend/meta-oauth";
 
@@ -181,5 +183,71 @@ describe("fetchRecentMetaConversations", () => {
     const url = String(fetchMock.mock.calls[0]?.[0]);
     expect(url).toContain("/page-1/conversations");
     expect(url).toContain("platform=MESSENGER");
+  });
+});
+
+describe("isOutsideMessagingWindowError", () => {
+  it("nhận diện lỗi cửa sổ 24h", () => {
+    expect(
+      isOutsideMessagingWindowError(
+        "(#10) This message is sent outside of allowed window.",
+      ),
+    ).toBe(true);
+    expect(isOutsideMessagingWindowError("Invalid OAuth access token")).toBe(false);
+  });
+});
+
+describe("sendMetaMessage", () => {
+  beforeEach(() => {
+    fetchMock.mockReset();
+  });
+
+  it("RESPONSE ok → không retry HUMAN_AGENT", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ message_id: "mid.ok" }),
+    });
+
+    await expect(
+      sendMetaMessage({
+        pageId: "page-1",
+        accessToken: "token",
+        recipientId: "psid-1",
+        text: "hi",
+      }),
+    ).resolves.toEqual({ externalMessageId: "mid.ok" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.messaging_type).toBe("RESPONSE");
+  });
+
+  it("ngoài cửa sổ 24h → retry MESSAGE_TAG HUMAN_AGENT", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: { message: "This message is sent outside of allowed window." },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ message_id: "mid.human" }),
+      });
+
+    await expect(
+      sendMetaMessage({
+        pageId: "page-1",
+        accessToken: "token",
+        recipientId: "psid-1",
+        text: "follow up",
+      }),
+    ).resolves.toEqual({ externalMessageId: "mid.human" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retryBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    expect(retryBody.messaging_type).toBe("MESSAGE_TAG");
+    expect(retryBody.tag).toBe("HUMAN_AGENT");
   });
 });
