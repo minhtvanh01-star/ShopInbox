@@ -31,6 +31,7 @@ export type Customer = {
   email?: string;
   address?: string;
   note?: string;
+  avatarUrl?: string;
 };
 
 export type Product = {
@@ -47,6 +48,9 @@ export type MessageReactionSummary = {
   reactedByMe: boolean;
 };
 
+/** Trạng thái gửi phía client (chưa commit DB / thất bại). */
+export type MessageLocalStatus = "sending" | "failed";
+
 export type Message = {
   id: string;
   conversationId: string;
@@ -58,6 +62,8 @@ export type Message = {
   attachmentName?: string | null;
   externalMessageId?: string | null;
   reactions?: MessageReactionSummary[];
+  /** Chỉ dùng trên UI optimistic — không lưu DB. */
+  localStatus?: MessageLocalStatus;
 };
 
 export type Conversation = {

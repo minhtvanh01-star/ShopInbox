@@ -8,7 +8,7 @@ export default async function StaffPage() {
   const session = await requirePermission(PERMISSION_CODES.staffRead);
   const canManage = await hasPermission(session, PERMISSION_CODES.staffManage);
 
-  const [members, roles] = await Promise.all([
+  const [members, roles, shop] = await Promise.all([
     prisma.staff.findMany({
       where: { shopId: session.shopId },
       include: { role: true },
@@ -17,6 +17,10 @@ export default async function StaffPage() {
     prisma.role.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: "asc" },
+    }),
+    prisma.shop.findUniqueOrThrow({
+      where: { id: session.shopId },
+      select: { maxUsersPerShop: true },
     }),
   ]);
 
@@ -31,6 +35,7 @@ export default async function StaffPage() {
       </header>
       <StaffManager
         canManage={canManage}
+        maxUsersPerShop={shop.maxUsersPerShop}
         roles={roles.map((role) => ({ code: role.code, name: role.name }))}
         members={members.map((member) => ({
           id: member.id,

@@ -25,6 +25,16 @@ describe("formatTimeVN", () => {
   });
 });
 
+describe("formatChatDayLabel", () => {
+  it("labels today and yesterday in Vietnam time", async () => {
+    const { formatChatDayLabel } = await import("./labels");
+    const now = new Date("2026-08-15T12:00:00.000Z");
+    expect(formatChatDayLabel("2026-08-15T03:00:00.000Z", now)).toBe("Hôm nay");
+    expect(formatChatDayLabel("2026-08-14T03:00:00.000Z", now)).toBe("Hôm qua");
+    expect(formatChatDayLabel("2026-08-10T03:00:00.000Z", now)).toBe("10/08/2026");
+  });
+});
+
 describe("parseVnDayStart / parseVnDayEnd", () => {
   it("maps calendar day to UTC+7 boundaries", () => {
     expect(parseVnDayStart("2026-08-15")?.toISOString()).toBe("2026-08-14T17:00:00.000Z");

@@ -259,6 +259,7 @@ export const AUDIT_ACTIONS = {
   conversationRelease: "conversation.release",
   authLogout: "auth.logout",
   authSessionTimeout: "auth.session_timeout",
+  settingsUpdate: "settings.update",
 } as const;
 
 export type AuditActionCode = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
@@ -285,9 +286,11 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   [AUDIT_ACTIONS.conversationRelease]: "Nhả hội thoại",
   [AUDIT_ACTIONS.authLogout]: "Đăng xuất",
   [AUDIT_ACTIONS.authSessionTimeout]: "Hết phiên (không hoạt động)",
+  [AUDIT_ACTIONS.settingsUpdate]: "Cập nhật cấu hình vận hành",
 };
 
 export const AUDIT_ENTITY_LABEL: Record<string, string> = {
+  Shop: "Cửa hàng",
   Staff: "Nhân viên",
   Order: "Đơn hàng",
   Conversation: "Hội thoại",

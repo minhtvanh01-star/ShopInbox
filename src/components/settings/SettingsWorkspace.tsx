@@ -4,17 +4,23 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CHANNEL_ACCENT, CONNECT_PLATFORMS } from "@/lib/channels";
 import { CHANNEL_STATUS_LABEL, formatDateTime } from "@/lib/labels";
+import { STORAGE_KEYS } from "@/lib/ui-layout";
+import { usePersistedState } from "@/lib/use-persisted-state";
 import {
   AddConnectionModal,
   OAUTH_ERROR_MESSAGES,
   type ChannelAccountView,
 } from "./AddConnectionModal";
+import { ShopPolicyForm } from "./ShopPolicyForm";
 import { disconnectChannelAction, syncMetaChannelAction } from "@/app/(app)/settings/actions";
 import type { PendingMetaPages } from "@/lib/oauth-types";
 
 type SettingsWorkspaceProps = {
   channels: ChannelAccountView[];
   canConnect: boolean;
+  canUpdateSettings: boolean;
+  replyClaimTtlMinutes: number;
+  maxUsersPerShop: number;
   metaOAuthConfigured: boolean;
   zaloOAuthConfigured: boolean;
   metaMissingEnvVars: string[];
@@ -104,6 +110,9 @@ function PlatformIcon({ channel }: { channel: ChannelAccountView["channel"] }) {
 export function SettingsWorkspace({
   channels,
   canConnect,
+  canUpdateSettings,
+  replyClaimTtlMinutes,
+  maxUsersPerShop,
   metaOAuthConfigured,
   zaloOAuthConfigured,
   metaMissingEnvVars,
@@ -130,6 +139,11 @@ export function SettingsWorkspace({
   const router = useRouter();
 
   const connectedCount = channels.filter((item) => item.status === "ready").length;
+  const defaultDevUrlsOpen = connectedCount < 1;
+  const [devUrlsOpen, setDevUrlsOpen] = usePersistedState(
+    STORAGE_KEYS.settingsDevUrlsOpen,
+    defaultDevUrlsOpen,
+  );
 
   const flashMessage = useMemo(() => {
     if (oauthFlash?.success) {
@@ -158,7 +172,13 @@ export function SettingsWorkspace({
 
   async function handleDisconnect(channel: ChannelAccountView["channel"]) {
     if (!canConnect || disconnecting) return;
-    const confirmed = window.confirm("Ngắt kết nối kênh này? Token OAuth sẽ bị xóa trên server.");
+    const target = channels.find((item) => item.channel === channel);
+    const isCancelOAuth = target?.status === "connecting";
+    const confirmed = window.confirm(
+      isCancelOAuth
+        ? "Hủy phiên OAuth đang chờ? Bạn có thể kết nối lại sau."
+        : "Ngắt kết nối kênh này? Token OAuth sẽ bị xóa trên server.",
+    );
     if (!confirmed) return;
 
     setDisconnecting(channel);
@@ -238,55 +258,92 @@ export function SettingsWorkspace({
         </div>
 
         {canConnect ? (
-          <div className="mx-6 mt-6 grid gap-4 lg:grid-cols-2">
-            <section className="rounded-xl border border-border bg-surface-muted/50 p-4">
-              <h2 className="text-sm font-semibold text-slate-900">URL dán vào Meta Developers</h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Copy từng dòng → dán đúng ô trên Meta. Local cần ngrok HTTPS.
-              </p>
-              <div className="mt-3 space-y-3">
-                <CopyRow
-                  title="OAuth Redirect URI"
-                  hint="Facebook Login → Settings → Valid OAuth Redirect URIs"
-                  value={metaOAuthRedirectUri}
-                />
-                <CopyRow
-                  title="Webhook Callback URL"
-                  hint="Messenger → Settings → Webhooks → Callback URL"
-                  value={metaWebhookUrl}
-                />
-                <CopyRow
-                  title="Verify token"
-                  hint="Cùng giá trị META_WEBHOOK_VERIFY_TOKEN trong .env"
-                  value={metaWebhookVerifyToken}
-                />
-                {!metaWebhookVerifyToken ? (
-                  <p className="text-xs text-amber-700">
-                    Chưa có verify token — thêm <code>META_WEBHOOK_VERIFY_TOKEN</code> vào{" "}
-                    <code>.env</code> rồi restart.
-                  </p>
-                ) : null}
-              </div>
-            </section>
+          <div className="mx-6 mt-6">
+            <button
+              type="button"
+              className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted/50 px-4 py-3 text-left"
+              aria-expanded={devUrlsOpen}
+              aria-controls="settings-dev-urls"
+              onClick={() => setDevUrlsOpen((prev) => !prev)}
+            >
+              <span>
+                <span className="block text-sm font-semibold text-slate-900">
+                  URL OAuth & webhook (Meta / Zalo)
+                </span>
+                <span className="mt-0.5 block text-xs text-slate-500">
+                  Dùng khi cấu hình Developers — có thể thu gọn sau khi kênh đã nối.
+                </span>
+              </span>
+              <span className="shrink-0 text-xs font-medium text-teal-800">
+                {devUrlsOpen ? "Thu gọn" : "Mở rộng"}
+              </span>
+            </button>
 
-            <section className="rounded-xl border border-border bg-surface-muted/50 p-4">
-              <h2 className="text-sm font-semibold text-slate-900">URL dán vào Zalo Developers</h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Redirect URI trên app Zalo; webhook trên OA Admin.
-              </p>
-              <div className="mt-3 space-y-3">
-                <CopyRow
-                  title="OAuth Redirect URI"
-                  hint="Zalo app → Redirect URI"
-                  value={zaloOAuthRedirectUri}
-                />
-                <CopyRow
-                  title="Webhook URL"
-                  hint="Zalo OA Admin → Webhook"
-                  value={zaloWebhookUrl}
-                />
+            {devUrlsOpen ? (
+              <div id="settings-dev-urls" className="mt-4 grid gap-4 lg:grid-cols-2">
+                <section className="rounded-xl border border-border bg-surface-muted/50 p-4">
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    URL dán vào Meta Developers
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Copy từng dòng → dán đúng ô trên Meta. Local cần ngrok HTTPS.
+                  </p>
+                  <div className="mt-3 space-y-3">
+                    <CopyRow
+                      title="OAuth Redirect URI"
+                      hint="Facebook Login → Settings → Valid OAuth Redirect URIs"
+                      value={metaOAuthRedirectUri}
+                    />
+                    <CopyRow
+                      title="Webhook Callback URL"
+                      hint="Messenger → Settings → Webhooks → Callback URL"
+                      value={metaWebhookUrl}
+                    />
+                    <CopyRow
+                      title="Verify token"
+                      hint="Cùng giá trị META_WEBHOOK_VERIFY_TOKEN trong .env"
+                      value={metaWebhookVerifyToken}
+                    />
+                    {!metaWebhookVerifyToken ? (
+                      <p className="text-xs text-amber-700">
+                        Chưa có verify token — thêm <code>META_WEBHOOK_VERIFY_TOKEN</code> vào{" "}
+                        <code>.env</code> rồi restart.
+                      </p>
+                    ) : null}
+                  </div>
+                </section>
+
+                <section className="rounded-xl border border-border bg-surface-muted/50 p-4">
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    URL dán vào Zalo Developers
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Redirect URI trên app Zalo; webhook trên OA Admin.
+                  </p>
+                  <div className="mt-3 space-y-3">
+                    <CopyRow
+                      title="OAuth Redirect URI"
+                      hint="Zalo app → Redirect URI"
+                      value={zaloOAuthRedirectUri}
+                    />
+                    <CopyRow
+                      title="Webhook URL"
+                      hint="Zalo OA Admin → Webhook"
+                      value={zaloWebhookUrl}
+                    />
+                  </div>
+                </section>
               </div>
-            </section>
+            ) : null}
+          </div>
+        ) : null}
+
+        {canUpdateSettings ? (
+          <div className="mx-6 mt-6">
+            <ShopPolicyForm
+              replyClaimTtlMinutes={replyClaimTtlMinutes}
+              maxUsersPerShop={maxUsersPerShop}
+            />
           </div>
         ) : null}
 
@@ -412,14 +469,20 @@ export function SettingsWorkspace({
                           {syncing === channel.channel ? "Đang đồng bộ..." : "Đồng bộ tin nhắn"}
                         </button>
                       ) : null}
-                      {canConnect && channel.status === "ready" && channel.hasOAuthToken ? (
+                      {canConnect &&
+                      (channel.status === "connecting" ||
+                        (channel.status === "ready" && channel.hasOAuthToken)) ? (
                         <button
                           type="button"
                           onClick={() => handleDisconnect(channel.channel)}
                           disabled={disconnecting === channel.channel}
                           className="btn-ghost text-red-700 hover:bg-red-50"
                         >
-                          {disconnecting === channel.channel ? "Đang ngắt..." : "Ngắt kết nối"}
+                          {disconnecting === channel.channel
+                            ? "Đang hủy..."
+                            : channel.status === "connecting"
+                              ? "Hủy OAuth"
+                              : "Ngắt kết nối"}
                         </button>
                       ) : null}
                     </div>

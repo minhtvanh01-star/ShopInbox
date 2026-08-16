@@ -40,6 +40,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
       <SettingsWorkspace
         channels={channels}
         canConnect={shop.permissions.includes(PERMISSION_CODES.channelsConnect)}
+        canUpdateSettings={shop.permissions.includes(PERMISSION_CODES.settingsUpdate)}
+        replyClaimTtlMinutes={shop.replyClaimTtlMinutes}
+        maxUsersPerShop={shop.maxUsersPerShop}
         metaOAuthConfigured={Boolean(metaConfig)}
         zaloOAuthConfigured={Boolean(zaloConfig)}
         metaMissingEnvVars={metaMissingEnvVars}

@@ -1,4 +1,5 @@
 import { prisma } from "@/backend/prisma";
+import { getShopPolicy } from "@/backend/shop-policy";
 import {
   canAddActiveShopSeat,
   MAX_USERS_PER_SHOP,
@@ -26,9 +27,17 @@ export async function assertShopHasActiveSeat(
   shopId: string,
   options?: { excludeStaffId?: string },
 ): Promise<string | null> {
-  const active = await countActiveShopUsers(shopId, options?.excludeStaffId);
-  if (canAddActiveShopSeat(active)) {
+  const [active, policy] = await Promise.all([
+    countActiveShopUsers(shopId, options?.excludeStaffId),
+    getShopPolicy(shopId),
+  ]);
+  if (canAddActiveShopSeat(active, policy.maxUsersPerShop)) {
     return null;
   }
-  return shopSeatLimitMessage(MAX_USERS_PER_SHOP);
+  return shopSeatLimitMessage(policy.maxUsersPerShop);
+}
+
+export async function getShopMaxUsers(shopId: string) {
+  const policy = await getShopPolicy(shopId);
+  return policy.maxUsersPerShop;
 }

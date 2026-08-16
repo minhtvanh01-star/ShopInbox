@@ -41,19 +41,23 @@ enum MessageSender {
 }
 
 model Shop {
-  id               String             @id
-  name             String
-  createdAt        DateTime           @default(now())
-  staff            Staff[]
-  channelAccounts  ChannelAccount[]
-  customers        Customer[]
-  conversations    Conversation[]
-  messages         Message[]
-  orders           Order[]
-  products         Product[]
-  quickReplies     QuickReply[]
-  auditLogs        AuditLog[]
-  messageReactions MessageReaction[]
+  id                    String             @id
+  name                  String
+  createdAt             DateTime           @default(now())
+  /** Phút idle trước khi nhả claim hội thoại (nhân viên). */
+  replyClaimTtlMinutes  Int                @default(15)
+  /** Số thành viên active tối đa trên shop. */
+  maxUsersPerShop       Int                @default(3)
+  staff                 Staff[]
+  channelAccounts       ChannelAccount[]
+  customers             Customer[]
+  conversations         Conversation[]
+  messages              Message[]
+  orders                Order[]
+  products              Product[]
+  quickReplies          QuickReply[]
+  auditLogs             AuditLog[]
+  messageReactions      MessageReaction[]
 
   @@map("shops")
 }
@@ -192,6 +196,8 @@ model Customer {
   email         String?
   address       String?
   note          String?
+  /** Ảnh đại diện từ Meta/Zalo (URL HTTPS). */
+  avatarUrl     String?
   identities    CustomerIdentity[]
   conversations Conversation[]
   orders        Order[]

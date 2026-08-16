@@ -1,4 +1,5 @@
 import type { MetaOAuthConfig } from "@/backend/oauth-config";
+import { normalizeCustomerAvatarUrl } from "@/lib/customer-avatar";
 import type { MetaPageOption } from "@/lib/oauth-types";
 import type { Channel } from "@/lib/types";
 
@@ -211,6 +212,9 @@ export async function subscribeMetaAppWebhook(config: MetaOAuthConfig, callbackU
 
 export type MetaConversation = {
   id?: string;
+  participants?: {
+    data?: Array<{ id?: string; name?: string; profile_pic?: string }>;
+  };
   messages?: {
     data?: Array<{
       id?: string;
@@ -229,6 +233,7 @@ type MetaConversationsResponse = {
 export type MetaInboundHistoryMessage = {
   senderExternalId: string;
   senderName?: string;
+  senderAvatarUrl?: string;
   text: string;
   externalMessageId?: string;
   sentAt?: Date;
@@ -242,6 +247,13 @@ export function inboundMessagesFromMetaConversations(
   const inbound: MetaInboundHistoryMessage[] = [];
 
   for (const conversation of conversations) {
+    const avatarById = new Map<string, string>();
+    for (const participant of conversation.participants?.data ?? []) {
+      if (participant.id && participant.profile_pic) {
+        avatarById.set(participant.id, participant.profile_pic);
+      }
+    }
+
     const chronological = [...(conversation.messages?.data ?? [])].reverse();
     for (const message of chronological) {
       const fromId = message.from?.id;
@@ -251,6 +263,7 @@ export function inboundMessagesFromMetaConversations(
       inbound.push({
         senderExternalId: fromId,
         senderName: message.from?.name,
+        senderAvatarUrl: avatarById.get(fromId),
         text,
         externalMessageId: message.id,
         sentAt: message.created_time ? new Date(message.created_time) : undefined,
@@ -271,7 +284,7 @@ export async function fetchRecentMetaConversations(
   url.searchParams.set("limit", String(options?.limit ?? 15));
   url.searchParams.set(
     "fields",
-    "participants,updated_time,messages.limit(20){id,message,from,created_time}",
+    "participants{id,name,profile_pic},updated_time,messages.limit(20){id,message,from,created_time}",
   );
   url.searchParams.set("access_token", pageAccessToken);
 
@@ -433,4 +446,32 @@ export async function sendMetaReaction(input: {
     throw new Error(data.error.message);
   }
   return { ok: true as const };
+}
+
+type MetaSenderProfileResponse = {
+  id?: string;
+  name?: string;
+  profile_pic?: string;
+  error?: { message?: string };
+};
+
+/** Lấy tên + avatar PSID từ Graph (Page token). Lỗi → null, không ném. */
+export async function fetchMetaSenderProfile(psid: string, pageAccessToken: string) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${psid}`);
+  url.searchParams.set("fields", "name,profile_pic");
+  url.searchParams.set("access_token", pageAccessToken);
+
+  try {
+    const response = await fetch(url.toString());
+    const data = await readJson<MetaSenderProfileResponse>(response);
+    if (!response.ok || data.error?.message) {
+      return null;
+    }
+    return {
+      name: data.name?.trim() || undefined,
+      avatarUrl: normalizeCustomerAvatarUrl(data.profile_pic),
+    };
+  } catch {
+    return null;
+  }
 }

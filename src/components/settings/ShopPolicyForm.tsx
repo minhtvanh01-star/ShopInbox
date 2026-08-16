@@ -1,0 +1,100 @@
+"use client";
+
+import { useActionState } from "react";
+import {
+  updateShopPolicyAction,
+  type UpdateShopPolicyState,
+} from "@/app/(app)/settings/actions";
+import {
+  MAX_USERS_PER_SHOP_MAX,
+  MAX_USERS_PER_SHOP_MIN,
+  REPLY_CLAIM_TTL_MAX,
+  REPLY_CLAIM_TTL_MIN,
+} from "@/lib/shop-policy";
+
+type ShopPolicyFormProps = {
+  replyClaimTtlMinutes: number;
+  maxUsersPerShop: number;
+};
+
+const initial: UpdateShopPolicyState = {};
+
+export function ShopPolicyForm({
+  replyClaimTtlMinutes,
+  maxUsersPerShop,
+}: ShopPolicyFormProps) {
+  const [state, action, pending] = useActionState(updateShopPolicyAction, initial);
+  const claimValue = state.replyClaimTtlMinutes ?? replyClaimTtlMinutes;
+  const seatsValue = state.maxUsersPerShop ?? maxUsersPerShop;
+
+  return (
+    <section className="card-padded">
+      <h2 className="text-sm font-semibold text-slate-900">Cấu hình vận hành</h2>
+      <p className="mt-1 text-xs text-slate-500">
+        Chỉ Admin mới đổi được. Áp dụng ngay cho Inbox (nhả hội thoại) và giới hạn nhân viên.
+      </p>
+
+      <form
+        action={action}
+        key={`${claimValue}-${seatsValue}`}
+        className="mt-4 grid gap-4 sm:grid-cols-2"
+      >
+        <div className="field-group">
+          <label htmlFor="replyClaimTtlMinutes" className="label">
+            Thời gian nhả hội thoại (phút)
+          </label>
+          <input
+            id="replyClaimTtlMinutes"
+            name="replyClaimTtlMinutes"
+            type="number"
+            min={REPLY_CLAIM_TTL_MIN}
+            max={REPLY_CLAIM_TTL_MAX}
+            required
+            defaultValue={claimValue}
+            className="input-field-sm"
+          />
+          <p className="text-[11px] text-slate-400">
+            Nhân viên không hoạt động sau {REPLY_CLAIM_TTL_MIN}–{REPLY_CLAIM_TTL_MAX} phút sẽ bị
+            nhả claim.
+          </p>
+        </div>
+
+        <div className="field-group">
+          <label htmlFor="maxUsersPerShop" className="label">
+            Số thành viên tối đa
+          </label>
+          <input
+            id="maxUsersPerShop"
+            name="maxUsersPerShop"
+            type="number"
+            min={MAX_USERS_PER_SHOP_MIN}
+            max={MAX_USERS_PER_SHOP_MAX}
+            required
+            defaultValue={seatsValue}
+            className="input-field-sm"
+          />
+          <p className="text-[11px] text-slate-400">
+            Giới hạn tài khoản đang hoạt động ({MAX_USERS_PER_SHOP_MIN}–{MAX_USERS_PER_SHOP_MAX}).
+          </p>
+        </div>
+
+        {state.error ? (
+          <p role="alert" className="alert-error sm:col-span-2">
+            {state.error}
+          </p>
+        ) : null}
+        {state.success ? (
+          <p role="status" className="alert-success sm:col-span-2">
+            {state.success}
+          </p>
+        ) : null}
+
+        <div className="sm:col-span-2">
+          <button type="submit" disabled={pending} className="btn-primary-sm" aria-busy={pending}>
+            {pending ? "Đang lưu…" : "Lưu cấu hình"}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}

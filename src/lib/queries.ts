@@ -3,8 +3,10 @@ import { prisma } from "@/backend/prisma";
 import { requireSession } from "@/backend/auth";
 import { getPermissionCodes, hasPermission } from "@/backend/rbac";
 import { resolveReplyClaim } from "@/backend/reply-claim";
+import { getShopPolicy } from "@/backend/shop-policy";
 import { roleLabel } from "@/lib/labels";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { replyClaimTtlMs } from "@/lib/shop-policy";
 import type { InboxNoticeSummary } from "@/lib/inbox-notices";
 import type {
   Conversation,
@@ -26,6 +28,8 @@ export type ShopContext = {
   role: string;
   roleLabel: string;
   permissions: string[];
+  replyClaimTtlMinutes: number;
+  maxUsersPerShop: number;
 };
 
 function toIso(value: Date) {
@@ -48,13 +52,15 @@ export async function getShopContext(): Promise<ShopContext> {
     role: staff.roleCode,
     roleLabel: staff.role?.name ?? roleLabel(staff.roleCode),
     permissions: await getPermissionCodes(session),
+    replyClaimTtlMinutes: staff.shop.replyClaimTtlMinutes,
+    maxUsersPerShop: staff.shop.maxUsersPerShop,
   };
 }
 
 export async function getInboxData() {
   const session = await requireSession();
   const shopId = session.shopId;
-  const [conversations, messages, customers, orders, products, quickReplies, reactions] =
+  const [conversations, messages, customers, orders, products, quickReplies, reactions, policy] =
     await Promise.all([
     prisma.conversation.findMany({
       where: { shopId },
@@ -86,7 +92,10 @@ export async function getInboxData() {
       where: { shopId },
       select: { messageId: true, emoji: true, reactorKey: true },
     }),
+    getShopPolicy(shopId),
   ]);
+
+  const claimTtlMs = replyClaimTtlMs(policy.replyClaimTtlMinutes);
 
   const reactionsByMessage = new Map<
     string,
@@ -111,12 +120,14 @@ export async function getInboxData() {
 
   return {
     currentStaffId: session.staffId,
+    replyClaimTtlMinutes: policy.replyClaimTtlMinutes,
     conversations: conversations.map((item): Conversation => {
       const claim = resolveReplyClaim({
         staffId: item.staffId,
         staffName: item.staff?.name,
         replyClaimedAt: item.replyClaimedAt,
         currentStaffId: session.staffId,
+        ttlMs: claimTtlMs,
       });
       return {
         id: item.id,
@@ -153,6 +164,7 @@ export async function getInboxData() {
         email: item.email ?? undefined,
         address: item.address ?? undefined,
         note: item.note ?? undefined,
+        avatarUrl: item.avatarUrl ?? undefined,
       }),
     ),
     orders: orders.map(
@@ -195,7 +207,7 @@ export async function getInboxNotificationSummary(): Promise<InboxNoticeSummary>
   const session = await requireSession();
   const shopId = session.shopId;
 
-  const [unreadRows, noticeRows] = await Promise.all([
+  const [unreadRows, noticeRows, policy] = await Promise.all([
     prisma.conversation.findMany({
       where: { shopId, unread: { gt: 0 } },
       select: { unread: true },
@@ -209,9 +221,11 @@ export async function getInboxNotificationSummary(): Promise<InboxNoticeSummary>
       orderBy: { lastAt: "desc" },
       take: 12,
     }),
+    getShopPolicy(shopId),
   ]);
 
   const unreadTotal = unreadRows.reduce((sum, row) => sum + row.unread, 0);
+  const claimTtlMs = replyClaimTtlMs(policy.replyClaimTtlMinutes);
 
   return {
     unreadTotal,
@@ -222,6 +236,7 @@ export async function getInboxNotificationSummary(): Promise<InboxNoticeSummary>
         staffName: item.staff?.name,
         replyClaimedAt: item.replyClaimedAt,
         currentStaffId: session.staffId,
+        ttlMs: claimTtlMs,
       });
       return {
         conversationId: item.id,

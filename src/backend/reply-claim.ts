@@ -1,19 +1,26 @@
 /** Claim hội thoại khi nhân viên đang trả lời — người khác không gửi được. */
 
-/** Mỗi lần nhận/gửi/gia hạn: còn hiệu lực 15 phút nếu không còn hoạt động. */
-export const REPLY_CLAIM_TTL_MS = 15 * 60 * 1000;
-export const REPLY_CLAIM_TTL_MINUTES = 15;
+import {
+  DEFAULT_REPLY_CLAIM_TTL_MINUTES,
+  replyClaimTtlMs,
+} from "@/lib/shop-policy";
+
+/** Default TTL (ms) — khớp default shop khi chưa đọc DB. */
+export const REPLY_CLAIM_TTL_MS = replyClaimTtlMs(DEFAULT_REPLY_CLAIM_TTL_MINUTES);
+export const REPLY_CLAIM_TTL_MINUTES = DEFAULT_REPLY_CLAIM_TTL_MINUTES;
 
 export function isReplyClaimActive(
   claimedAt: Date | string | null | undefined,
   now = Date.now(),
+  ttlMs: number = REPLY_CLAIM_TTL_MS,
 ) {
-  return replyClaimRemainingMs(claimedAt, now) > 0;
+  return replyClaimRemainingMs(claimedAt, now, ttlMs) > 0;
 }
 
 export function replyClaimRemainingMs(
   claimedAt: Date | string | null | undefined,
   now = Date.now(),
+  ttlMs: number = REPLY_CLAIM_TTL_MS,
 ) {
   if (!claimedAt) {
     return 0;
@@ -22,7 +29,8 @@ export function replyClaimRemainingMs(
   if (!Number.isFinite(ts)) {
     return 0;
   }
-  return Math.max(0, ts + REPLY_CLAIM_TTL_MS - now);
+  const ttl = Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : REPLY_CLAIM_TTL_MS;
+  return Math.max(0, ts + ttl - now);
 }
 
 /** mm:ss còn lại trước khi hết hạn claim vì không dùng. */
@@ -47,12 +55,15 @@ export function resolveReplyClaim(input: {
   replyClaimedAt: Date | string | null | undefined;
   currentStaffId: string;
   now?: number;
+  ttlMs?: number;
 }): ReplyClaimState {
   const claimedAt =
     input.replyClaimedAt instanceof Date
       ? input.replyClaimedAt.toISOString()
       : input.replyClaimedAt ?? null;
-  const active = Boolean(input.staffId) && isReplyClaimActive(input.replyClaimedAt, input.now);
+  const active =
+    Boolean(input.staffId) &&
+    isReplyClaimActive(input.replyClaimedAt, input.now, input.ttlMs);
   return {
     staffId: active ? (input.staffId ?? null) : null,
     staffName: active ? (input.staffName ?? null) : null,

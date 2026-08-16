@@ -121,6 +121,30 @@ export function formatDateTime(iso: string) {
   return formatDateTimeVN(iso);
 }
 
+/** Nhãn ngày trên thread chat: Hôm nay / Hôm qua / 15/08/2026. */
+export function formatChatDayLabel(iso: string, now: Date = new Date()) {
+  const day = vnParts(iso, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const today = vnParts(now, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const yesterday = vnParts(yesterdayDate, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  if (day.year === today.year && day.month === today.month && day.day === today.day) {
+    return "Hôm nay";
+  }
+  if (
+    day.year === yesterday.year &&
+    day.month === yesterday.month &&
+    day.day === yesterday.day
+  ) {
+    return "Hôm qua";
+  }
+  return `${day.day}/${day.month}/${day.year}`;
+}
+
 /**
  * Parse `YYYY-MM-DD` thành đầu ngày lịch Việt Nam (00:00:00+07).
  * Dùng cho bộ lọc "Từ ngày" trên audit (tránh lệch theo TZ máy chủ).

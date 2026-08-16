@@ -14,6 +14,12 @@ describe("shop seats", () => {
     expect(canAddActiveShopSeat(4)).toBe(false);
   });
 
+  it("respects a custom seat max", () => {
+    expect(canAddActiveShopSeat(4, 5)).toBe(true);
+    expect(canAddActiveShopSeat(5, 5)).toBe(false);
+    expect(shopSeatLimitMessage(10)).toMatch(/10 thành viên/);
+  });
+
   it("returns a clear Vietnamese limit message", () => {
     expect(shopSeatLimitMessage()).toMatch(/3 thành viên/);
     expect(shopSeatLimitMessage()).toMatch(/vô hiệu hóa/);
