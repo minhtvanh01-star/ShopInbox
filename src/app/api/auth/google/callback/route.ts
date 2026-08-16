@@ -23,7 +23,6 @@ import { safeInternalPath } from "@/backend/safe-path";
 import { AUDIT_ACTIONS, normalizeRoleCode } from "@/lib/rbac-catalog";
 import { assertShopHasActiveSeat, countActiveShopUsers } from "@/backend/shop-seats";
 import { getShopPolicy } from "@/backend/shop-policy";
-import { shopSeatLimitMessage } from "@/lib/shop-seats";
 
 function authPageUrl(
   request: Request,

@@ -330,14 +330,9 @@ export function InboxWorkspace({
 
   const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
   const customer = selected ? customerById(selected.customerId) : undefined;
-  const selectedConversationId = selected?.id;
-  const thread = useMemo(
-    () =>
-      selectedConversationId
-        ? mergeConversationThread(messages, localOutbound, selectedConversationId)
-        : [],
-    [selectedConversationId, messages, localOutbound],
-  );
+  const thread = selected
+    ? mergeConversationThread(messages, localOutbound, selected.id)
+    : [];
   const customerOrders = customer
     ? orders.filter((item) => item.customerId === customer.id)
     : [];

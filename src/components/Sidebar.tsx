@@ -49,11 +49,7 @@ export function Sidebar({
   const pathname = usePathname();
   const items = NAV.filter((item) => !item.permission || permissions.includes(item.permission));
   const [collapsed, setCollapsed] = usePersistedState(STORAGE_KEYS.sidebarCollapsed, false);
-  const [layoutReady, setLayoutReady] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  useEffect(() => {
-    setLayoutReady(true);
-  }, []);
   const [noticesOpen, setNoticesOpen] = useState(false);
   const [summary, setSummary] = useState(inboxNotices);
   const [prevInboxNotices, setPrevInboxNotices] = useState(inboxNotices);
@@ -117,7 +113,7 @@ export function Sidebar({
     };
   }, [permissions, startTransition]);
 
-  const iconOnly = layoutReady ? collapsed : false;
+  const iconOnly = collapsed;
   const unreadBadge =
     summary.unreadTotal > 99 ? "99+" : summary.unreadTotal > 0 ? String(summary.unreadTotal) : null;
   // Khớp prefix dài nhất — tránh `/settings/profile` sáng cả `/settings`.
