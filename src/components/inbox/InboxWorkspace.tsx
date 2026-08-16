@@ -128,9 +128,19 @@ const INBOX_SOFT_REFRESH_MS = 8_000;
 /**
  * Next/React production ẩn lỗi Server Components thành minified #441.
  * Mutation thường đã OK — không hiện digest thô trên composer.
+ * Server Action throw còn có thể về `undefined` / object digest — luôn có fallback.
  */
 function inboxActionErrorMessage(err: unknown, fallback: string) {
-  const raw = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  let raw = "";
+  if (err instanceof Error) {
+    raw = err.message;
+  } else if (typeof err === "string") {
+    raw = err;
+  } else if (err && typeof err === "object") {
+    const maybe = err as { message?: unknown; digest?: unknown; error?: unknown };
+    if (typeof maybe.message === "string") raw = maybe.message;
+    else if (typeof maybe.error === "string") raw = maybe.error;
+  }
   if (
     /minified React error #441/i.test(raw) ||
     /error occurred in the Server Components render/i.test(raw)
@@ -864,7 +874,16 @@ export function InboxWorkspace({
       }
 
       try {
-        await sendMessage(conversationId, body);
+        const result = await sendMessage(conversationId, body);
+        if (!result.ok) {
+          setLocalOutbound((prev) =>
+            prev.map((item) =>
+              item.id === tempId ? { ...item, localStatus: "failed" as const } : item,
+            ),
+          );
+          setError(result.error);
+          return;
+        }
         setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
         notifyInboxNoticesRefresh();
         router.refresh();
@@ -1001,7 +1020,16 @@ export function InboxWorkspace({
       try {
         const formData = new FormData();
         formData.set("file", file);
-        await sendImageMessage(conversationId, formData);
+        const result = await sendImageMessage(conversationId, formData);
+        if (!result.ok) {
+          setLocalOutbound((prev) =>
+            prev.map((item) =>
+              item.id === tempId ? { ...item, localStatus: "failed" as const } : item,
+            ),
+          );
+          setError(result.error);
+          return;
+        }
         setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
         delete pendingImageFilesRef.current[tempId];
         notifyInboxNoticesRefresh();

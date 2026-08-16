@@ -1,6 +1,7 @@
 /** Server queries (`get*`): đọc PostgreSQL cho trang app. Tạm ở `lib` đến khi Lát 3/kênh ổn định. */
 import { prisma } from "@/backend/prisma";
 import { requireSession } from "@/backend/auth";
+import { isMissingDbColumnError } from "@/backend/prisma-errors";
 import { getPermissionCodes, hasPermission } from "@/backend/rbac";
 import { resolveReplyClaim } from "@/backend/reply-claim";
 import { getShopPolicy } from "@/backend/shop-policy";
@@ -36,12 +37,63 @@ function toIso(value: Date) {
   return value.toISOString();
 }
 
+type CustomerRow = {
+  id: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  note: string | null;
+  avatarUrl?: string | null;
+};
+
+async function loadShopCustomers(shopId: string): Promise<CustomerRow[]> {
+  try {
+    return await prisma.customer.findMany({
+      where: { shopId },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        address: true,
+        note: true,
+        avatarUrl: true,
+      },
+      orderBy: { name: "asc" },
+    });
+  } catch (error) {
+    if (!isMissingDbColumnError(error, "avatarUrl")) {
+      throw error;
+    }
+    console.error("[loadShopCustomers] avatarUrl missing — loading without avatars", error);
+    return prisma.customer.findMany({
+      where: { shopId },
+      select: {
+        id: true,
+        name: true,
+        phone: true,
+        email: true,
+        address: true,
+        note: true,
+      },
+      orderBy: { name: "asc" },
+    });
+  }
+}
+
 export async function getShopContext(): Promise<ShopContext> {
   const session = await requireSession();
-  const staff = await prisma.staff.findUniqueOrThrow({
-    where: { id: session.staffId },
-    include: { shop: true, role: true },
-  });
+  const [staff, policy] = await Promise.all([
+    prisma.staff.findUniqueOrThrow({
+      where: { id: session.staffId },
+      include: {
+        shop: { select: { id: true, name: true } },
+        role: true,
+      },
+    }),
+    getShopPolicy(session.shopId),
+  ]);
 
   return {
     shopId: staff.shopId,
@@ -52,8 +104,8 @@ export async function getShopContext(): Promise<ShopContext> {
     role: staff.roleCode,
     roleLabel: staff.role?.name ?? roleLabel(staff.roleCode),
     permissions: await getPermissionCodes(session),
-    replyClaimTtlMinutes: staff.shop.replyClaimTtlMinutes,
-    maxUsersPerShop: staff.shop.maxUsersPerShop,
+    replyClaimTtlMinutes: policy.replyClaimTtlMinutes,
+    maxUsersPerShop: policy.maxUsersPerShop,
   };
 }
 
@@ -71,10 +123,7 @@ export async function getInboxData() {
       where: { shopId },
       orderBy: { createdAt: "asc" },
     }),
-    prisma.customer.findMany({
-      where: { shopId },
-      orderBy: { name: "asc" },
-    }),
+    loadShopCustomers(shopId),
     prisma.order.findMany({
       where: { shopId },
       include: { items: true },
@@ -280,20 +329,22 @@ export async function getOrdersPageData() {
 
 export async function getCustomersPageData() {
   const session = await requireSession();
-  const customers = await prisma.customer.findMany({
+  const customers = await loadShopCustomers(session.shopId);
+  const counts = await prisma.customer.findMany({
     where: { shopId: session.shopId },
-    include: {
+    select: {
+      id: true,
       _count: { select: { orders: true } },
     },
-    orderBy: { name: "asc" },
   });
+  const orderCountById = new Map(counts.map((row) => [row.id, row._count.orders]));
 
   return customers.map((customer) => ({
     id: customer.id,
     name: customer.name,
     phone: customer.phone,
     note: customer.note,
-    orderCount: customer._count.orders,
+    orderCount: orderCountById.get(customer.id) ?? 0,
   }));
 }
 

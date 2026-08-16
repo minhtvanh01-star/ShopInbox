@@ -304,6 +304,61 @@ type MetaAttachmentUploadResponse = {
   error?: { message?: string };
 };
 
+/** Meta chặn RESPONSE ngoài cửa sổ 24h — cần MESSAGE_TAG / HUMAN_AGENT (≤7 ngày). */
+export function isOutsideMessagingWindowError(message: string) {
+  return /outside of allowed window|outside the allowed window|24[\s-]?hour messaging window|message tag is required|requires a message tag|2018278|cannot message this user|thread owner/i.test(
+    message,
+  );
+}
+
+async function postMetaPageMessage(input: {
+  pageId: string;
+  accessToken: string;
+  body: Record<string, unknown>;
+}) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${input.pageId}/messages`);
+  url.searchParams.set("access_token", input.accessToken);
+
+  const response = await fetch(url.toString(), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input.body),
+  });
+
+  const data = await readJson<MetaSendResponse>(response);
+  if (!data.message_id) {
+    throw new Error(data.error?.message ?? "Meta không trả về message_id");
+  }
+  return { externalMessageId: data.message_id };
+}
+
+function buildMetaMessagePayload(input: {
+  text?: string;
+  attachmentId?: string;
+  imageUrl?: string;
+}) {
+  if (input.attachmentId) {
+    return {
+      attachment: {
+        type: "image",
+        payload: { attachment_id: input.attachmentId },
+      },
+    };
+  }
+  if (input.imageUrl) {
+    return {
+      attachment: {
+        type: "image",
+        payload: { url: input.imageUrl, is_reusable: true },
+      },
+    };
+  }
+  if (input.text?.trim()) {
+    return { text: input.text.trim() };
+  }
+  throw new Error("Thiếu nội dung tin nhắn Meta.");
+}
+
 /** Gửi tin Messenger / Instagram DM qua Graph Send API (Page access token). */
 export async function sendMetaMessage(input: {
   pageId: string;
@@ -313,46 +368,46 @@ export async function sendMetaMessage(input: {
   attachmentId?: string;
   imageUrl?: string;
 }) {
-  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${input.pageId}/messages`);
-  url.searchParams.set("access_token", input.accessToken);
+  const message = buildMetaMessagePayload(input);
+  const recipient = { id: input.recipientId };
 
-  let message: Record<string, unknown>;
-  if (input.attachmentId) {
-    message = {
-      attachment: {
-        type: "image",
-        payload: { attachment_id: input.attachmentId },
+  try {
+    return await postMetaPageMessage({
+      pageId: input.pageId,
+      accessToken: input.accessToken,
+      body: {
+        recipient,
+        messaging_type: "RESPONSE",
+        message,
       },
-    };
-  } else if (input.imageUrl) {
-    message = {
-      attachment: {
-        type: "image",
-        payload: { url: input.imageUrl, is_reusable: true },
-      },
-    };
-  } else if (input.text?.trim()) {
-    message = { text: input.text.trim() };
-  } else {
-    throw new Error("Thiếu nội dung tin nhắn Meta.");
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    if (!isOutsideMessagingWindowError(detail)) {
+      throw error;
+    }
+
+    try {
+      // Nhân viên trả lời tay trong Inbox — đúng use case HUMAN_AGENT (≤7 ngày).
+      return await postMetaPageMessage({
+        pageId: input.pageId,
+        accessToken: input.accessToken,
+        body: {
+          recipient,
+          messaging_type: "MESSAGE_TAG",
+          tag: "HUMAN_AGENT",
+          message,
+        },
+      });
+    } catch (retryError) {
+      const retryDetail =
+        retryError instanceof Error ? retryError.message : String(retryError);
+      throw new Error(
+        `Hết cửa sổ 24 giờ Messenger/Instagram. Đã thử thẻ Human Agent nhưng thất bại: ${retryDetail}. ` +
+          `Cần khách nhắn lại, hoặc bật Advanced Access “Human Agent” trên Meta App.`,
+      );
+    }
   }
-
-  const response = await fetch(url.toString(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      recipient: { id: input.recipientId },
-      messaging_type: "RESPONSE",
-      message,
-    }),
-  });
-
-  const data = await readJson<MetaSendResponse>(response);
-  if (!data.message_id) {
-    throw new Error(data.error?.message ?? "Meta không trả về message_id");
-  }
-
-  return { externalMessageId: data.message_id };
 }
 
 /** Upload ảnh lên Meta → attachment_id (không cần URL công khai khi gửi). */
