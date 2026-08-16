@@ -36,6 +36,7 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
       {...data}
       currentStaffName={shop.staffName}
       isAdmin={isAdmin}
+      replyClaimTtlMinutes={data.replyClaimTtlMinutes ?? shop.replyClaimTtlMinutes}
       activeChannels={activeChannels}
       initialConversationId={initialConversationId}
     />

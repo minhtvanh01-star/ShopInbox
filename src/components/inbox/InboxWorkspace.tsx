@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   claimConversation,
@@ -15,8 +23,9 @@ import {
 import {
   formatReplyClaimCountdown,
   replyClaimRemainingMs,
-  REPLY_CLAIM_TTL_MINUTES,
+  REPLY_CLAIM_TTL_MS,
 } from "@/backend/reply-claim";
+import { replyClaimTtlMs, DEFAULT_REPLY_CLAIM_TTL_MINUTES } from "@/lib/shop-policy";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { CreateOrderForm } from "@/components/inbox/CreateOrderForm";
 import { MessageBubble } from "@/components/inbox/MessageBubble";
@@ -25,8 +34,15 @@ import {
   ImagePickerButton,
 } from "@/components/inbox/MessageComposerTools";
 import {
+  chatDayKey,
+  mergeConversationThread,
+  pruneSyncedOutbound,
+  type LocalOutboundMessage,
+} from "@/lib/inbox-thread";
+import {
   CHANNEL_LABEL,
   TAG_LABEL,
+  formatChatDayLabel,
   formatMoney,
   formatTime,
   getInboxChannelFilters,
@@ -60,6 +76,8 @@ type InboxWorkspaceProps = {
   currentStaffName: string;
   /** Admin / chủ shop — không bị khóa claim / TTL như nhân viên. */
   isAdmin?: boolean;
+  /** Phút idle trước khi nhả claim — từ cấu hình shop. */
+  replyClaimTtlMinutes?: number;
   /** Kênh đã nối / có hội thoại — để hiện pill từ cấu hình, không hardcode. */
   activeChannels?: Channel[];
   initialConversationId?: string;
@@ -94,7 +112,8 @@ const TAG_OPTIONS = Object.keys(TAG_LABEL) as ConversationTag[];
 const CLAIM_TOUCH_MIN_INTERVAL_MS = 45_000;
 /** Heartbeat khi tab còn mở / đang giữ hội thoại — tránh out dù không gõ liên tục. */
 const CLAIM_HEARTBEAT_MS = 2 * 60 * 1000;
-const INBOX_SOFT_REFRESH_MS = 20_000;
+/** Soft sync gần realtime hơn (không WebSocket) — giống messenger poll nhẹ. */
+const INBOX_SOFT_REFRESH_MS = 8_000;
 
 /**
  * Next/React production ẩn lỗi Server Components thành minified #441.
@@ -121,10 +140,12 @@ export function InboxWorkspace({
   currentStaffId,
   currentStaffName,
   isAdmin = false,
+  replyClaimTtlMinutes = DEFAULT_REPLY_CLAIM_TTL_MINUTES,
   activeChannels,
   initialConversationId,
 }: InboxWorkspaceProps) {
   const router = useRouter();
+  const claimTtlMs = replyClaimTtlMs(replyClaimTtlMinutes) || REPLY_CLAIM_TTL_MS;
   const channelFilters = useMemo(
     () => getInboxChannelFilters(activeChannels),
     [activeChannels],
@@ -158,10 +179,15 @@ export function InboxWorkspace({
   const claimTouchFailUntilRef = useRef(0);
   /** Claim đang chờ server — send phải await để tránh race "UI mở / DB chưa claim". */
   const claimInFlightRef = useRef<Record<string, Promise<boolean>>>({});
+  /** File ảnh theo tempId — cho phép Gửi lại khi fail. */
+  const pendingImageFilesRef = useRef<Record<string, File>>({});
   /** id → lastAt lúc đánh dấu đã đọc — giữ badge=0 đến khi server/sync hoặc có tin mới. */
   const [readReceipts, setReadReceipts] = useState<Record<string, string>>({});
   /** Claim bền ngoài useOptimistic — tránh khóa composer lại sau khi bấm "Tôi trả lời". */
   const [claimOverrides, setClaimOverrides] = useState<Record<string, ClaimOverride>>({});
+  /** Tin đang gửi / thất bại — giữ bubble kiểu messenger (status + gửi lại). */
+  const [localOutbound, setLocalOutbound] = useState<LocalOutboundMessage[]>([]);
+  const [outboundSyncSource, setOutboundSyncSource] = useState(messages);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const threadRef = useRef<HTMLDivElement>(null);
   const [trackedSelectedId, setTrackedSelectedId] = useState(selectedId);
@@ -173,10 +199,6 @@ export function InboxWorkspace({
     `${initialThreadId}:${initialThreadLen}`,
   );
   const [prevInitialConversationId, setPrevInitialConversationId] = useState(initialConversationId);
-  const [optimisticMessages, addOptimisticMessage] = useOptimistic(
-    messages,
-    (current, message: Message) => [...current, message],
-  );
   const [optimisticConversations, patchOptimisticConversation] = useOptimistic(
     conversations,
     (current, patch: ConversationPatch) =>
@@ -199,6 +221,15 @@ export function InboxWorkspace({
           : item,
       ),
   );
+
+  // Khi RSC mang tin shop mới về — bỏ local đã khớp (kể cả failed do race).
+  if (messages !== outboundSyncSource) {
+    setOutboundSyncSource(messages);
+    const next = pruneSyncedOutbound(localOutbound, messages);
+    if (next.length !== localOutbound.length) {
+      setLocalOutbound(next);
+    }
+  }
 
   const customerById = useMemo(() => {
     const map = new Map(customers.map((item) => [item.id, item]));
@@ -277,16 +308,21 @@ export function InboxWorkspace({
 
   const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
   const customer = selected ? customerById(selected.customerId) : undefined;
-  const thread = selected
-    ? optimisticMessages.filter((item) => item.conversationId === selected.id)
-    : [];
+  const selectedConversationId = selected?.id;
+  const thread = useMemo(
+    () =>
+      selectedConversationId
+        ? mergeConversationThread(messages, localOutbound, selectedConversationId)
+        : [],
+    [selectedConversationId, messages, localOutbound],
+  );
   const customerOrders = customer
     ? orders.filter((item) => item.customerId === customer.id)
     : [];
 
   const claimRemainingMs =
     nowMs !== null && selected?.replyClaimedAt
-      ? replyClaimRemainingMs(selected.replyClaimedAt, nowMs)
+      ? replyClaimRemainingMs(selected.replyClaimedAt, nowMs, claimTtlMs)
       : 0;
   /** Trước khi mount: tin server (đã lọc TTL). Sau mount: đếm theo đồng hồ client. */
   const claimActive =
@@ -344,6 +380,20 @@ export function InboxWorkspace({
     });
     return () => cancelAnimationFrame(frame);
   }, []);
+
+  // Thu hồi blob / file tạm khi local outbound bị xóa (gửi OK, prune, hủy).
+  const prevLocalOutboundRef = useRef(localOutbound);
+  useEffect(() => {
+    const prev = prevLocalOutboundRef.current;
+    prevLocalOutboundRef.current = localOutbound;
+    for (const item of prev) {
+      if (localOutbound.some((row) => row.id === item.id)) continue;
+      if (item.attachmentUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(item.attachmentUrl);
+      }
+      delete pendingImageFilesRef.current[item.id];
+    }
+  }, [localOutbound]);
 
   useEffect(() => {
     if (!stickToBottom || pendingNewCount > 0) {
@@ -682,7 +732,7 @@ export function InboxWorkspace({
 
   function onDraftChange(value: string) {
     setDraft(value);
-    if (!selected || !(isAdmin || replyIsMine) || !value.trim()) {
+    if (!selected || isAdmin || !replyIsMine || !value.trim()) {
       return;
     }
     renewClaimActivity(selected.id);
@@ -697,23 +747,28 @@ export function InboxWorkspace({
     const body = text.trim();
     const tempId = `temp-${crypto.randomUUID()}`;
     const sentAt = new Date(atMs).toISOString();
-    const optimistic: Message = {
+    const conversationId = selected.id;
+    const optimistic: LocalOutboundMessage = {
       id: tempId,
-      conversationId: selected.id,
+      conversationId,
       sender: "shop",
       text: body,
       createdAt: sentAt,
       reactions: [],
+      localStatus: "sending",
     };
 
     setError(null);
     setDraft("");
     lastClaimTouchRef.current = atMs;
-    setReadReceipts((prev) => ({ ...prev, [selected.id]: sentAt }));
+    setReadReceipts((prev) => ({ ...prev, [conversationId]: sentAt }));
+    setLocalOutbound((prev) => [...prev.filter((item) => item.id !== tempId), optimistic]);
+    setStickToBottom(true);
+    setPendingNewCount(0);
     if (!isAdmin) {
       setClaimOverrides((prev) => ({
         ...prev,
-        [selected.id]: {
+        [conversationId]: {
           replyStaffId: currentStaffId,
           replyStaffName: currentStaffName,
           replyClaimedAt: sentAt,
@@ -723,41 +778,96 @@ export function InboxWorkspace({
 
     startAction(async () => {
       if (!isAdmin) {
-        const claimed = await waitForClaimIfNeeded(selected.id);
+        const claimed = await waitForClaimIfNeeded(conversationId);
         if (!claimed) {
+          setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
           setDraft(body);
           return;
         }
       }
-      addOptimisticMessage(optimistic);
       patchOptimisticConversation({
-        id: selected.id,
+        id: conversationId,
         lastMessage: body,
         lastAt: sentAt,
         unread: 0,
-        replyStaffId: currentStaffId,
-        replyStaffName: currentStaffName,
-        replyClaimedAt: sentAt,
+        ...(isAdmin
+          ? replyIsMine
+            ? {
+                replyStaffId: null,
+                replyStaffName: null,
+                replyClaimedAt: null,
+              }
+            : {}
+          : {
+              replyStaffId: currentStaffId,
+              replyStaffName: currentStaffName,
+              replyClaimedAt: sentAt,
+            }),
       });
+      if (isAdmin && replyIsMine) {
+        setClaimOverrides((prev) => ({
+          ...prev,
+          [conversationId]: {
+            replyStaffId: null,
+            replyStaffName: null,
+            replyClaimedAt: null,
+          },
+        }));
+      }
 
       try {
-        await sendMessage(selected.id, body);
+        await sendMessage(conversationId, body);
+        setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
         notifyInboxNoticesRefresh();
-        // Giữ optimistic đến khi RSC props cập nhật — cùng transition.
         router.refresh();
+        queueMicrotask(() => composerRef.current?.focus());
       } catch (err) {
-        setDraft(body);
+        setLocalOutbound((prev) =>
+          prev.map((item) =>
+            item.id === tempId ? { ...item, localStatus: "failed" as const } : item,
+          ),
+        );
         const message = inboxActionErrorMessage(err, "Gửi tin thất bại");
         if (message) setError(message);
-        router.refresh();
       }
     });
+  }
+
+  function retryFailedMessage(messageId: string) {
+    const failed = localOutbound.find(
+      (item) => item.id === messageId && item.localStatus === "failed",
+    );
+    if (!failed || !canCompose || nowMs === null) return;
+    if (sendBusy) {
+      setError("Đang gửi tin khác — bấm Gửi lại sau giây lát.");
+      return;
+    }
+
+    const pendingFile = pendingImageFilesRef.current[messageId];
+    if (failed.attachmentType === "image") {
+      if (!pendingFile) {
+        setError("Ảnh tạm đã hết — chọn lại ảnh để gửi.");
+        return;
+      }
+      if (failed.attachmentUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(failed.attachmentUrl);
+      }
+      delete pendingImageFilesRef.current[messageId];
+      setLocalOutbound((prev) => prev.filter((item) => item.id !== messageId));
+      sendImage(pendingFile);
+      return;
+    }
+
+    setLocalOutbound((prev) => prev.filter((item) => item.id !== messageId));
+    send(failed.text);
   }
 
   function insertEmoji(emoji: string) {
     if (!canCompose || !selected) return;
     setDraft((value) => `${value}${emoji}`);
-    renewClaimActivity(selected.id);
+    if (!isAdmin && replyIsMine) {
+      renewClaimActivity(selected.id);
+    }
     queueMicrotask(() => composerRef.current?.focus());
   }
 
@@ -767,10 +877,11 @@ export function InboxWorkspace({
     const atMs = nowMs;
     const tempId = `temp-${crypto.randomUUID()}`;
     const sentAt = new Date(atMs).toISOString();
+    const conversationId = selected.id;
     const previewUrl = URL.createObjectURL(file);
-    const optimistic: Message = {
+    const optimistic: LocalOutboundMessage = {
       id: tempId,
-      conversationId: selected.id,
+      conversationId,
       sender: "shop",
       text: "[Ảnh]",
       createdAt: sentAt,
@@ -778,15 +889,20 @@ export function InboxWorkspace({
       attachmentUrl: previewUrl,
       attachmentName: file.name,
       reactions: [],
+      localStatus: "sending",
     };
 
     setError(null);
     lastClaimTouchRef.current = atMs;
-    setReadReceipts((prev) => ({ ...prev, [selected.id]: sentAt }));
+    setReadReceipts((prev) => ({ ...prev, [conversationId]: sentAt }));
+    setLocalOutbound((prev) => [...prev, optimistic]);
+    pendingImageFilesRef.current[tempId] = file;
+    setStickToBottom(true);
+    setPendingNewCount(0);
     if (!isAdmin) {
       setClaimOverrides((prev) => ({
         ...prev,
-        [selected.id]: {
+        [conversationId]: {
           replyStaffId: currentStaffId,
           replyStaffName: currentStaffName,
           replyClaimedAt: sentAt,
@@ -796,34 +912,62 @@ export function InboxWorkspace({
 
     startAction(async () => {
       if (!isAdmin) {
-        const claimed = await waitForClaimIfNeeded(selected.id);
+        const claimed = await waitForClaimIfNeeded(conversationId);
         if (!claimed) {
+          setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
+          delete pendingImageFilesRef.current[tempId];
+          URL.revokeObjectURL(previewUrl);
           return;
         }
       }
-      addOptimisticMessage(optimistic);
       patchOptimisticConversation({
-        id: selected.id,
+        id: conversationId,
         lastMessage: "[Ảnh]",
         lastAt: sentAt,
         unread: 0,
-        replyStaffId: currentStaffId,
-        replyStaffName: currentStaffName,
-        replyClaimedAt: sentAt,
+        ...(isAdmin
+          ? replyIsMine
+            ? {
+                replyStaffId: null,
+                replyStaffName: null,
+                replyClaimedAt: null,
+              }
+            : {}
+          : {
+              replyStaffId: currentStaffId,
+              replyStaffName: currentStaffName,
+              replyClaimedAt: sentAt,
+            }),
       });
+      if (isAdmin && replyIsMine) {
+        setClaimOverrides((prev) => ({
+          ...prev,
+          [conversationId]: {
+            replyStaffId: null,
+            replyStaffName: null,
+            replyClaimedAt: null,
+          },
+        }));
+      }
 
       try {
         const formData = new FormData();
         formData.set("file", file);
-        await sendImageMessage(selected.id, formData);
+        await sendImageMessage(conversationId, formData);
+        setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
+        delete pendingImageFilesRef.current[tempId];
         notifyInboxNoticesRefresh();
         router.refresh();
+        URL.revokeObjectURL(previewUrl);
       } catch (err) {
+        setLocalOutbound((prev) =>
+          prev.map((item) =>
+            item.id === tempId ? { ...item, localStatus: "failed" as const } : item,
+          ),
+        );
         const message = inboxActionErrorMessage(err, "Gửi ảnh thất bại");
         if (message) setError(message);
-        router.refresh();
-      } finally {
-        URL.revokeObjectURL(previewUrl);
+        // Giữ blob URL để xem lại ảnh lỗi; revoke khi user bỏ / gửi lại.
       }
     });
   }
@@ -888,7 +1032,7 @@ export function InboxWorkspace({
               nowMs === null
                 ? Boolean(item.replyStaffId && item.replyClaimedAt)
                 : Boolean(item.replyStaffId) &&
-                  replyClaimRemainingMs(item.replyClaimedAt, nowMs) > 0;
+                  replyClaimRemainingMs(item.replyClaimedAt, nowMs, claimTtlMs) > 0;
             return (
               <li key={item.id}>
                 <button
@@ -1086,19 +1230,46 @@ export function InboxWorkspace({
                     setStickToBottom(true);
                     setPendingNewCount(0);
                   }}
-                  className="sticky top-0 z-10 mx-auto mb-2 block rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-800 shadow-sm"
+                  className="sticky top-2 z-10 mx-auto mb-2 block rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-xs font-medium text-teal-800 shadow-sm"
+                  aria-live="polite"
                 >
                   {pendingNewCount} tin mới — xem ngay
                 </button>
               ) : null}
-              {thread.map((item) => (
-                <MessageBubble
-                  key={item.id}
-                  message={item}
-                  canReact={Boolean((isAdmin || replyIsMine) && !item.id.startsWith("temp-"))}
-                  onReact={react}
-                />
-              ))}
+              {thread.length === 0 ? (
+                <div className="flex h-full min-h-40 flex-col items-center justify-center text-center">
+                  <p className="text-sm font-medium text-slate-600">Chưa có tin nhắn</p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Tin đồng bộ từ kênh sẽ hiện tại đây
+                  </p>
+                </div>
+              ) : null}
+              {thread.map((item, index) => {
+                const day = chatDayKey(item.createdAt);
+                const prevDay = index > 0 ? chatDayKey(thread[index - 1]!.createdAt) : null;
+                const showDay = day !== prevDay;
+                return (
+                  <Fragment key={item.id}>
+                    {showDay ? (
+                      <div className="flex justify-center py-1">
+                        <span className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-medium text-slate-500 shadow-sm ring-1 ring-slate-200/80">
+                          {formatChatDayLabel(item.createdAt)}
+                        </span>
+                      </div>
+                    ) : null}
+                    <MessageBubble
+                      message={item}
+                      canReact={Boolean(
+                        (isAdmin || replyIsMine) &&
+                          !item.id.startsWith("temp-") &&
+                          !item.localStatus,
+                      )}
+                      onReact={react}
+                      onRetry={retryFailedMessage}
+                    />
+                  </Fragment>
+                );
+              })}
             </div>
             <footer className="border-t border-border bg-surface p-3 sm:p-4">
               {error ? (
@@ -1110,9 +1281,9 @@ export function InboxWorkspace({
                 <p className="mb-3 flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
                   <span className="activity-dot activity-dot-mine" aria-hidden />
                   <span>
-                    Admin: trả lời mọi lúc, không bị khóa claim / hết giờ 15 phút như nhân viên
+                    Admin: trả lời mọi lúc, không bị khóa và không khóa hội thoại khi gửi tin
                     {claimActive && !replyIsMine && selected.replyStaffName
-                      ? ` · ${selected.replyStaffName} đang giữ hội thoại (bấm Tiếp quản nếu cần báo đang trả lời).`
+                      ? ` · ${selected.replyStaffName} đang giữ (bấm Tiếp quản chỉ khi cần chiếm claim).`
                       : "."}
                   </span>
                 </p>
@@ -1131,7 +1302,7 @@ export function InboxWorkspace({
                   <span>
                     Bạn đang trả lời
                     {claimCountdown
-                      ? ` · tự nhả sau ${claimCountdown} nếu không hoạt động (${REPLY_CLAIM_TTL_MINUTES} phút).`
+                      ? ` · tự nhả sau ${claimCountdown} nếu không hoạt động (${replyClaimTtlMinutes} phút).`
                       : "."}
                   </span>
                 </p>

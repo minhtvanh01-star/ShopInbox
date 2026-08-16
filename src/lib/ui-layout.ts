@@ -18,6 +18,7 @@ export const BREAKPOINTS = {
 export const STORAGE_KEYS = {
   sidebarCollapsed: "shopinbox.sidebar.collapsed",
   inboxCustomerPanel: "shopinbox.inbox.customerPanel",
+  settingsDevUrlsOpen: "shopinbox.settings.devUrlsOpen",
 } as const;
 
 /** Tailwind classes referencing CSS vars from globals.css */

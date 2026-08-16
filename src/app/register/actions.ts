@@ -20,7 +20,8 @@ import { setSessionCookie } from "@/backend/session";
 import { toSessionPayload } from "@/backend/session-token";
 import { AUDIT_ACTIONS, normalizeRoleCode } from "@/lib/rbac-catalog";
 import { assertShopHasActiveSeat, countActiveShopUsers } from "@/backend/shop-seats";
-import { MAX_USERS_PER_SHOP, shopSeatLimitMessage } from "@/lib/shop-seats";
+import { getShopPolicy } from "@/backend/shop-policy";
+import { shopSeatLimitMessage } from "@/lib/shop-seats";
 
 export type RegisterActionState = {
   error?: string;
@@ -72,9 +73,12 @@ export async function registerAction(
         return { error: seatError, step: "form" };
       }
     } else {
-      const active = await countActiveShopUsers(plan.shopId);
-      if (active >= MAX_USERS_PER_SHOP) {
-        return { error: shopSeatLimitMessage(), step: "form" };
+      const [active, policy] = await Promise.all([
+        countActiveShopUsers(plan.shopId),
+        getShopPolicy(plan.shopId),
+      ]);
+      if (active >= policy.maxUsersPerShop) {
+        return { error: shopSeatLimitMessage(policy.maxUsersPerShop), step: "form" };
       }
     }
   }
@@ -145,11 +149,14 @@ export async function verifyRegisterOtpAction(
       return { error: seatError, step: "form", email: verified.email };
     }
   } else {
-    const active = await countActiveShopUsers(plan.shopId);
-    if (active >= MAX_USERS_PER_SHOP) {
+    const [active, policy] = await Promise.all([
+      countActiveShopUsers(plan.shopId),
+      getShopPolicy(plan.shopId),
+    ]);
+    if (active >= policy.maxUsersPerShop) {
       await discardRegisterEmailOtp(verified.email);
       return {
-        error: shopSeatLimitMessage(),
+        error: shopSeatLimitMessage(policy.maxUsersPerShop),
         step: "form",
         email: verified.email,
       };

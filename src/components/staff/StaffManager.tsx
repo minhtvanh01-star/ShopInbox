@@ -15,7 +15,7 @@ import {
 } from "@/app/(app)/staff/actions";
 
 import { DEFAULT_ROLE_CODE, roleBadgeClass, roleLabel } from "@/lib/rbac-catalog";
-import { MAX_USERS_PER_SHOP } from "@/lib/shop-seats";
+import { DEFAULT_MAX_USERS_PER_SHOP } from "@/lib/shop-policy";
 
 
 
@@ -77,6 +77,8 @@ export function StaffManager({
 
   canManage,
 
+  maxUsersPerShop = DEFAULT_MAX_USERS_PER_SHOP,
+
 }: {
 
   members: StaffMember[];
@@ -84,6 +86,8 @@ export function StaffManager({
   roles: RoleOption[];
 
   canManage: boolean;
+
+  maxUsersPerShop?: number;
 
 }) {
 
@@ -113,7 +117,7 @@ export function StaffManager({
 
   const activeCount = members.filter((member) => member.isActive).length;
 
-  const seatsFull = activeCount >= MAX_USERS_PER_SHOP;
+  const seatsFull = activeCount >= maxUsersPerShop;
 
   const sortedMembers = [...members].sort((a, b) => {
 
@@ -153,7 +157,7 @@ export function StaffManager({
 
           <span className="rounded-full bg-teal-50 px-2.5 py-1 text-[11px] font-semibold text-teal-800 ring-1 ring-teal-200">
 
-            {activeCount}/{MAX_USERS_PER_SHOP} đang hoạt động · {members.length} tổng
+            {activeCount}/{maxUsersPerShop} đang hoạt động · {members.length} tổng
 
           </span>
 
@@ -463,7 +467,7 @@ export function StaffManager({
 
             <p className="mt-1 text-sm leading-6 text-slate-500">
 
-              Chọn vai trò từ danh sách đang bật trong cấu hình. Tối đa {MAX_USERS_PER_SHOP} thành
+              Chọn vai trò từ danh sách đang bật trong cấu hình. Tối đa {maxUsersPerShop} thành
               viên đang hoạt động / shop.
 
             </p>
@@ -472,7 +476,7 @@ export function StaffManager({
 
               <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
 
-                Đã đủ {MAX_USERS_PER_SHOP} thành viên đang hoạt động. Vô hiệu hóa một tài khoản
+                Đã đủ {maxUsersPerShop} thành viên đang hoạt động. Vô hiệu hóa một tài khoản
                 trước khi thêm mới.
 
               </p>

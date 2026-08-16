@@ -261,3 +261,55 @@ export async function clearOAuthPagesCookie() {
   const jar = await cookies();
   jar.delete(OAUTH_PAGES_COOKIE);
 }
+
+export type UpdateShopPolicyState = {
+  error?: string;
+  success?: string;
+  replyClaimTtlMinutes?: number;
+  maxUsersPerShop?: number;
+};
+
+export async function updateShopPolicyAction(
+  _prev: UpdateShopPolicyState,
+  formData: FormData,
+): Promise<UpdateShopPolicyState> {
+  const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
+  const { parseShopPolicyInput } = await import("@/lib/shop-policy");
+  const parsed = parseShopPolicyInput({
+    replyClaimTtlMinutes: formData.get("replyClaimTtlMinutes"),
+    maxUsersPerShop: formData.get("maxUsersPerShop"),
+  });
+  if (!parsed.ok) {
+    return { error: parsed.error };
+  }
+
+  await prisma.shop.update({
+    where: { id: session.shopId },
+    data: {
+      replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
+      maxUsersPerShop: parsed.policy.maxUsersPerShop,
+    },
+  });
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.settingsUpdate,
+    entityType: "Shop",
+    entityId: session.shopId,
+    metadata: {
+      actorName: session.name,
+      replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
+      maxUsersPerShop: parsed.policy.maxUsersPerShop,
+    },
+  });
+
+  revalidatePath("/settings");
+  revalidatePath("/inbox");
+  revalidatePath("/staff");
+
+  return {
+    success: "Đã lưu cấu hình vận hành.",
+    replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
+    maxUsersPerShop: parsed.policy.maxUsersPerShop,
+  };
+}

@@ -23,6 +23,24 @@ describe("reply claim", () => {
     expect(formatReplyClaimCountdown(5_000)).toBe("0:05");
   });
 
+  it("uses custom TTL when provided", () => {
+    const now = Date.parse("2026-08-15T10:00:00.000Z");
+    const ttlMs = 5 * 60_000;
+    expect(isReplyClaimActive(new Date(now - 60_000), now, ttlMs)).toBe(true);
+    expect(isReplyClaimActive(new Date(now - ttlMs - 1), now, ttlMs)).toBe(false);
+    expect(replyClaimRemainingMs(new Date(now - 60_000), now, ttlMs)).toBe(ttlMs - 60_000);
+    expect(
+      resolveReplyClaim({
+        staffId: "s1",
+        staffName: "Minh",
+        replyClaimedAt: new Date(now - ttlMs - 1).toISOString(),
+        currentStaffId: "s2",
+        now,
+        ttlMs,
+      }),
+    ).toMatchObject({ active: false, staffId: null });
+  });
+
   it("resolves mine vs other vs expired", () => {
     const now = Date.parse("2026-08-15T10:00:00.000Z");
     const claimedAt = new Date(now - 30_000).toISOString();

@@ -9,6 +9,7 @@ import {
   dispatchOutboundReaction,
 } from "@/backend/channel-send";
 import { isReplyClaimActive } from "@/backend/reply-claim";
+import { getShopPolicy } from "@/backend/shop-policy";
 import {
   hasPermission,
   isAdminSession,
@@ -22,6 +23,7 @@ import {
 import { prisma } from "@/backend/prisma";
 import { saveShopImageUpload } from "@/backend/upload-store";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { replyClaimTtlMs } from "@/lib/shop-policy";
 import type { ConversationTag, OrderStatus } from "@/lib/types";
 import type { SessionPayload } from "@/backend/session-token";
 
@@ -33,16 +35,22 @@ async function isInboxAdmin(session: SessionPayload) {
   return isAdminSession(session) || (await hasPermission(session, PERMISSION_CODES.staffManage));
 }
 
+async function shopClaimTtlMs(shopId: string) {
+  const policy = await getShopPolicy(shopId);
+  return replyClaimTtlMs(policy.replyClaimTtlMinutes);
+}
+
 function assertCanReply(input: {
   staffId: string | null;
   replyClaimedAt: Date | null;
   currentStaffId: string;
   isAdmin?: boolean;
+  ttlMs: number;
 }) {
   if (input.isAdmin) {
     return;
   }
-  if (!input.staffId || !isReplyClaimActive(input.replyClaimedAt)) {
+  if (!input.staffId || !isReplyClaimActive(input.replyClaimedAt, Date.now(), input.ttlMs)) {
     throw new Error('Hãy bấm "Tôi trả lời" trước khi gửi tin.');
   }
   if (input.staffId !== input.currentStaffId) {
@@ -60,6 +68,7 @@ async function assertCanReplyOrClaim(input: {
   replyClaimedAt: Date | null;
   currentStaffId: string;
   isAdmin?: boolean;
+  ttlMs: number;
 }) {
   if (input.isAdmin) {
     return;
@@ -67,11 +76,14 @@ async function assertCanReplyOrClaim(input: {
   if (
     input.staffId &&
     input.staffId !== input.currentStaffId &&
-    isReplyClaimActive(input.replyClaimedAt)
+    isReplyClaimActive(input.replyClaimedAt, Date.now(), input.ttlMs)
   ) {
     throw new Error("Hội thoại đang được nhân viên khác trả lời.");
   }
-  if (input.staffId === input.currentStaffId && isReplyClaimActive(input.replyClaimedAt)) {
+  if (
+    input.staffId === input.currentStaffId &&
+    isReplyClaimActive(input.replyClaimedAt, Date.now(), input.ttlMs)
+  ) {
     return;
   }
   await prisma.conversation.update({
@@ -101,11 +113,13 @@ export async function claimConversation(conversationId: string) {
     throw new Error("Không tìm thấy hội thoại");
   }
 
+  const ttlMs = await shopClaimTtlMs(session.shopId);
+
   if (
     !admin &&
     conversation.staffId &&
     conversation.staffId !== session.staffId &&
-    isReplyClaimActive(conversation.replyClaimedAt)
+    isReplyClaimActive(conversation.replyClaimedAt, Date.now(), ttlMs)
   ) {
     throw new Error(
       `${conversation.staff?.name ?? "Nhân viên khác"} đang trả lời hội thoại này.`,
@@ -165,11 +179,13 @@ export async function releaseConversation(
     throw new Error("Không tìm thấy hội thoại");
   }
 
+  const ttlMs = await shopClaimTtlMs(session.shopId);
+
   if (
     !admin &&
     conversation.staffId &&
     conversation.staffId !== session.staffId &&
-    isReplyClaimActive(conversation.replyClaimedAt)
+    isReplyClaimActive(conversation.replyClaimedAt, Date.now(), ttlMs)
   ) {
     throw new Error("Chỉ người đang trả lời mới nhả được hội thoại.");
   }
@@ -216,9 +232,12 @@ export async function touchConversationClaim(conversationId: string) {
     throw new Error("Không tìm thấy hội thoại");
   }
 
+  const ttlMs = await shopClaimTtlMs(session.shopId);
+
   if (
     !admin &&
-    (conversation.staffId !== session.staffId || !isReplyClaimActive(conversation.replyClaimedAt))
+    (conversation.staffId !== session.staffId ||
+      !isReplyClaimActive(conversation.replyClaimedAt, Date.now(), ttlMs))
   ) {
     throw new Error("Bạn không còn giữ hội thoại này.");
   }
@@ -251,12 +270,14 @@ export async function sendMessage(conversationId: string, text: string) {
     throw new Error("Không tìm thấy hội thoại");
   }
 
+  const ttlMs = await shopClaimTtlMs(session.shopId);
   await assertCanReplyOrClaim({
     conversationId,
     staffId: conversation.staffId,
     replyClaimedAt: conversation.replyClaimedAt,
     currentStaffId: session.staffId,
     isAdmin: admin,
+    ttlMs,
   });
 
   const outbound = await dispatchOutboundMessage({
@@ -285,9 +306,15 @@ export async function sendMessage(conversationId: string, text: string) {
       lastMessage: body,
       lastAt: createdAt,
       unread: 0,
-      // Gia hạn claim khi đang trả lời
-      replyClaimedAt: createdAt,
-      staffId: session.staffId,
+      // Admin: không claim mới; nếu chính admin đang giữ claim thì nhả để không khóa NV.
+      ...(admin
+        ? conversation.staffId === session.staffId
+          ? { staffId: null, replyClaimedAt: null }
+          : {}
+        : {
+            replyClaimedAt: createdAt,
+            staffId: session.staffId,
+          }),
     },
   });
 
@@ -342,12 +369,14 @@ export async function sendImageMessage(conversationId: string, formData: FormDat
     throw new Error("Không tìm thấy hội thoại");
   }
 
+  const ttlMs = await shopClaimTtlMs(session.shopId);
   await assertCanReplyOrClaim({
     conversationId,
     staffId: conversation.staffId,
     replyClaimedAt: conversation.replyClaimedAt,
     currentStaffId: session.staffId,
     isAdmin: admin,
+    ttlMs,
   });
 
   const bytes = Buffer.from(await file.arrayBuffer());
@@ -392,8 +421,14 @@ export async function sendImageMessage(conversationId: string, formData: FormDat
       lastMessage: text,
       lastAt: createdAt,
       unread: 0,
-      replyClaimedAt: createdAt,
-      staffId: session.staffId,
+      ...(admin
+        ? conversation.staffId === session.staffId
+          ? { staffId: null, replyClaimedAt: null }
+          : {}
+        : {
+            replyClaimedAt: createdAt,
+            staffId: session.staffId,
+          }),
     },
   });
 
@@ -456,11 +491,13 @@ export async function reactToMessage(messageId: string, emoji: string) {
     throw new Error("Không tìm thấy tin nhắn");
   }
 
+  const ttlMs = await shopClaimTtlMs(session.shopId);
   assertCanReply({
     staffId: message.conversation.staffId,
     replyClaimedAt: message.conversation.replyClaimedAt,
     currentStaffId: session.staffId,
     isAdmin: admin,
+    ttlMs,
   });
 
   const reactorKey = `staff:${session.staffId}`;
