@@ -146,6 +146,19 @@ describe("isAdminSession", () => {
     const { isAdminSession } = await import("@/backend/rbac");
     expect(isAdminSession({ role: "admin" })).toBe(true);
     expect(isAdminSession({ role: "owner" })).toBe(true);
+    expect(isAdminSession({ role: "Admin" })).toBe(true);
     expect(isAdminSession({ role: "staff" })).toBe(false);
+  });
+});
+
+describe("isAdminRole / normalizeRoleCode casing", () => {
+  it("treats Admin/owner casing as admin", async () => {
+    const { isAdminRole, normalizeRoleCode } = await import("@/lib/rbac-catalog");
+    expect(normalizeRoleCode(" Admin ")).toBe(ROLE_CODES.admin);
+    expect(normalizeRoleCode("OWNER")).toBe(ROLE_CODES.admin);
+    expect(isAdminRole("admin")).toBe(true);
+    expect(isAdminRole("Admin")).toBe(true);
+    expect(isAdminRole("owner")).toBe(true);
+    expect(isAdminRole("staff")).toBe(false);
   });
 });

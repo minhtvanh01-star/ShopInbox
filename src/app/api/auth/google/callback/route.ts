@@ -21,6 +21,8 @@ import { auditMetaFromRequest, writeAudit } from "@/backend/audit";
 import { absoluteAppUrl } from "@/backend/public-url";
 import { safeInternalPath } from "@/backend/safe-path";
 import { AUDIT_ACTIONS, normalizeRoleCode } from "@/lib/rbac-catalog";
+import { assertShopHasActiveSeat, countActiveShopUsers } from "@/backend/shop-seats";
+import { MAX_USERS_PER_SHOP, shopSeatLimitMessage } from "@/lib/shop-seats";
 
 function authPageUrl(
   request: Request,
@@ -262,6 +264,22 @@ export async function GET(request: Request) {
           name: resolved.createShop.name,
         },
       });
+    }
+
+    if (resolved.isActive) {
+      const seatError = await assertShopHasActiveSeat(resolved.shopId);
+      if (seatError) {
+        return clearGoogleAuthCookies(
+          redirectWithError(request, "shop_seat_full", mode, nextPath),
+        );
+      }
+    } else {
+      const active = await countActiveShopUsers(resolved.shopId);
+      if (active >= MAX_USERS_PER_SHOP) {
+        return clearGoogleAuthCookies(
+          redirectWithError(request, "shop_seat_full", mode, nextPath),
+        );
+      }
     }
 
     const staff = await prisma.staff.create({

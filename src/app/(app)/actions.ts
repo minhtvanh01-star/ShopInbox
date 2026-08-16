@@ -77,7 +77,7 @@ export async function claimConversation(conversationId: string) {
     },
   });
 
-  revalidatePath("/inbox");
+  // Không revalidatePath("/inbox"): dễ React #441; client giữ claimOverrides đến soft-refresh.
 
   await writeAudit({
     actor: session,
@@ -138,7 +138,7 @@ export async function releaseConversation(
     },
   });
 
-  revalidatePath("/inbox");
+  // Không revalidatePath — giống claim/send (tránh React #441); client refresh.
 
   await writeAudit({
     actor: session,

@@ -186,8 +186,8 @@ export function SettingsWorkspace({
   }
 
   return (
-    <>
-      <header className="page-header flex flex-wrap items-start justify-between gap-4 bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="page-header flex shrink-0 flex-wrap items-start justify-between gap-4 bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
         <div>
           <h1 className="page-title">Cài đặt kênh</h1>
           <p className="page-subtitle">
@@ -209,7 +209,7 @@ export function SettingsWorkspace({
       {flashMessage ? (
         <div
           role={flashMessage.type === "error" ? "alert" : "status"}
-          className={`border-b px-6 py-3 text-sm ${
+          className={`shrink-0 border-b px-6 py-3 text-sm ${
             flashMessage.type === "success"
               ? "border-emerald-200 bg-emerald-50 text-emerald-800"
               : "border-amber-200 bg-amber-50 text-amber-800"
@@ -219,226 +219,228 @@ export function SettingsWorkspace({
         </div>
       ) : null}
 
-      <div className="border-b border-border bg-accent-muted/50 px-6 py-3.5">
-        <p className="text-sm leading-6 text-slate-600">
-          Thiết lập OAuth app & webhook:{" "}
-          <span className="font-semibold text-teal-800">docs/ket-noi-kenh.md</span>
-          {!metaOAuthConfigured || !zaloOAuthConfigured ? (
-            <span className="mt-1.5 block rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-800">
-              Một số biến OAuth chưa cấu hình trên server
-              {[...metaMissingEnvVars, ...zaloMissingEnvVars].length > 0
-                ? `: ${[...metaMissingEnvVars, ...zaloMissingEnvVars].join(", ")}`
-                : ""}
-              . Nút kết nối sẽ bị khóa cho đến khi điền đủ trong{" "}
-              <code className="rounded bg-white/80 px-1">.env</code> rồi restart server.
-            </span>
-          ) : null}
-        </p>
-      </div>
-
-      {canConnect ? (
-        <div className="mx-6 mt-6 grid gap-4 lg:grid-cols-2">
-          <section className="rounded-xl border border-border bg-surface-muted/50 p-4">
-            <h2 className="text-sm font-semibold text-slate-900">URL dán vào Meta Developers</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Copy từng dòng → dán đúng ô trên Meta. Local cần ngrok HTTPS.
-            </p>
-            <div className="mt-3 space-y-3">
-              <CopyRow
-                title="OAuth Redirect URI"
-                hint="Facebook Login → Settings → Valid OAuth Redirect URIs"
-                value={metaOAuthRedirectUri}
-              />
-              <CopyRow
-                title="Webhook Callback URL"
-                hint="Messenger → Settings → Webhooks → Callback URL"
-                value={metaWebhookUrl}
-              />
-              <CopyRow
-                title="Verify token"
-                hint="Cùng giá trị META_WEBHOOK_VERIFY_TOKEN trong .env"
-                value={metaWebhookVerifyToken}
-              />
-              {!metaWebhookVerifyToken ? (
-                <p className="text-xs text-amber-700">
-                  Chưa có verify token — thêm <code>META_WEBHOOK_VERIFY_TOKEN</code> vào{" "}
-                  <code>.env</code> rồi restart.
-                </p>
-              ) : null}
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-border bg-surface-muted/50 p-4">
-            <h2 className="text-sm font-semibold text-slate-900">URL dán vào Zalo Developers</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Redirect URI trên app Zalo; webhook trên OA Admin.
-            </p>
-            <div className="mt-3 space-y-3">
-              <CopyRow
-                title="OAuth Redirect URI"
-                hint="Zalo app → Redirect URI"
-                value={zaloOAuthRedirectUri}
-              />
-              <CopyRow
-                title="Webhook URL"
-                hint="Zalo OA Admin → Webhook"
-                value={zaloWebhookUrl}
-              />
-            </div>
-          </section>
-        </div>
-      ) : null}
-
-      {channels.length === 0 ? (
-        <div className="empty-state m-6">
-          <div className="brand-mark mb-4 h-12 w-12 text-lg" aria-hidden="true">
-            S
-          </div>
-          <p className="text-base font-medium text-slate-700">Chưa có kênh nào</p>
-          <p className="mt-1 max-w-sm text-sm text-slate-500">
-            {canConnect
-              ? 'Bấm "Thêm kết nối" để bắt đầu OAuth và nhận tin vào Inbox.'
-              : "Liên hệ admin shop để kết nối kênh."}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="border-b border-border bg-accent-muted/50 px-6 py-3.5">
+          <p className="text-sm leading-6 text-slate-600">
+            Thiết lập OAuth app & webhook:{" "}
+            <span className="font-semibold text-teal-800">docs/ket-noi-kenh.md</span>
+            {!metaOAuthConfigured || !zaloOAuthConfigured ? (
+              <span className="mt-1.5 block rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-800">
+                Một số biến OAuth chưa cấu hình trên server
+                {[...metaMissingEnvVars, ...zaloMissingEnvVars].length > 0
+                  ? `: ${[...metaMissingEnvVars, ...zaloMissingEnvVars].join(", ")}`
+                  : ""}
+                . Nút kết nối sẽ bị khóa cho đến khi điền đủ trong{" "}
+                <code className="rounded bg-white/80 px-1">.env</code> rồi restart server.
+              </span>
+            ) : null}
           </p>
-          {canConnect ? (
-            <button type="button" onClick={() => openModal()} className="btn-primary mt-4">
-              Thêm kết nối
-            </button>
-          ) : null}
         </div>
-      ) : (
-        <div className="grid gap-4 p-6 md:grid-cols-2">
-          {channels.map((channel) => (
-            <article
-              key={channel.id}
-              className="card-padded bg-[linear-gradient(165deg,#ffffff_0%,#f0fdfa_100%)]"
-            >
-              <div className="flex items-start gap-3">
-                <PlatformIcon channel={channel.channel} />
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h2 className="text-base font-semibold tracking-tight text-teal-950">
-                        {channel.displayName ?? channel.name}
-                      </h2>
-                      {channel.displayName ? (
-                        <p className="text-xs text-slate-400">{channel.name}</p>
-                      ) : null}
+
+        {canConnect ? (
+          <div className="mx-6 mt-6 grid gap-4 lg:grid-cols-2">
+            <section className="rounded-xl border border-border bg-surface-muted/50 p-4">
+              <h2 className="text-sm font-semibold text-slate-900">URL dán vào Meta Developers</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Copy từng dòng → dán đúng ô trên Meta. Local cần ngrok HTTPS.
+              </p>
+              <div className="mt-3 space-y-3">
+                <CopyRow
+                  title="OAuth Redirect URI"
+                  hint="Facebook Login → Settings → Valid OAuth Redirect URIs"
+                  value={metaOAuthRedirectUri}
+                />
+                <CopyRow
+                  title="Webhook Callback URL"
+                  hint="Messenger → Settings → Webhooks → Callback URL"
+                  value={metaWebhookUrl}
+                />
+                <CopyRow
+                  title="Verify token"
+                  hint="Cùng giá trị META_WEBHOOK_VERIFY_TOKEN trong .env"
+                  value={metaWebhookVerifyToken}
+                />
+                {!metaWebhookVerifyToken ? (
+                  <p className="text-xs text-amber-700">
+                    Chưa có verify token — thêm <code>META_WEBHOOK_VERIFY_TOKEN</code> vào{" "}
+                    <code>.env</code> rồi restart.
+                  </p>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-border bg-surface-muted/50 p-4">
+              <h2 className="text-sm font-semibold text-slate-900">URL dán vào Zalo Developers</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Redirect URI trên app Zalo; webhook trên OA Admin.
+              </p>
+              <div className="mt-3 space-y-3">
+                <CopyRow
+                  title="OAuth Redirect URI"
+                  hint="Zalo app → Redirect URI"
+                  value={zaloOAuthRedirectUri}
+                />
+                <CopyRow
+                  title="Webhook URL"
+                  hint="Zalo OA Admin → Webhook"
+                  value={zaloWebhookUrl}
+                />
+              </div>
+            </section>
+          </div>
+        ) : null}
+
+        {channels.length === 0 ? (
+          <div className="empty-state m-6">
+            <div className="brand-mark mb-4 h-12 w-12 text-lg" aria-hidden="true">
+              S
+            </div>
+            <p className="text-base font-medium text-slate-700">Chưa có kênh nào</p>
+            <p className="mt-1 max-w-sm text-sm text-slate-500">
+              {canConnect
+                ? 'Bấm "Thêm kết nối" để bắt đầu OAuth và nhận tin vào Inbox.'
+                : "Liên hệ admin shop để kết nối kênh."}
+            </p>
+            {canConnect ? (
+              <button type="button" onClick={() => openModal()} className="btn-primary mt-4">
+                Thêm kết nối
+              </button>
+            ) : null}
+          </div>
+        ) : (
+          <div className="grid gap-4 p-6 md:grid-cols-2">
+            {channels.map((channel) => (
+              <article
+                key={channel.id}
+                className="card-padded bg-[linear-gradient(165deg,#ffffff_0%,#f0fdfa_100%)]"
+              >
+                <div className="flex items-start gap-3">
+                  <PlatformIcon channel={channel.channel} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-base font-semibold tracking-tight text-teal-950">
+                          {channel.displayName ?? channel.name}
+                        </h2>
+                        {channel.displayName ? (
+                          <p className="text-xs text-slate-400">{channel.name}</p>
+                        ) : null}
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${statusBadgeClass(channel.status)}`}
+                      >
+                        {channel.status === "ready" ? "Đã nối" : CHANNEL_STATUS_LABEL[channel.status]}
+                      </span>
                     </div>
-                    <span
-                      className={`shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${statusBadgeClass(channel.status)}`}
-                    >
-                      {channel.status === "ready" ? "Đã nối" : CHANNEL_STATUS_LABEL[channel.status]}
-                    </span>
-                  </div>
 
-                  <p className="mt-3 text-sm leading-6 text-slate-500">{channel.note}</p>
+                    <p className="mt-3 text-sm leading-6 text-slate-500">{channel.note}</p>
 
-                  {channel.connectedAt ? (
-                    <p className="mt-2 text-xs text-slate-400">
-                      Kết nối: {formatDateTime(channel.connectedAt)}
-                    </p>
-                  ) : null}
-
-                  {channel.lastWebhookAt ? (
-                    <p className="mt-1 text-xs font-medium text-emerald-600">
-                      Webhook gần nhất: {formatDateTime(channel.lastWebhookAt)}
-                    </p>
-                  ) : channel.status === "ready" ? (
-                    <div className="mt-2 space-y-2">
-                      <p className="text-xs leading-5 text-amber-700">
-                        {channel.channel === "zalo"
-                          ? "OAuth đã nối. Checklist chỉ xanh khi Zalo POST webhook tin nhắn tới server — dán URL webhook vào Zalo OA Admin rồi nhắn thử vào OA."
-                          : channel.channel === "web"
-                            ? "Kênh web đã sẵn sàng cấu hình domain. Widget chat công khai chưa có — tin nhắn web chưa đồng bộ webhook."
-                            : "OAuth đã nối. Checklist webhook chỉ xanh khi Meta POST event tới server — verify URL trên Meta chưa đủ. App chưa phát hành thì chỉ nhận được sự kiện thử từ dashboard (field messages → Thử nghiệm, chọn đúng Fanpage)."}
+                    {channel.connectedAt ? (
+                      <p className="mt-2 text-xs text-slate-400">
+                        Kết nối: {formatDateTime(channel.connectedAt)}
                       </p>
-                      {(channel.channel === "facebook" || channel.channel === "instagram") &&
-                      metaWebhookUrl ? (
-                        <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2.5">
-                          <div className="space-y-2">
-                            <CopyRow
-                              title="OAuth Redirect (Meta)"
-                              value={metaOAuthRedirectUri}
-                            />
-                            <CopyRow
-                              title="Webhook URL (Messenger → Webhooks)"
-                              value={metaWebhookUrl}
-                            />
-                            {metaWebhookVerifyToken ? (
-                              <CopyRow title="Verify token" value={metaWebhookVerifyToken} />
-                            ) : null}
-                          </div>
-                        </div>
-                      ) : channel.channel === "zalo" && zaloWebhookUrl ? (
-                        <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2.5">
-                          <div className="space-y-2">
-                            <CopyRow title="OAuth Redirect (Zalo)" value={zaloOAuthRedirectUri} />
-                            <CopyRow title="Webhook URL (Zalo OA Admin)" value={zaloWebhookUrl} />
-                          </div>
-                        </div>
-                      ) : null}
-                    </div>
-                  ) : null}
+                    ) : null}
 
-                  {syncFlash?.channel === channel.channel ? (
-                    <p
-                      role="status"
-                      className={`mt-2 text-xs ${syncFlash.ok ? "text-emerald-600" : "text-amber-700"}`}
-                    >
-                      {syncFlash.text}
-                    </p>
-                  ) : null}
+                    {channel.lastWebhookAt ? (
+                      <p className="mt-1 text-xs font-medium text-emerald-600">
+                        Webhook gần nhất: {formatDateTime(channel.lastWebhookAt)}
+                      </p>
+                    ) : channel.status === "ready" ? (
+                      <div className="mt-2 space-y-2">
+                        <p className="text-xs leading-5 text-amber-700">
+                          {channel.channel === "zalo"
+                            ? "OAuth đã nối. Checklist chỉ xanh khi Zalo POST webhook tin nhắn tới server — dán URL webhook vào Zalo OA Admin rồi nhắn thử vào OA."
+                            : channel.channel === "web"
+                              ? "Kênh web đã sẵn sàng cấu hình domain. Widget chat công khai chưa có — tin nhắn web chưa đồng bộ webhook."
+                              : "OAuth đã nối. Checklist webhook chỉ xanh khi Meta POST event tới server — verify URL trên Meta chưa đủ. App chưa phát hành thì chỉ nhận được sự kiện thử từ dashboard (field messages → Thử nghiệm, chọn đúng Fanpage)."}
+                        </p>
+                        {(channel.channel === "facebook" || channel.channel === "instagram") &&
+                        metaWebhookUrl ? (
+                          <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2.5">
+                            <div className="space-y-2">
+                              <CopyRow
+                                title="OAuth Redirect (Meta)"
+                                value={metaOAuthRedirectUri}
+                              />
+                              <CopyRow
+                                title="Webhook URL (Messenger → Webhooks)"
+                                value={metaWebhookUrl}
+                              />
+                              {metaWebhookVerifyToken ? (
+                                <CopyRow title="Verify token" value={metaWebhookVerifyToken} />
+                              ) : null}
+                            </div>
+                          </div>
+                        ) : channel.channel === "zalo" && zaloWebhookUrl ? (
+                          <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2.5">
+                            <div className="space-y-2">
+                              <CopyRow title="OAuth Redirect (Zalo)" value={zaloOAuthRedirectUri} />
+                              <CopyRow title="Webhook URL (Zalo OA Admin)" value={zaloWebhookUrl} />
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
 
-                  <div className="mt-4 flex flex-wrap gap-2 border-t border-teal-100/80 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => openModal(channel.channel)}
-                      className="btn-secondary"
-                    >
-                      {channel.status === "ready" ? "Xem kết nối" : "Kết nối kênh"}
-                    </button>
-                    {canConnect &&
-                    channel.status === "ready" &&
-                    channel.hasOAuthToken &&
-                    (channel.channel === "facebook" || channel.channel === "instagram") ? (
+                    {syncFlash?.channel === channel.channel ? (
+                      <p
+                        role="status"
+                        className={`mt-2 text-xs ${syncFlash.ok ? "text-emerald-600" : "text-amber-700"}`}
+                      >
+                        {syncFlash.text}
+                      </p>
+                    ) : null}
+
+                    <div className="mt-4 flex flex-wrap gap-2 border-t border-teal-100/80 pt-4">
                       <button
                         type="button"
-                        onClick={() => handleSyncMeta(channel.channel)}
-                        disabled={syncing === channel.channel}
+                        onClick={() => openModal(channel.channel)}
                         className="btn-secondary"
                       >
-                        {syncing === channel.channel ? "Đang đồng bộ..." : "Đồng bộ tin nhắn"}
+                        {channel.status === "ready" ? "Xem kết nối" : "Kết nối kênh"}
                       </button>
-                    ) : null}
-                    {canConnect && channel.status === "ready" && channel.hasOAuthToken ? (
-                      <button
-                        type="button"
-                        onClick={() => handleDisconnect(channel.channel)}
-                        disabled={disconnecting === channel.channel}
-                        className="btn-ghost text-red-700 hover:bg-red-50"
-                      >
-                        {disconnecting === channel.channel ? "Đang ngắt..." : "Ngắt kết nối"}
-                      </button>
-                    ) : null}
+                      {canConnect &&
+                      channel.status === "ready" &&
+                      channel.hasOAuthToken &&
+                      (channel.channel === "facebook" || channel.channel === "instagram") ? (
+                        <button
+                          type="button"
+                          onClick={() => handleSyncMeta(channel.channel)}
+                          disabled={syncing === channel.channel}
+                          className="btn-secondary"
+                        >
+                          {syncing === channel.channel ? "Đang đồng bộ..." : "Đồng bộ tin nhắn"}
+                        </button>
+                      ) : null}
+                      {canConnect && channel.status === "ready" && channel.hasOAuthToken ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDisconnect(channel.channel)}
+                          disabled={disconnecting === channel.channel}
+                          className="btn-ghost text-red-700 hover:bg-red-50"
+                        >
+                          {disconnecting === channel.channel ? "Đang ngắt..." : "Ngắt kết nối"}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
+              </article>
+            ))}
+          </div>
+        )}
 
-      {connectedCount === 0 && channels.length > 0 ? (
-        <div className="mx-6 mb-6 rounded-xl border border-dashed border-teal-200 bg-accent-muted/40 px-4 py-5 text-center">
-          <p className="text-sm font-medium text-slate-700">
-            Chưa kênh nào ở trạng thái &quot;Đã nối&quot;
-          </p>
-          <button type="button" onClick={() => openModal()} className="btn-primary-sm mt-3">
-            Kết nối kênh đầu tiên
-          </button>
-        </div>
-      ) : null}
+        {connectedCount === 0 && channels.length > 0 ? (
+          <div className="mx-6 mb-6 rounded-xl border border-dashed border-teal-200 bg-accent-muted/40 px-4 py-5 text-center">
+            <p className="text-sm font-medium text-slate-700">
+              Chưa kênh nào ở trạng thái &quot;Đã nối&quot;
+            </p>
+            <button type="button" onClick={() => openModal()} className="btn-primary-sm mt-3">
+              Kết nối kênh đầu tiên
+            </button>
+          </div>
+        ) : null}
+      </div>
 
       {open ? (
         <AddConnectionModal
@@ -458,6 +460,6 @@ export function SettingsWorkspace({
           onClose={() => setOpen(false)}
         />
       ) : null}
-    </>
+    </div>
   );
 }

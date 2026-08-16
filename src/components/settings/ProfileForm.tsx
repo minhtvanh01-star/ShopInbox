@@ -53,14 +53,14 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="page-header bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
+      <header className="page-header shrink-0 bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
         <h1 className="page-title">Hồ sơ cá nhân</h1>
         <p className="page-subtitle">Cập nhật thông tin và phương thức đăng nhập của bạn.</p>
       </header>
 
       {flashMessage ? (
         <div
-          className={`border-b px-6 py-3 text-sm ${
+          className={`shrink-0 border-b px-6 py-3 text-sm ${
             flashMessage.type === "success"
               ? "border-emerald-200 bg-emerald-50 text-emerald-800"
               : "border-amber-200 bg-amber-50 text-amber-800"
@@ -70,14 +70,15 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
         </div>
       ) : null}
 
-      <div className="grid gap-6 p-6 lg:grid-cols-2">
-        <section className="card-padded">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-slate-900">Thông tin cơ bản</h2>
-            <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-[11px] font-semibold text-teal-800 ring-1 ring-teal-200 ring-inset">
-              {authBadgeLabel(profile.authMethod)}
-            </span>
-          </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="grid gap-6 p-6 lg:grid-cols-2">
+          <section className="card-padded">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-slate-900">Thông tin cơ bản</h2>
+              <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-[11px] font-semibold text-teal-800 ring-1 ring-teal-200 ring-inset">
+                {authBadgeLabel(profile.authMethod)}
+              </span>
+            </div>
 
           <form action={profileAction} className="space-y-4">
             <div className="field-group">
@@ -239,6 +240,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
             </section>
           ) : null}
         </div>
+      </div>
       </div>
     </div>
   );

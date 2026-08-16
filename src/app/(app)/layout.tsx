@@ -20,7 +20,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         permissions={shop.permissions}
         inboxNotices={inboxNotices}
       />
-      <main id="main-content" className="flex min-w-0 flex-1 flex-col pt-14 md:pt-0">
+      <main id="main-content" className="flex min-h-0 min-w-0 flex-1 flex-col pt-14 md:pt-0">
         {children}
       </main>
     </div>
