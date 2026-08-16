@@ -9,7 +9,11 @@ import {
   dispatchOutboundReaction,
 } from "@/backend/channel-send";
 import { isReplyClaimActive } from "@/backend/reply-claim";
-import { hasPermission, isAdminSession, requirePermission } from "@/backend/rbac";
+import {
+  hasPermission,
+  isAdminSession,
+  requireActionPermission,
+} from "@/backend/rbac";
 import { nextOrderCode, normalizeOrderItems, type DraftOrderItem } from "@/backend/order-code";
 import {
   removeMessageReaction,
@@ -21,7 +25,8 @@ import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
 import type { ConversationTag, OrderStatus } from "@/lib/types";
 import type { SessionPayload } from "@/backend/session-token";
 
-export const QUICK_REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"] as const;
+/** Local only — must not be exported from a "use server" module. */
+const QUICK_REACTION_EMOJIS = ["👍", "❤️", "😂", "😮", "😢", "🙏"] as const;
 
 /** Khớp Inbox UI: role admin/owner hoặc quyền staff.manage. */
 async function isInboxAdmin(session: SessionPayload) {
@@ -79,7 +84,7 @@ async function assertCanReplyOrClaim(input: {
 }
 
 export async function claimConversation(conversationId: string) {
-  const session = await requirePermission(PERMISSION_CODES.inboxReply);
+  const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
   const admin = await isInboxAdmin(session);
   if (!conversationId) {
     throw new Error("Thiếu hội thoại");
@@ -140,7 +145,7 @@ export async function releaseConversation(
   conversationId: string,
   reason: "manual" | "idle_timeout" = "manual",
 ) {
-  const session = await requirePermission(PERMISSION_CODES.inboxReply);
+  const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
   const admin = await isInboxAdmin(session);
   if (!conversationId) {
     throw new Error("Thiếu hội thoại");
@@ -197,7 +202,7 @@ export async function releaseConversation(
 
 /** Gia hạn claim khi đang gõ / còn dùng — tránh timeout vì idle. */
 export async function touchConversationClaim(conversationId: string) {
-  const session = await requirePermission(PERMISSION_CODES.inboxReply);
+  const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
   const admin = await isInboxAdmin(session);
   if (!conversationId) {
     throw new Error("Thiếu hội thoại");
@@ -232,7 +237,7 @@ export async function touchConversationClaim(conversationId: string) {
 }
 
 export async function sendMessage(conversationId: string, text: string) {
-  const session = await requirePermission(PERMISSION_CODES.inboxReply);
+  const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
   const admin = await isInboxAdmin(session);
   const body = text.trim();
   if (!conversationId || !body) {
@@ -319,7 +324,7 @@ export async function sendMessage(conversationId: string, text: string) {
 }
 
 export async function sendImageMessage(conversationId: string, formData: FormData) {
-  const session = await requirePermission(PERMISSION_CODES.inboxReply);
+  const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
   const admin = await isInboxAdmin(session);
   if (!conversationId) {
     throw new Error("Thiếu hội thoại");
@@ -424,7 +429,7 @@ export async function sendImageMessage(conversationId: string, formData: FormDat
 }
 
 export async function reactToMessage(messageId: string, emoji: string) {
-  const session = await requirePermission(PERMISSION_CODES.inboxReply);
+  const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
   const admin = await isInboxAdmin(session);
   if (!messageId || !emoji.trim()) {
     throw new Error("Reaction không hợp lệ");
@@ -512,7 +517,7 @@ export async function reactToMessage(messageId: string, emoji: string) {
 }
 
 export async function markConversationRead(conversationId: string) {
-  const session = await requirePermission(PERMISSION_CODES.inboxRead);
+  const session = await requireActionPermission(PERMISSION_CODES.inboxRead);
   if (!conversationId) {
     throw new Error("Thiếu hội thoại");
   }
@@ -545,7 +550,7 @@ export async function updateConversationTag(
   conversationId: string,
   tag: ConversationTag,
 ) {
-  const session = await requirePermission(PERMISSION_CODES.inboxReply);
+  const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
   if (!conversationId || !CONVERSATION_TAGS.includes(tag)) {
     throw new Error("Nhãn hội thoại không hợp lệ");
   }
@@ -586,7 +591,7 @@ export async function createOrder(input: {
   phone?: string;
   items: DraftOrderItem[];
 }) {
-  const session = await requirePermission(PERMISSION_CODES.ordersCreate);
+  const session = await requireActionPermission(PERMISSION_CODES.ordersCreate);
   const address = input.address.trim();
   const phone = input.phone?.trim() || undefined;
   const items = normalizeOrderItems(input.items);
@@ -691,7 +696,7 @@ export async function createOrder(input: {
 const ORDER_STATUSES: OrderStatus[] = ["new", "confirmed", "shipping", "done", "cancelled"];
 
 export async function updateOrderStatus(orderId: string, status: OrderStatus) {
-  const session = await requirePermission(PERMISSION_CODES.ordersUpdate);
+  const session = await requireActionPermission(PERMISSION_CODES.ordersUpdate);
   if (!ORDER_STATUSES.includes(status)) {
     throw new Error("Trạng thái không hợp lệ");
   }
