@@ -82,6 +82,55 @@ async function loadShopCustomers(shopId: string): Promise<CustomerRow[]> {
   }
 }
 
+type MessageRow = {
+  id: string;
+  conversationId: string;
+  sender: Message["sender"];
+  text: string;
+  createdAt: Date;
+  attachmentType: string | null;
+  attachmentUrl: string | null;
+  attachmentName: string | null;
+  externalMessageId: string | null;
+  deliveredAt?: Date | null;
+  readAt?: Date | null;
+};
+
+async function loadShopMessages(shopId: string): Promise<MessageRow[]> {
+  try {
+    return await prisma.message.findMany({
+      where: { shopId },
+      orderBy: { createdAt: "asc" },
+    });
+  } catch (error) {
+    if (
+      !isMissingDbColumnError(error, "deliveredAt") &&
+      !isMissingDbColumnError(error, "readAt")
+    ) {
+      throw error;
+    }
+    console.error(
+      "[loadShopMessages] deliveredAt/readAt missing — loading without receipts",
+      error,
+    );
+    return prisma.message.findMany({
+      where: { shopId },
+      select: {
+        id: true,
+        conversationId: true,
+        sender: true,
+        text: true,
+        createdAt: true,
+        attachmentType: true,
+        attachmentUrl: true,
+        attachmentName: true,
+        externalMessageId: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+}
+
 export async function getShopContext(): Promise<ShopContext> {
   const session = await requireSession();
   const [staff, policy] = await Promise.all([
@@ -119,10 +168,7 @@ export async function getInboxData() {
       include: { staff: { select: { id: true, name: true } } },
       orderBy: { lastAt: "desc" },
     }),
-    prisma.message.findMany({
-      where: { shopId },
-      orderBy: { createdAt: "asc" },
-    }),
+    loadShopMessages(shopId),
     loadShopCustomers(shopId),
     prisma.order.findMany({
       where: { shopId },
@@ -202,6 +248,8 @@ export async function getInboxData() {
         attachmentUrl: item.attachmentUrl,
         attachmentName: item.attachmentName,
         externalMessageId: item.externalMessageId,
+        deliveredAt: item.deliveredAt ? toIso(item.deliveredAt) : null,
+        readAt: item.readAt ? toIso(item.readAt) : null,
         reactions: reactionsByMessage.get(item.id) ?? [],
       }),
     ),
@@ -330,14 +378,27 @@ export async function getOrdersPageData() {
 export async function getCustomersPageData() {
   const session = await requireSession();
   const customers = await loadShopCustomers(session.shopId);
-  const counts = await prisma.customer.findMany({
-    where: { shopId: session.shopId },
-    select: {
-      id: true,
-      _count: { select: { orders: true } },
-    },
-  });
+  const [counts, latestConversations] = await Promise.all([
+    prisma.customer.findMany({
+      where: { shopId: session.shopId },
+      select: {
+        id: true,
+        _count: { select: { orders: true } },
+      },
+    }),
+    prisma.conversation.findMany({
+      where: { shopId: session.shopId },
+      select: { id: true, customerId: true },
+      orderBy: { lastAt: "desc" },
+    }),
+  ]);
   const orderCountById = new Map(counts.map((row) => [row.id, row._count.orders]));
+  const latestConversationByCustomer = new Map<string, string>();
+  for (const row of latestConversations) {
+    if (!latestConversationByCustomer.has(row.customerId)) {
+      latestConversationByCustomer.set(row.customerId, row.id);
+    }
+  }
 
   return customers.map((customer) => ({
     id: customer.id,
@@ -345,6 +406,7 @@ export async function getCustomersPageData() {
     phone: customer.phone,
     note: customer.note,
     orderCount: orderCountById.get(customer.id) ?? 0,
+    latestConversationId: latestConversationByCustomer.get(customer.id) ?? null,
   }));
 }
 

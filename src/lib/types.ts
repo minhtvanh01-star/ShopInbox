@@ -61,6 +61,10 @@ export type Message = {
   attachmentUrl?: string | null;
   attachmentName?: string | null;
   externalMessageId?: string | null;
+  /** Khách đã nhận (Meta delivery watermark). */
+  deliveredAt?: string | null;
+  /** Khách đã xem (Meta read watermark). */
+  readAt?: string | null;
   reactions?: MessageReactionSummary[];
   /** Chỉ dùng trên UI optimistic — không lưu DB. */
   localStatus?: MessageLocalStatus;

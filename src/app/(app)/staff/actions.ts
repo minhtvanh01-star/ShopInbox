@@ -12,6 +12,7 @@ import {
   PERMISSION_CODES,
   normalizeRoleCode,
 } from "@/lib/rbac-catalog";
+import { REGISTER_MIN_PASSWORD_LENGTH } from "@/lib/auth-password";
 import { assertShopHasActiveSeat } from "@/backend/shop-seats";
 
 export type StaffActionState = {
@@ -194,4 +195,47 @@ export async function updateStaffAction(
       ? `Đã cập nhật ${updated.email}.`
       : `Đã vô hiệu hóa ${updated.email}.`,
   };
+}
+
+export async function resetStaffPasswordAction(
+  _prev: StaffActionState,
+  formData: FormData,
+): Promise<StaffActionState> {
+  const session = await requirePermission(PERMISSION_CODES.staffManage);
+  const staffId = String(formData.get("staffId") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  if (!staffId) {
+    return { error: "Thiếu nhân viên." };
+  }
+  if (password.length < REGISTER_MIN_PASSWORD_LENGTH) {
+    return { error: `Mật khẩu tối thiểu ${REGISTER_MIN_PASSWORD_LENGTH} ký tự.` };
+  }
+  if (password !== confirmPassword) {
+    return { error: "Mật khẩu xác nhận không khớp." };
+  }
+
+  const target = await prisma.staff.findFirst({
+    where: { id: staffId, shopId: session.shopId },
+  });
+  if (!target) {
+    return { error: "Không tìm thấy nhân viên." };
+  }
+
+  await prisma.staff.update({
+    where: { id: target.id },
+    data: { passwordHash: await hashPassword(password) },
+  });
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.staffPasswordReset,
+    entityType: "Staff",
+    entityId: target.id,
+    metadata: { email: target.email },
+  });
+
+  revalidatePath("/staff");
+  return { success: `Đã đặt mật khẩu mới cho ${target.email}.` };
 }

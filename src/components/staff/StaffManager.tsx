@@ -8,6 +8,8 @@ import {
 
   createStaffAction,
 
+  resetStaffPasswordAction,
+
   updateStaffAction,
 
   type StaffActionState,
@@ -22,6 +24,8 @@ import { DEFAULT_MAX_USERS_PER_SHOP } from "@/lib/shop-policy";
 const createInitial: StaffActionState = {};
 
 const updateInitial: StaffActionState = {};
+
+const resetInitial: StaffActionState = {};
 
 
 
@@ -104,6 +108,14 @@ export function StaffManager({
     updateStaffAction,
 
     updateInitial,
+
+  );
+
+  const [resetState, resetAction, resetPending] = useActionState(
+
+    resetStaffPasswordAction,
+
+    resetInitial,
 
   );
 
@@ -450,6 +462,102 @@ export function StaffManager({
                       ? "Lưu thay đổi"
 
                       : "Phê duyệt và lưu"}
+
+                </button>
+
+              </form>
+
+              <form action={resetAction} className="mt-6 space-y-4 border-t border-border pt-5">
+
+                <input type="hidden" name="staffId" value={editing.id} />
+
+                <h3 className="text-sm font-semibold text-teal-950">Đặt lại mật khẩu</h3>
+
+                <p className="text-sm text-slate-500">
+
+                  Dùng khi nhân viên quên mật khẩu. Tài khoản Google cũng có thể đăng nhập email sau khi đặt.
+
+                </p>
+
+                <div className="field-group">
+
+                  <label htmlFor="reset-password" className="label mb-0">
+
+                    Mật khẩu mới
+
+                  </label>
+
+                  <input
+
+                    id="reset-password"
+
+                    name="password"
+
+                    type="password"
+
+                    required
+
+                    minLength={8}
+
+                    autoComplete="new-password"
+
+                    className="input-field-sm"
+
+                  />
+
+                </div>
+
+                <div className="field-group">
+
+                  <label htmlFor="reset-password-confirm" className="label mb-0">
+
+                    Xác nhận mật khẩu
+
+                  </label>
+
+                  <input
+
+                    id="reset-password-confirm"
+
+                    name="confirmPassword"
+
+                    type="password"
+
+                    required
+
+                    minLength={8}
+
+                    autoComplete="new-password"
+
+                    className="input-field-sm"
+
+                  />
+
+                </div>
+
+                {resetState.error ? (
+
+                  <p role="alert" className="alert-error">
+
+                    {resetState.error}
+
+                  </p>
+
+                ) : null}
+
+                {resetState.success ? (
+
+                  <p role="status" className="alert-success">
+
+                    {resetState.success}
+
+                  </p>
+
+                ) : null}
+
+                <button type="submit" disabled={resetPending} className="btn-ghost">
+
+                  {resetPending ? "Đang đặt lại..." : "Đặt mật khẩu mới"}
 
                 </button>
 

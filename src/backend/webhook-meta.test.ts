@@ -5,6 +5,7 @@ vi.mock("@/backend/message-sync", () => ({
   touchChannelWebhook: vi.fn(),
   upsertMessageReaction: vi.fn(),
   removeMessageReaction: vi.fn(),
+  applyMetaMessageWatermark: vi.fn(),
 }));
 
 vi.mock("@/backend/prisma", () => ({
@@ -14,8 +15,16 @@ vi.mock("@/backend/prisma", () => ({
   },
 }));
 
-import { ingestInboundMessage, touchChannelWebhook } from "@/backend/message-sync";
-import { processMetaWebhook, resolveMetaExternalAccountId } from "@/backend/webhook-meta";
+import {
+  applyMetaMessageWatermark,
+  ingestInboundMessage,
+  touchChannelWebhook,
+} from "@/backend/message-sync";
+import {
+  isMetaReceiptFromPage,
+  processMetaWebhook,
+  resolveMetaExternalAccountId,
+} from "@/backend/webhook-meta";
 
 describe("resolveMetaExternalAccountId", () => {
   it("ưu tiên recipient thật, bỏ entry id placeholder 0", () => {
@@ -25,8 +34,38 @@ describe("resolveMetaExternalAccountId", () => {
   });
 });
 
+describe("isMetaReceiptFromPage", () => {
+  it("cho phép read từ khách (PSID ≠ Page)", () => {
+    expect(
+      isMetaReceiptFromPage({
+        senderId: "user-1",
+        recipientId: "page-1",
+        entryId: "page-1",
+      }),
+    ).toBe(false);
+  });
+
+  it("bỏ qua khi sender là Page / self-echo", () => {
+    expect(
+      isMetaReceiptFromPage({
+        senderId: "page-1",
+        recipientId: "user-1",
+        entryId: "page-1",
+      }),
+    ).toBe(true);
+    expect(
+      isMetaReceiptFromPage({
+        senderId: "page-1",
+        recipientId: "page-1",
+        entryId: "page-1",
+      }),
+    ).toBe(true);
+  });
+});
+
 describe("processMetaWebhook", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.mocked(touchChannelWebhook).mockResolvedValue(1);
     vi.mocked(ingestInboundMessage).mockResolvedValue({
       ok: true,
@@ -34,6 +73,7 @@ describe("processMetaWebhook", () => {
       conversationId: "conv-test",
       shopId: "shop1",
     });
+    vi.mocked(applyMetaMessageWatermark).mockResolvedValue({ ok: true, updated: 1 });
   });
 
   it("bỏ qua echo message", async () => {
@@ -196,6 +236,150 @@ describe("processMetaWebhook", () => {
         attachmentType: "image",
         attachmentUrl: "https://cdn.example/a.jpg",
         externalMessageId: "m-img",
+      }),
+    );
+  });
+
+  it("xử lý message_deliveries watermark", async () => {
+    const result = await processMetaWebhook({
+      object: "page",
+      entry: [
+        {
+          id: "page-1",
+          messaging: [
+            {
+              sender: { id: "user-1" },
+              recipient: { id: "page-1" },
+              timestamp: 1_700_000_100_000,
+              delivery: {
+                mids: ["mid.abc"],
+                watermark: 1_700_000_100_000,
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.processed).toBe(1);
+    expect(applyMetaMessageWatermark).toHaveBeenCalledWith({
+      channel: "facebook",
+      externalAccountId: "page-1",
+      customerExternalId: "user-1",
+      watermarkMs: 1_700_000_100_000,
+      kind: "delivered",
+      mids: ["mid.abc"],
+    });
+    expect(ingestInboundMessage).not.toHaveBeenCalled();
+  });
+
+  it("xử lý message_reads watermark", async () => {
+    const result = await processMetaWebhook({
+      object: "page",
+      entry: [
+        {
+          id: "page-1",
+          messaging: [
+            {
+              sender: { id: "user-1" },
+              recipient: { id: "page-1" },
+              read: { watermark: 1_700_000_200_000 },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.processed).toBe(1);
+    expect(applyMetaMessageWatermark).toHaveBeenCalledWith({
+      channel: "facebook",
+      externalAccountId: "page-1",
+      customerExternalId: "user-1",
+      watermarkMs: 1_700_000_200_000,
+      kind: "read",
+    });
+  });
+
+  it("nhận delivery từ changes.field=message_deliveries", async () => {
+    await processMetaWebhook({
+      object: "instagram",
+      entry: [
+        {
+          id: "ig-1",
+          changes: [
+            {
+              field: "message_deliveries",
+              value: {
+                sender: { id: "ig-user" },
+                recipient: { id: "ig-1" },
+                watermark: 1_700_000_300_000,
+                mids: ["mid.ig"],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(applyMetaMessageWatermark).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "instagram",
+        externalAccountId: "ig-1",
+        customerExternalId: "ig-user",
+        watermarkMs: 1_700_000_300_000,
+        kind: "delivered",
+        mids: ["mid.ig"],
+      }),
+    );
+  });
+
+  it("bỏ qua read echo từ Page (không đánh dấu tin shop đã xem)", async () => {
+    const result = await processMetaWebhook({
+      object: "page",
+      entry: [
+        {
+          id: "page-1",
+          messaging: [
+            {
+              sender: { id: "page-1" },
+              recipient: { id: "user-1" },
+              read: { watermark: 1_700_000_200_000 },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.processed).toBe(0);
+    expect(applyMetaMessageWatermark).not.toHaveBeenCalled();
+  });
+
+  it("nhận Instagram messaging_seen như read watermark", async () => {
+    await processMetaWebhook({
+      object: "instagram",
+      entry: [
+        {
+          id: "ig-1",
+          changes: [
+            {
+              field: "messaging_seen",
+              value: {
+                sender: { id: "ig-user" },
+                recipient: { id: "ig-1" },
+                watermark: 1_700_000_400_000,
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(applyMetaMessageWatermark).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "instagram",
+        customerExternalId: "ig-user",
+        watermarkMs: 1_700_000_400_000,
+        kind: "read",
       }),
     );
   });

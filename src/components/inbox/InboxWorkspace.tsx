@@ -13,6 +13,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   claimConversation,
+  getConversationReceipts,
   markConversationRead,
   reactToMessage,
   releaseConversation,
@@ -23,17 +24,23 @@ import {
 } from "@/app/(app)/actions";
 import {
   formatReplyClaimCountdown,
+  makeClaimOverride,
+  reconcileClaimOverride,
   replyClaimRemainingMs,
   REPLY_CLAIM_TTL_MS,
+  type ClaimOverride,
 } from "@/backend/reply-claim";
 import { replyClaimTtlMs, DEFAULT_REPLY_CLAIM_TTL_MINUTES } from "@/lib/shop-policy";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { CreateOrderForm } from "@/components/inbox/CreateOrderForm";
 import { CustomerAvatar } from "@/components/inbox/CustomerAvatar";
+import { CustomerProfileForm } from "@/components/inbox/CustomerProfileForm";
 import { MessageBubble } from "@/components/inbox/MessageBubble";
 import {
+  COMPOSER_LIKE_EMOJI,
   EmojiPickerButton,
   ImagePickerButton,
+  LikeSendButton,
 } from "@/components/inbox/MessageComposerTools";
 import {
   chatDayKey,
@@ -41,6 +48,11 @@ import {
   pruneSyncedOutbound,
   type LocalOutboundMessage,
 } from "@/lib/inbox-thread";
+import {
+  applyMessageReceipts,
+  mergeReceiptOverlay,
+  type MessageReceiptPatch,
+} from "@/lib/message-receipt";
 import {
   CHANNEL_LABEL,
   TAG_LABEL,
@@ -91,6 +103,7 @@ type InboxWorkspaceProps = {
   /** Kênh đã nối / có hội thoại — để hiện pill từ cấu hình, không hardcode. */
   activeChannels?: Channel[];
   initialConversationId?: string;
+  canUpdateCustomer?: boolean;
 };
 
 type ConversationPatch = {
@@ -105,11 +118,6 @@ type ConversationPatch = {
 };
 
 /** Claim giữ ngoài useOptimistic — tránh UI snap-back khi transition kết thúc trước RSC. */
-type ClaimOverride = {
-  replyStaffId: string | null;
-  replyStaffName: string | null;
-  replyClaimedAt: string | null;
-};
 
 const MOBILE_TABS: Array<{ id: MobilePane; label: string }> = [
   { id: "list", label: "Hội thoại" },
@@ -124,6 +132,8 @@ const CLAIM_TOUCH_MIN_INTERVAL_MS = 45_000;
 const CLAIM_HEARTBEAT_MS = 2 * 60 * 1000;
 /** Soft sync gần realtime hơn (không WebSocket) — giống messenger poll nhẹ. */
 const INBOX_SOFT_REFRESH_MS = 8_000;
+/** Tick đã xem: poll nhỏ (không RSC) khi đang mở thread Meta. */
+const RECEIPT_POLL_MS = 2_500;
 
 /**
  * Next/React production ẩn lỗi Server Components thành minified #441.
@@ -150,6 +160,41 @@ function inboxActionErrorMessage(err: unknown, fallback: string) {
   return raw.trim() || fallback;
 }
 
+type ConfirmedOutboundResult = {
+  id: string;
+  conversationId: string;
+  sender: Message["sender"];
+  text: string;
+  createdAt: string;
+  attachmentType: string | null;
+  attachmentUrl: string | null;
+  attachmentName: string | null;
+  externalMessageId: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+};
+
+function confirmLocalOutbound(
+  item: LocalOutboundMessage,
+  result: ConfirmedOutboundResult,
+): LocalOutboundMessage {
+  return {
+    ...item,
+    id: result.id,
+    conversationId: result.conversationId,
+    sender: result.sender,
+    text: result.text,
+    createdAt: result.createdAt,
+    attachmentType: result.attachmentType,
+    attachmentUrl: result.attachmentUrl,
+    attachmentName: result.attachmentName,
+    externalMessageId: result.externalMessageId,
+    deliveredAt: result.deliveredAt,
+    readAt: result.readAt,
+    localStatus: undefined,
+  };
+}
+
 export function InboxWorkspace({
   conversations,
   messages,
@@ -163,6 +208,7 @@ export function InboxWorkspace({
   replyClaimTtlMinutes = DEFAULT_REPLY_CLAIM_TTL_MINUTES,
   activeChannels,
   initialConversationId,
+  canUpdateCustomer = false,
 }: InboxWorkspaceProps) {
   const router = useRouter();
   const claimTtlMs = replyClaimTtlMs(replyClaimTtlMinutes) || REPLY_CLAIM_TTL_MS;
@@ -215,8 +261,15 @@ export function InboxWorkspace({
   const pendingImageFilesRef = useRef<Record<string, File>>({});
   /** id → lastAt lúc đánh dấu đã đọc — giữ badge=0 đến khi server/sync hoặc có tin mới. */
   const [readReceipts, setReadReceipts] = useState<Record<string, string>>({});
+  /** Meta readAt/deliveredAt poll — lật tick không đợi router.refresh. */
+  const [messageReceiptOverlay, setMessageReceiptOverlay] = useState<
+    Record<string, MessageReceiptPatch>
+  >({});
   /** Claim bền ngoài useOptimistic — tránh khóa composer lại sau khi bấm "Tôi trả lời". */
   const [claimOverrides, setClaimOverrides] = useState<Record<string, ClaimOverride>>({});
+  /** Claim/takeover đang chờ server — nút Tiếp quản không được kẹt disabled. */
+  const [claimBusyId, setClaimBusyId] = useState<string | null>(null);
+  const [customerPatches, setCustomerPatches] = useState<Record<string, Partial<Customer>>>({});
   /** Tin đang gửi / thất bại — giữ bubble kiểu messenger (status + gửi lại). */
   const [localOutbound, setLocalOutbound] = useState<LocalOutboundMessage[]>([]);
   const [outboundSyncSource, setOutboundSyncSource] = useState(messages);
@@ -297,22 +350,17 @@ export function InboxWorkspace({
         changed = true;
         continue;
       }
-      const sameClaimant =
-        (server.replyStaffId ?? null) === (override.replyStaffId ?? null);
-      const serverCleared = !server.replyStaffId && !server.replyClaimedAt;
-      const overrideCleared = !override.replyStaffId && !override.replyClaimedAt;
-      if (overrideCleared && serverCleared) {
-        delete next[id];
-        changed = true;
-      } else if (
-        sameClaimant &&
-        override.replyStaffId &&
-        server.replyStaffId &&
-        server.replyClaimedAt
+      if (
+        reconcileClaimOverride({
+          serverStaffId: server.replyStaffId,
+          serverClaimedAt: server.replyClaimedAt,
+          override,
+        }) === "drop"
       ) {
         delete next[id];
         changed = true;
       }
+      // keep: sticky takeover/nhả, hoặc cùng người giữ — giữ mốc client (TTL).
     }
     if (changed) {
       setClaimOverrides(next);
@@ -339,10 +387,17 @@ export function InboxWorkspace({
   );
 
   const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
-  const customer = selected ? customerById(selected.customerId) : undefined;
+  const customerBase = selected ? customerById(selected.customerId) : undefined;
+  const customer = customerBase
+    ? { ...customerBase, ...customerPatches[customerBase.id] }
+    : undefined;
+  const receiptMessages = applyMessageReceipts(messages, messageReceiptOverlay);
+  const receiptLocalOutbound = applyMessageReceipts(localOutbound, messageReceiptOverlay);
   const thread = selected
-    ? mergeConversationThread(messages, localOutbound, selected.id)
+    ? mergeConversationThread(receiptMessages, receiptLocalOutbound, selected.id)
     : [];
+  const receiptsEnabled =
+    selected?.channel === "facebook" || selected?.channel === "instagram";
   const customerOrders = customer
     ? orders.filter((item) => item.customerId === customer.id)
     : [];
@@ -368,6 +423,7 @@ export function InboxWorkspace({
   /** Admin trả lời mọi lúc; nhân viên phải claim còn hạn. Không khóa theo actionPending — claim/refresh không được làm ô nhập bị disabled. */
   const canCompose = isAdmin || replyIsMine;
   const sendBusy = actionPending;
+  const claimBusy = Boolean(selected && claimBusyId === selected.id);
   const claimCountdown =
     nowMs !== null && !isAdmin && claimActive && claimRemainingMs > 0
       ? formatReplyClaimCountdown(claimRemainingMs)
@@ -402,10 +458,16 @@ export function InboxWorkspace({
   }
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      setNowMs(Date.now());
-    });
-    return () => cancelAnimationFrame(frame);
+    // Luôn tick đồng hồ client — không chỉ khi đã có claim. Nếu chỉ set 1 lần lúc mount
+    // rồi đợi có claim mới interval, claim/send sẽ đóng dấu replyClaimedAt bằng nowMs cũ
+    // → countdown nhảy ~1 phút (vd. TTL 5p hiện 4:01).
+    const tick = () => setNowMs(Date.now());
+    const frame = requestAnimationFrame(tick);
+    const timer = window.setInterval(tick, 1000);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearInterval(timer);
+    };
   }, []);
 
   // Thu hồi blob / file tạm khi local outbound bị xóa (gửi OK, prune, hủy).
@@ -447,18 +509,46 @@ export function InboxWorkspace({
   }, [router]);
 
   useEffect(() => {
-    const hasClaimFields = conversationsView.some(
-      (item) => Boolean(item.replyStaffId && item.replyClaimedAt),
-    );
-    if (!hasClaimFields) {
-      return;
-    }
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [conversationsView]);
+    if (!selected?.id) return;
+    if (selected.channel !== "facebook" && selected.channel !== "instagram") return;
+    const conversationId = selected.id;
+    let cancelled = false;
+    let inFlight = false;
+
+    const poll = async () => {
+      if (cancelled || inFlight) return;
+      if (document.visibilityState !== "visible") return;
+      inFlight = true;
+      try {
+        const result = await getConversationReceipts(conversationId);
+        if (cancelled || !result.ok) return;
+        setMessageReceiptOverlay((prev) => mergeReceiptOverlay(prev, result.receipts));
+      } catch {
+        // poll im lặng — tick sẽ bắt kịp lần sau
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(poll, RECEIPT_POLL_MS);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void poll();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [selected?.id, selected?.channel]);
 
   useEffect(() => {
     if (nowMs === null) {
+      return;
+    }
+    if (isAdmin) {
+      // Admin không timeout claim (banner + takeover). Đừng xóa override local.
       return;
     }
     if (!selected?.replyStaffId || !selected.replyClaimedAt) {
@@ -479,11 +569,12 @@ export function InboxWorkspace({
     queueMicrotask(() => {
       setClaimOverrides((prev) => ({
         ...prev,
-        [id]: {
+        [id]: makeClaimOverride({
           replyStaffId: null,
           replyStaffName: null,
           replyClaimedAt: null,
-        },
+          nowMs,
+        }),
       }));
     });
     startBackground(() => {
@@ -543,7 +634,12 @@ export function InboxWorkspace({
       patchOptimisticConversation({ id, unread: 0 });
     });
     void markConversationRead(id)
-      .then(() => {
+      .then((result) => {
+        if (result && "ok" in result && result.ok === false) {
+          // Giữ readMarkedRef — không retry spam POST khi action 500.
+          if (result.error) setError(result.error);
+          return;
+        }
         notifyInboxNoticesRefresh();
       })
       .catch((err) => {
@@ -558,7 +654,8 @@ export function InboxWorkspace({
     if (nowMs === null && options?.atMs === undefined) {
       return;
     }
-    const at = options?.atMs ?? nowMs!;
+    // Luôn Date.now() khi không truyền atMs — tránh đóng dấu claim bằng nowMs lệch 1 tick.
+    const at = options?.atMs ?? Date.now();
     if (at < claimTouchFailUntilRef.current) {
       return;
     }
@@ -566,6 +663,7 @@ export function InboxWorkspace({
       return;
     }
     lastClaimTouchRef.current = at;
+    setNowMs(at);
     const claimedAt = new Date(at).toISOString();
     startBackground(() => {
       patchOptimisticConversation({
@@ -577,14 +675,32 @@ export function InboxWorkspace({
     });
     void touchConversationClaim(conversationId)
       .then((result) => {
+        if (result && "ok" in result && result.ok === false) {
+          claimTouchFailUntilRef.current = Date.now() + CLAIM_HEARTBEAT_MS;
+          return;
+        }
+        if ("skipped" in result && result.skipped) {
+          return;
+        }
         claimTouchFailUntilRef.current = 0;
+        // Giữ mốc client (không dùng server claimedAt) — countdown khớp TTL; server vẫn enforce.
+        const syncedAt = Date.now();
+        const syncedClaimedAt = new Date(syncedAt).toISOString();
+        setNowMs(syncedAt);
         startBackground(() => {
           patchOptimisticConversation({
             id: conversationId,
-            replyClaimedAt: result.claimedAt,
+            replyClaimedAt: syncedClaimedAt,
           });
         });
-        setNowMs(Date.now());
+        setClaimOverrides((prev) => {
+          const cur = prev[conversationId];
+          if (!cur?.replyStaffId) return prev;
+          return {
+            ...prev,
+            [conversationId]: { ...cur, replyClaimedAt: syncedClaimedAt },
+          };
+        });
       })
       .catch(() => {
         // Backoff 2 phút — khớp nhịp heartbeat, tránh spam khi action đang 500.
@@ -676,25 +792,42 @@ export function InboxWorkspace({
   }
 
   function claimReply() {
-    if (!selected || sendBusy || replyLockedByOther || nowMs === null) return;
-    const atMs = nowMs;
+    if (!selected || sendBusy || replyLockedByOther || claimBusy) return;
+    // Event handler — Date.now() (không dùng nowMs lệch tick; countdown 5:00).
+    // eslint-disable-next-line react-hooks/purity -- click handler, not render
+    const atMs = Date.now();
+    setNowMs(atMs);
     const claimedAt = new Date(atMs).toISOString();
     const conversationId = selected.id;
-    // Ghi đè claim ngay (ngoài useOptimistic) — không refresh RSC để tránh flash khóa lại composer.
+    setClaimBusyId(conversationId);
     setClaimOverrides((prev) => ({
       ...prev,
-      [conversationId]: {
+      [conversationId]: makeClaimOverride({
         replyStaffId: currentStaffId,
         replyStaffName: currentStaffName,
         replyClaimedAt: claimedAt,
-      },
+        nowMs: atMs,
+      }),
     }));
     setError(null);
 
     const claimPromise = (async () => {
       try {
         const result = await claimConversation(conversationId);
-        lastClaimTouchRef.current = atMs;
+        if (!result.ok) {
+          setClaimOverrides((prev) => {
+            if (!(conversationId in prev)) return prev;
+            const next = { ...prev };
+            delete next[conversationId];
+            return next;
+          });
+          setError(result.error);
+          return false;
+        }
+        const syncedAt = Date.now();
+        const syncedClaimedAt = new Date(syncedAt).toISOString();
+        setNowMs(syncedAt);
+        lastClaimTouchRef.current = syncedAt;
         claimTouchFailUntilRef.current = 0;
         for (const key of [...idleReleasedRef.current]) {
           if (key.startsWith(`${conversationId}:`)) {
@@ -703,18 +836,19 @@ export function InboxWorkspace({
         }
         setClaimOverrides((prev) => ({
           ...prev,
-          [conversationId]: {
+          [conversationId]: makeClaimOverride({
             replyStaffId: currentStaffId,
             replyStaffName: currentStaffName,
-            replyClaimedAt: result.claimedAt,
-          },
+            replyClaimedAt: syncedClaimedAt,
+            nowMs: syncedAt,
+          }),
         }));
         startBackground(() => {
           patchOptimisticConversation({
             id: conversationId,
             replyStaffId: currentStaffId,
             replyStaffName: currentStaffName,
-            replyClaimedAt: result.claimedAt,
+            replyClaimedAt: syncedClaimedAt,
           });
         });
         queueMicrotask(() => composerRef.current?.focus());
@@ -731,6 +865,7 @@ export function InboxWorkspace({
         return false;
       } finally {
         delete claimInFlightRef.current[conversationId];
+        setClaimBusyId((current) => (current === conversationId ? null : current));
       }
     })();
     claimInFlightRef.current[conversationId] = claimPromise;
@@ -753,20 +888,21 @@ export function InboxWorkspace({
   }
 
   function releaseReply() {
-    if (!selected || sendBusy || (!replyIsMine && !isAdmin)) return;
+    if (!selected || sendBusy || claimBusy || (!replyIsMine && !isAdmin)) return;
     const conversationId = selected.id;
-    const previous = {
+    const previous = makeClaimOverride({
       replyStaffId: selected.replyStaffId ?? null,
       replyStaffName: selected.replyStaffName ?? null,
       replyClaimedAt: selected.replyClaimedAt ?? null,
-    };
+    });
+    setClaimBusyId(conversationId);
     setClaimOverrides((prev) => ({
       ...prev,
-      [conversationId]: {
+      [conversationId]: makeClaimOverride({
         replyStaffId: null,
         replyStaffName: null,
         replyClaimedAt: null,
-      },
+      }),
     }));
     startBackground(async () => {
       patchOptimisticConversation({
@@ -776,7 +912,15 @@ export function InboxWorkspace({
         replyClaimedAt: null,
       });
       try {
-        await releaseConversation(conversationId);
+        const result = await releaseConversation(conversationId);
+        if (result && "ok" in result && result.ok === false) {
+          setClaimOverrides((prev) => ({
+            ...prev,
+            [conversationId]: previous,
+          }));
+          setError(result.error);
+          return;
+        }
       } catch (err) {
         setClaimOverrides((prev) => ({
           ...prev,
@@ -784,6 +928,8 @@ export function InboxWorkspace({
         }));
         const message = inboxActionErrorMessage(err, "Không nhả được hội thoại");
         if (message) setError(message);
+      } finally {
+        setClaimBusyId((current) => (current === conversationId ? null : current));
       }
     });
   }
@@ -801,7 +947,9 @@ export function InboxWorkspace({
       return;
     }
 
-    const atMs = nowMs;
+    // eslint-disable-next-line react-hooks/purity -- click/submit handler, not render
+    const atMs = Date.now();
+    setNowMs(atMs);
     const body = text.trim();
     const tempId = `temp-${crypto.randomUUID()}`;
     const sentAt = new Date(atMs).toISOString();
@@ -826,11 +974,12 @@ export function InboxWorkspace({
     if (!isAdmin) {
       setClaimOverrides((prev) => ({
         ...prev,
-        [conversationId]: {
+        [conversationId]: makeClaimOverride({
           replyStaffId: currentStaffId,
           replyStaffName: currentStaffName,
           replyClaimedAt: sentAt,
-        },
+          nowMs: atMs,
+        }),
       }));
     }
 
@@ -865,11 +1014,11 @@ export function InboxWorkspace({
       if (isAdmin && replyIsMine) {
         setClaimOverrides((prev) => ({
           ...prev,
-          [conversationId]: {
+          [conversationId]: makeClaimOverride({
             replyStaffId: null,
             replyStaffName: null,
             replyClaimedAt: null,
-          },
+          }),
         }));
       }
 
@@ -884,7 +1033,11 @@ export function InboxWorkspace({
           setError(result.error);
           return;
         }
-        setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
+        setLocalOutbound((prev) =>
+          prev.map((item) =>
+            item.id === tempId ? confirmLocalOutbound(item, result) : item,
+          ),
+        );
         notifyInboxNoticesRefresh();
         router.refresh();
         queueMicrotask(() => composerRef.current?.focus());
@@ -941,7 +1094,9 @@ export function InboxWorkspace({
   function sendImage(file: File) {
     if (!selected || sendBusy || !canCompose || nowMs === null) return;
 
-    const atMs = nowMs;
+    // eslint-disable-next-line react-hooks/purity -- click handler, not render
+    const atMs = Date.now();
+    setNowMs(atMs);
     const tempId = `temp-${crypto.randomUUID()}`;
     const sentAt = new Date(atMs).toISOString();
     const conversationId = selected.id;
@@ -969,11 +1124,12 @@ export function InboxWorkspace({
     if (!isAdmin) {
       setClaimOverrides((prev) => ({
         ...prev,
-        [conversationId]: {
+        [conversationId]: makeClaimOverride({
           replyStaffId: currentStaffId,
           replyStaffName: currentStaffName,
           replyClaimedAt: sentAt,
-        },
+          nowMs: atMs,
+        }),
       }));
     }
 
@@ -1009,11 +1165,11 @@ export function InboxWorkspace({
       if (isAdmin && replyIsMine) {
         setClaimOverrides((prev) => ({
           ...prev,
-          [conversationId]: {
+          [conversationId]: makeClaimOverride({
             replyStaffId: null,
             replyStaffName: null,
             replyClaimedAt: null,
-          },
+          }),
         }));
       }
 
@@ -1030,7 +1186,11 @@ export function InboxWorkspace({
           setError(result.error);
           return;
         }
-        setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
+        setLocalOutbound((prev) =>
+          prev.map((item) =>
+            item.id === tempId ? confirmLocalOutbound(item, result) : item,
+          ),
+        );
         delete pendingImageFilesRef.current[tempId];
         notifyInboxNoticesRefresh();
         router.refresh();
@@ -1352,11 +1512,11 @@ export function InboxWorkspace({
                   isAdmin ? null : (
                     <button
                       type="button"
-                      disabled={actionPending}
+                      disabled={actionPending || claimBusy}
                       onClick={claimReply}
                       className="btn-primary-sm"
                     >
-                      Tôi trả lời
+                      {claimBusy ? "Đang nhận…" : "Tôi trả lời"}
                     </button>
                   )
                 ) : replyIsMine ? (
@@ -1370,11 +1530,11 @@ export function InboxWorkspace({
                     ) : null}
                     <button
                       type="button"
-                      disabled={actionPending}
+                      disabled={actionPending || claimBusy}
                       onClick={releaseReply}
                       className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-surface-muted disabled:opacity-50"
                     >
-                      Nhả hội thoại
+                      {claimBusy ? "Đang cập nhật…" : "Nhả hội thoại"}
                     </button>
                   </div>
                 ) : isAdmin ? (
@@ -1384,11 +1544,11 @@ export function InboxWorkspace({
                     </span>
                     <button
                       type="button"
-                      disabled={actionPending}
+                      disabled={actionPending || claimBusy}
                       onClick={claimReply}
                       className="btn-primary-sm"
                     >
-                      Tiếp quản
+                      {claimBusy ? "Đang tiếp quản…" : "Tiếp quản"}
                     </button>
                   </div>
                 ) : (
@@ -1474,6 +1634,7 @@ export function InboxWorkspace({
                     ) : null}
                     <MessageBubble
                       message={item}
+                      showReceipt={receiptsEnabled}
                       canReact={Boolean(
                         (isAdmin || replyIsMine) &&
                           !item.id.startsWith("temp-") &&
@@ -1572,14 +1733,21 @@ export function InboxWorkspace({
                   disabled={!canCompose}
                   className="input-field-sm min-h-11 flex-1 resize-none py-2.5"
                 />
-                <button
-                  type="submit"
-                  disabled={!canCompose || sendBusy}
-                  aria-busy={sendBusy}
-                  className="btn-primary-sm shrink-0"
-                >
-                  {sendBusy ? "Đang gửi…" : "Gửi"}
-                </button>
+                {sendBusy || draft.trim() ? (
+                  <button
+                    type="submit"
+                    disabled={!canCompose || sendBusy}
+                    aria-busy={sendBusy}
+                    className="btn-primary-sm shrink-0"
+                  >
+                    {sendBusy ? "Đang gửi…" : "Gửi"}
+                  </button>
+                ) : (
+                  <LikeSendButton
+                    disabled={!canCompose}
+                    onSend={() => send(COMPOSER_LIKE_EMOJI)}
+                  />
+                )}
               </form>
             </footer>
           </>
@@ -1629,7 +1797,18 @@ export function InboxWorkspace({
                 <p className="mt-0.5 text-sm text-slate-600">{customer.phone ?? "Chưa có SĐT"}</p>
               </div>
             </div>
-            {customer.note ? (
+            {canUpdateCustomer ? (
+              <CustomerProfileForm
+                key={customer.id}
+                customer={customer}
+                onSaved={(patch) => {
+                  setCustomerPatches((prev) => ({
+                    ...prev,
+                    [customer.id]: { ...prev[customer.id], ...patch },
+                  }));
+                }}
+              />
+            ) : customer.note ? (
               <p className="mt-3 rounded-lg bg-surface-muted px-3 py-2.5 text-sm leading-6 text-slate-600">
                 {customer.note}
               </p>

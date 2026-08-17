@@ -145,3 +145,25 @@ export function ImagePickerButton({ disabled, onFile }: ImagePickerButtonProps) 
     </>
   );
 }
+
+export const COMPOSER_LIKE_EMOJI = "👍";
+
+type LikeSendButtonProps = {
+  disabled?: boolean;
+  onSend: () => void;
+};
+
+export function LikeSendButton({ disabled, onSend }: LikeSendButtonProps) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      aria-label="Gửi like"
+      title="Like"
+      onClick={onSend}
+      className="icon-btn shrink-0 text-lg disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {COMPOSER_LIKE_EMOJI}
+    </button>
+  );
+}
