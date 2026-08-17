@@ -93,7 +93,10 @@ async function updateCustomerSafe(
     if (!patch.avatarUrl || !isMissingDbColumnError(error, "avatarUrl")) {
       throw error;
     }
-    const { avatarUrl: _omit, ...rest } = patch;
+    const rest: { name?: string } = {};
+    if (patch.name) {
+      rest.name = patch.name;
+    }
     if (Object.keys(rest).length === 0) {
       return prisma.customer.findUniqueOrThrow({
         where: { id: customerId },
