@@ -18,6 +18,7 @@ import {
 import type { PendingMetaPages } from "@/lib/oauth-types";
 import { channelHasCredentials } from "@/lib/channels";
 import { prisma } from "@/backend/prisma";
+import { isMissingDbColumnError } from "@/backend/prisma-errors";
 import type { Channel } from "@/lib/types";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
 
@@ -283,13 +284,25 @@ export async function updateShopPolicyAction(
     return { error: parsed.error };
   }
 
-  await prisma.shop.update({
-    where: { id: session.shopId },
-    data: {
-      replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
-      maxUsersPerShop: parsed.policy.maxUsersPerShop,
-    },
-  });
+  try {
+    await prisma.shop.update({
+      where: { id: session.shopId },
+      data: {
+        replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
+        maxUsersPerShop: parsed.policy.maxUsersPerShop,
+      },
+    });
+  } catch (error) {
+    if (
+      isMissingDbColumnError(error, "replyClaimTtlMinutes") ||
+      isMissingDbColumnError(error, "maxUsersPerShop")
+    ) {
+      return {
+        error: "Cơ sở dữ liệu chưa migrate cột cấu hình shop. Chạy prisma migrate deploy rồi thử lại.",
+      };
+    }
+    throw error;
+  }
 
   await writeAudit({
     actor: session,

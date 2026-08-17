@@ -24,13 +24,17 @@ import {
 } from "@/app/(app)/actions";
 import {
   formatReplyClaimCountdown,
+  makeClaimOverride,
+  reconcileClaimOverride,
   replyClaimRemainingMs,
   REPLY_CLAIM_TTL_MS,
+  type ClaimOverride,
 } from "@/backend/reply-claim";
 import { replyClaimTtlMs, DEFAULT_REPLY_CLAIM_TTL_MINUTES } from "@/lib/shop-policy";
 import { ChannelBadge } from "@/components/ChannelBadge";
 import { CreateOrderForm } from "@/components/inbox/CreateOrderForm";
 import { CustomerAvatar } from "@/components/inbox/CustomerAvatar";
+import { CustomerProfileForm } from "@/components/inbox/CustomerProfileForm";
 import { MessageBubble } from "@/components/inbox/MessageBubble";
 import {
   COMPOSER_LIKE_EMOJI,
@@ -99,6 +103,7 @@ type InboxWorkspaceProps = {
   /** Kênh đã nối / có hội thoại — để hiện pill từ cấu hình, không hardcode. */
   activeChannels?: Channel[];
   initialConversationId?: string;
+  canUpdateCustomer?: boolean;
 };
 
 type ConversationPatch = {
@@ -113,11 +118,6 @@ type ConversationPatch = {
 };
 
 /** Claim giữ ngoài useOptimistic — tránh UI snap-back khi transition kết thúc trước RSC. */
-type ClaimOverride = {
-  replyStaffId: string | null;
-  replyStaffName: string | null;
-  replyClaimedAt: string | null;
-};
 
 const MOBILE_TABS: Array<{ id: MobilePane; label: string }> = [
   { id: "list", label: "Hội thoại" },
@@ -208,6 +208,7 @@ export function InboxWorkspace({
   replyClaimTtlMinutes = DEFAULT_REPLY_CLAIM_TTL_MINUTES,
   activeChannels,
   initialConversationId,
+  canUpdateCustomer = false,
 }: InboxWorkspaceProps) {
   const router = useRouter();
   const claimTtlMs = replyClaimTtlMs(replyClaimTtlMinutes) || REPLY_CLAIM_TTL_MS;
@@ -266,6 +267,9 @@ export function InboxWorkspace({
   >({});
   /** Claim bền ngoài useOptimistic — tránh khóa composer lại sau khi bấm "Tôi trả lời". */
   const [claimOverrides, setClaimOverrides] = useState<Record<string, ClaimOverride>>({});
+  /** Claim/takeover đang chờ server — nút Tiếp quản không được kẹt disabled. */
+  const [claimBusyId, setClaimBusyId] = useState<string | null>(null);
+  const [customerPatches, setCustomerPatches] = useState<Record<string, Partial<Customer>>>({});
   /** Tin đang gửi / thất bại — giữ bubble kiểu messenger (status + gửi lại). */
   const [localOutbound, setLocalOutbound] = useState<LocalOutboundMessage[]>([]);
   const [outboundSyncSource, setOutboundSyncSource] = useState(messages);
@@ -346,24 +350,17 @@ export function InboxWorkspace({
         changed = true;
         continue;
       }
-      const sameClaimant =
-        (server.replyStaffId ?? null) === (override.replyStaffId ?? null);
-      const serverCleared = !server.replyStaffId && !server.replyClaimedAt;
-      const overrideCleared = !override.replyStaffId && !override.replyClaimedAt;
-      if (overrideCleared && serverCleared) {
-        delete next[id];
-        changed = true;
-      } else if (serverCleared && !overrideCleared) {
-        // Server đã nhả (idle / người khác) — bỏ override claim còn sót.
-        delete next[id];
-        changed = true;
-      } else if (!sameClaimant) {
-        // Đổi người giữ hội thoại — tin server, bỏ override cũ.
+      if (
+        reconcileClaimOverride({
+          serverStaffId: server.replyStaffId,
+          serverClaimedAt: server.replyClaimedAt,
+          override,
+        }) === "drop"
+      ) {
         delete next[id];
         changed = true;
       }
-      // sameClaimant + còn claim: giữ override (mốc client) — không thay bằng replyClaimedAt
-      // server (lệch giờ / latency dễ làm TTL 5p hiện ~4:01 ngay sau soft-refresh).
+      // keep: sticky takeover/nhả, hoặc cùng người giữ — giữ mốc client (TTL).
     }
     if (changed) {
       setClaimOverrides(next);
@@ -390,7 +387,10 @@ export function InboxWorkspace({
   );
 
   const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
-  const customer = selected ? customerById(selected.customerId) : undefined;
+  const customerBase = selected ? customerById(selected.customerId) : undefined;
+  const customer = customerBase
+    ? { ...customerBase, ...customerPatches[customerBase.id] }
+    : undefined;
   const receiptMessages = applyMessageReceipts(messages, messageReceiptOverlay);
   const receiptLocalOutbound = applyMessageReceipts(localOutbound, messageReceiptOverlay);
   const thread = selected
@@ -423,6 +423,7 @@ export function InboxWorkspace({
   /** Admin trả lời mọi lúc; nhân viên phải claim còn hạn. Không khóa theo actionPending — claim/refresh không được làm ô nhập bị disabled. */
   const canCompose = isAdmin || replyIsMine;
   const sendBusy = actionPending;
+  const claimBusy = Boolean(selected && claimBusyId === selected.id);
   const claimCountdown =
     nowMs !== null && !isAdmin && claimActive && claimRemainingMs > 0
       ? formatReplyClaimCountdown(claimRemainingMs)
@@ -546,6 +547,10 @@ export function InboxWorkspace({
     if (nowMs === null) {
       return;
     }
+    if (isAdmin) {
+      // Admin không timeout claim (banner + takeover). Đừng xóa override local.
+      return;
+    }
     if (!selected?.replyStaffId || !selected.replyClaimedAt) {
       return;
     }
@@ -564,11 +569,12 @@ export function InboxWorkspace({
     queueMicrotask(() => {
       setClaimOverrides((prev) => ({
         ...prev,
-        [id]: {
+        [id]: makeClaimOverride({
           replyStaffId: null,
           replyStaffName: null,
           replyClaimedAt: null,
-        },
+          nowMs,
+        }),
       }));
     });
     startBackground(() => {
@@ -628,7 +634,12 @@ export function InboxWorkspace({
       patchOptimisticConversation({ id, unread: 0 });
     });
     void markConversationRead(id)
-      .then(() => {
+      .then((result) => {
+        if (result && "ok" in result && result.ok === false) {
+          // Giữ readMarkedRef — không retry spam POST khi action 500.
+          if (result.error) setError(result.error);
+          return;
+        }
         notifyInboxNoticesRefresh();
       })
       .catch((err) => {
@@ -663,7 +674,14 @@ export function InboxWorkspace({
       });
     });
     void touchConversationClaim(conversationId)
-      .then(() => {
+      .then((result) => {
+        if (result && "ok" in result && result.ok === false) {
+          claimTouchFailUntilRef.current = Date.now() + CLAIM_HEARTBEAT_MS;
+          return;
+        }
+        if ("skipped" in result && result.skipped) {
+          return;
+        }
         claimTouchFailUntilRef.current = 0;
         // Giữ mốc client (không dùng server claimedAt) — countdown khớp TTL; server vẫn enforce.
         const syncedAt = Date.now();
@@ -774,26 +792,38 @@ export function InboxWorkspace({
   }
 
   function claimReply() {
-    if (!selected || sendBusy || replyLockedByOther || nowMs === null) return;
-    // Date.now() — không dùng nowMs có thể lệch vài trăm ms; quan trọng hơn là tránh mốc cũ khi đồng hồ từng đóng băng.
+    if (!selected || sendBusy || replyLockedByOther || claimBusy) return;
+    // Event handler — Date.now() (không dùng nowMs lệch tick; countdown 5:00).
+    // eslint-disable-next-line react-hooks/purity -- click handler, not render
     const atMs = Date.now();
     setNowMs(atMs);
     const claimedAt = new Date(atMs).toISOString();
     const conversationId = selected.id;
-    // Ghi đè claim ngay (ngoài useOptimistic) — không refresh RSC để tránh flash khóa lại composer.
+    setClaimBusyId(conversationId);
     setClaimOverrides((prev) => ({
       ...prev,
-      [conversationId]: {
+      [conversationId]: makeClaimOverride({
         replyStaffId: currentStaffId,
         replyStaffName: currentStaffName,
         replyClaimedAt: claimedAt,
-      },
+        nowMs: atMs,
+      }),
     }));
     setError(null);
 
     const claimPromise = (async () => {
       try {
-        await claimConversation(conversationId);
+        const result = await claimConversation(conversationId);
+        if (!result.ok) {
+          setClaimOverrides((prev) => {
+            if (!(conversationId in prev)) return prev;
+            const next = { ...prev };
+            delete next[conversationId];
+            return next;
+          });
+          setError(result.error);
+          return false;
+        }
         const syncedAt = Date.now();
         const syncedClaimedAt = new Date(syncedAt).toISOString();
         setNowMs(syncedAt);
@@ -804,14 +834,14 @@ export function InboxWorkspace({
             idleReleasedRef.current.delete(key);
           }
         }
-        // Mốc client lúc xong action — countdown ~TTL đầy; không lấy server claimedAt (lệch giờ / latency audit).
         setClaimOverrides((prev) => ({
           ...prev,
-          [conversationId]: {
+          [conversationId]: makeClaimOverride({
             replyStaffId: currentStaffId,
             replyStaffName: currentStaffName,
             replyClaimedAt: syncedClaimedAt,
-          },
+            nowMs: syncedAt,
+          }),
         }));
         startBackground(() => {
           patchOptimisticConversation({
@@ -835,6 +865,7 @@ export function InboxWorkspace({
         return false;
       } finally {
         delete claimInFlightRef.current[conversationId];
+        setClaimBusyId((current) => (current === conversationId ? null : current));
       }
     })();
     claimInFlightRef.current[conversationId] = claimPromise;
@@ -857,20 +888,21 @@ export function InboxWorkspace({
   }
 
   function releaseReply() {
-    if (!selected || sendBusy || (!replyIsMine && !isAdmin)) return;
+    if (!selected || sendBusy || claimBusy || (!replyIsMine && !isAdmin)) return;
     const conversationId = selected.id;
-    const previous = {
+    const previous = makeClaimOverride({
       replyStaffId: selected.replyStaffId ?? null,
       replyStaffName: selected.replyStaffName ?? null,
       replyClaimedAt: selected.replyClaimedAt ?? null,
-    };
+    });
+    setClaimBusyId(conversationId);
     setClaimOverrides((prev) => ({
       ...prev,
-      [conversationId]: {
+      [conversationId]: makeClaimOverride({
         replyStaffId: null,
         replyStaffName: null,
         replyClaimedAt: null,
-      },
+      }),
     }));
     startBackground(async () => {
       patchOptimisticConversation({
@@ -880,7 +912,15 @@ export function InboxWorkspace({
         replyClaimedAt: null,
       });
       try {
-        await releaseConversation(conversationId);
+        const result = await releaseConversation(conversationId);
+        if (result && "ok" in result && result.ok === false) {
+          setClaimOverrides((prev) => ({
+            ...prev,
+            [conversationId]: previous,
+          }));
+          setError(result.error);
+          return;
+        }
       } catch (err) {
         setClaimOverrides((prev) => ({
           ...prev,
@@ -888,6 +928,8 @@ export function InboxWorkspace({
         }));
         const message = inboxActionErrorMessage(err, "Không nhả được hội thoại");
         if (message) setError(message);
+      } finally {
+        setClaimBusyId((current) => (current === conversationId ? null : current));
       }
     });
   }
@@ -905,6 +947,7 @@ export function InboxWorkspace({
       return;
     }
 
+    // eslint-disable-next-line react-hooks/purity -- click/submit handler, not render
     const atMs = Date.now();
     setNowMs(atMs);
     const body = text.trim();
@@ -931,11 +974,12 @@ export function InboxWorkspace({
     if (!isAdmin) {
       setClaimOverrides((prev) => ({
         ...prev,
-        [conversationId]: {
+        [conversationId]: makeClaimOverride({
           replyStaffId: currentStaffId,
           replyStaffName: currentStaffName,
           replyClaimedAt: sentAt,
-        },
+          nowMs: atMs,
+        }),
       }));
     }
 
@@ -970,11 +1014,11 @@ export function InboxWorkspace({
       if (isAdmin && replyIsMine) {
         setClaimOverrides((prev) => ({
           ...prev,
-          [conversationId]: {
+          [conversationId]: makeClaimOverride({
             replyStaffId: null,
             replyStaffName: null,
             replyClaimedAt: null,
-          },
+          }),
         }));
       }
 
@@ -1050,6 +1094,7 @@ export function InboxWorkspace({
   function sendImage(file: File) {
     if (!selected || sendBusy || !canCompose || nowMs === null) return;
 
+    // eslint-disable-next-line react-hooks/purity -- click handler, not render
     const atMs = Date.now();
     setNowMs(atMs);
     const tempId = `temp-${crypto.randomUUID()}`;
@@ -1079,11 +1124,12 @@ export function InboxWorkspace({
     if (!isAdmin) {
       setClaimOverrides((prev) => ({
         ...prev,
-        [conversationId]: {
+        [conversationId]: makeClaimOverride({
           replyStaffId: currentStaffId,
           replyStaffName: currentStaffName,
           replyClaimedAt: sentAt,
-        },
+          nowMs: atMs,
+        }),
       }));
     }
 
@@ -1119,11 +1165,11 @@ export function InboxWorkspace({
       if (isAdmin && replyIsMine) {
         setClaimOverrides((prev) => ({
           ...prev,
-          [conversationId]: {
+          [conversationId]: makeClaimOverride({
             replyStaffId: null,
             replyStaffName: null,
             replyClaimedAt: null,
-          },
+          }),
         }));
       }
 
@@ -1466,11 +1512,11 @@ export function InboxWorkspace({
                   isAdmin ? null : (
                     <button
                       type="button"
-                      disabled={actionPending}
+                      disabled={actionPending || claimBusy}
                       onClick={claimReply}
                       className="btn-primary-sm"
                     >
-                      Tôi trả lời
+                      {claimBusy ? "Đang nhận…" : "Tôi trả lời"}
                     </button>
                   )
                 ) : replyIsMine ? (
@@ -1484,11 +1530,11 @@ export function InboxWorkspace({
                     ) : null}
                     <button
                       type="button"
-                      disabled={actionPending}
+                      disabled={actionPending || claimBusy}
                       onClick={releaseReply}
                       className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-surface-muted disabled:opacity-50"
                     >
-                      Nhả hội thoại
+                      {claimBusy ? "Đang cập nhật…" : "Nhả hội thoại"}
                     </button>
                   </div>
                 ) : isAdmin ? (
@@ -1498,11 +1544,11 @@ export function InboxWorkspace({
                     </span>
                     <button
                       type="button"
-                      disabled={actionPending}
+                      disabled={actionPending || claimBusy}
                       onClick={claimReply}
                       className="btn-primary-sm"
                     >
-                      Tiếp quản
+                      {claimBusy ? "Đang tiếp quản…" : "Tiếp quản"}
                     </button>
                   </div>
                 ) : (
@@ -1751,7 +1797,18 @@ export function InboxWorkspace({
                 <p className="mt-0.5 text-sm text-slate-600">{customer.phone ?? "Chưa có SĐT"}</p>
               </div>
             </div>
-            {customer.note ? (
+            {canUpdateCustomer ? (
+              <CustomerProfileForm
+                key={customer.id}
+                customer={customer}
+                onSaved={(patch) => {
+                  setCustomerPatches((prev) => ({
+                    ...prev,
+                    [customer.id]: { ...prev[customer.id], ...patch },
+                  }));
+                }}
+              />
+            ) : customer.note ? (
               <p className="mt-3 rounded-lg bg-surface-muted px-3 py-2.5 text-sm leading-6 text-slate-600">
                 {customer.note}
               </p>

@@ -39,6 +39,10 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
       replyClaimTtlMinutes={data.replyClaimTtlMinutes ?? shop.replyClaimTtlMinutes}
       activeChannels={activeChannels}
       initialConversationId={initialConversationId}
+      canUpdateCustomer={
+        shop.permissions.includes(PERMISSION_CODES.customersUpdate) ||
+        shop.permissions.includes(PERMISSION_CODES.inboxReply)
+      }
     />
   );
 }

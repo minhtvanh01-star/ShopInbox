@@ -378,14 +378,27 @@ export async function getOrdersPageData() {
 export async function getCustomersPageData() {
   const session = await requireSession();
   const customers = await loadShopCustomers(session.shopId);
-  const counts = await prisma.customer.findMany({
-    where: { shopId: session.shopId },
-    select: {
-      id: true,
-      _count: { select: { orders: true } },
-    },
-  });
+  const [counts, latestConversations] = await Promise.all([
+    prisma.customer.findMany({
+      where: { shopId: session.shopId },
+      select: {
+        id: true,
+        _count: { select: { orders: true } },
+      },
+    }),
+    prisma.conversation.findMany({
+      where: { shopId: session.shopId },
+      select: { id: true, customerId: true },
+      orderBy: { lastAt: "desc" },
+    }),
+  ]);
   const orderCountById = new Map(counts.map((row) => [row.id, row._count.orders]));
+  const latestConversationByCustomer = new Map<string, string>();
+  for (const row of latestConversations) {
+    if (!latestConversationByCustomer.has(row.customerId)) {
+      latestConversationByCustomer.set(row.customerId, row.id);
+    }
+  }
 
   return customers.map((customer) => ({
     id: customer.id,
@@ -393,6 +406,7 @@ export async function getCustomersPageData() {
     phone: customer.phone,
     note: customer.note,
     orderCount: orderCountById.get(customer.id) ?? 0,
+    latestConversationId: latestConversationByCustomer.get(customer.id) ?? null,
   }));
 }
 

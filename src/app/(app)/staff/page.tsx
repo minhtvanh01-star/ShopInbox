@@ -1,5 +1,6 @@
 import { StaffManager } from "@/components/staff/StaffManager";
 import { hasPermission, requirePermission } from "@/backend/rbac";
+import { getShopPolicy } from "@/backend/shop-policy";
 import { formatTime } from "@/lib/labels";
 import { prisma } from "@/backend/prisma";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
@@ -8,7 +9,7 @@ export default async function StaffPage() {
   const session = await requirePermission(PERMISSION_CODES.staffRead);
   const canManage = await hasPermission(session, PERMISSION_CODES.staffManage);
 
-  const [members, roles, shop] = await Promise.all([
+  const [members, roles, policy] = await Promise.all([
     prisma.staff.findMany({
       where: { shopId: session.shopId },
       include: { role: true },
@@ -18,10 +19,7 @@ export default async function StaffPage() {
       where: { isActive: true },
       orderBy: { sortOrder: "asc" },
     }),
-    prisma.shop.findUniqueOrThrow({
-      where: { id: session.shopId },
-      select: { maxUsersPerShop: true },
-    }),
+    getShopPolicy(session.shopId),
   ]);
 
   return (
@@ -35,7 +33,7 @@ export default async function StaffPage() {
       </header>
       <StaffManager
         canManage={canManage}
-        maxUsersPerShop={shop.maxUsersPerShop}
+        maxUsersPerShop={policy.maxUsersPerShop}
         roles={roles.map((role) => ({ code: role.code, name: role.name }))}
         members={members.map((member) => ({
           id: member.id,

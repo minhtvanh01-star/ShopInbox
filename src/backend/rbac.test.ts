@@ -75,6 +75,7 @@ describe("rbac catalog", () => {
     expect(catalogHasPermission(ROLE_CODES.admin, PERMISSION_CODES.channelsConnect)).toBe(true);
     expect(catalogHasPermission(ROLE_CODES.manager, PERMISSION_CODES.auditRead)).toBe(true);
     expect(catalogHasPermission(ROLE_CODES.manager, PERMISSION_CODES.staffManage)).toBe(false);
+    expect(catalogHasPermission(ROLE_CODES.staff, PERMISSION_CODES.customersUpdate)).toBe(true);
   });
 
   it("hasPermissionCodes checks membership", () => {

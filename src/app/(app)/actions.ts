@@ -8,7 +8,12 @@ import {
   dispatchOutboundMessage,
   dispatchOutboundReaction,
 } from "@/backend/channel-send";
-import { isReplyClaimActive } from "@/backend/reply-claim";
+import {
+  evaluateReplyClaimAccess,
+  evaluateReplyClaimRelease,
+  evaluateReplyClaimTouch,
+  isReplyClaimActive,
+} from "@/backend/reply-claim";
 import { getShopPolicy } from "@/backend/shop-policy";
 import {
   hasPermission,
@@ -24,6 +29,7 @@ import { prisma } from "@/backend/prisma";
 import { isMissingDbColumnError } from "@/backend/prisma-errors";
 import { saveShopImageUpload } from "@/backend/upload-store";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { parseCustomerProfileInput } from "@/lib/customer-profile";
 import { replyClaimTtlMs } from "@/lib/shop-policy";
 import type { ConversationTag, OrderStatus } from "@/lib/types";
 import type { SessionPayload } from "@/backend/session-token";
@@ -113,163 +119,199 @@ async function assertCanReplyOrClaim(input: {
 }
 
 export async function claimConversation(conversationId: string) {
-  const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
-  const admin = await isInboxAdmin(session);
-  if (!conversationId) {
-    throw new Error("Thiếu hội thoại");
-  }
+  try {
+    const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
+    const admin = await isInboxAdmin(session);
+    if (!conversationId) {
+      throw new Error("Thiếu hội thoại");
+    }
 
-  const conversation = await prisma.conversation.findFirst({
-    where: { id: conversationId, shopId: session.shopId },
-    include: {
-      staff: { select: { name: true } },
-      customer: { select: { name: true } },
-    },
-  });
-  if (!conversation) {
-    throw new Error("Không tìm thấy hội thoại");
-  }
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, shopId: session.shopId },
+      include: {
+        staff: { select: { name: true } },
+        customer: { select: { name: true } },
+      },
+    });
+    if (!conversation) {
+      throw new Error("Không tìm thấy hội thoại");
+    }
 
-  const ttlMs = await shopClaimTtlMs(session.shopId);
+    const ttlMs = await shopClaimTtlMs(session.shopId);
+    const access = evaluateReplyClaimAccess({
+      isAdmin: admin,
+      currentStaffId: session.staffId,
+      holderStaffId: conversation.staffId,
+      holderName: conversation.staff?.name,
+      replyClaimedAt: conversation.replyClaimedAt,
+      ttlMs,
+    });
+    if (!access.ok) {
+      return { ok: false as const, error: access.error };
+    }
 
-  if (
-    !admin &&
-    conversation.staffId &&
-    conversation.staffId !== session.staffId &&
-    isReplyClaimActive(conversation.replyClaimedAt, Date.now(), ttlMs)
-  ) {
-    throw new Error(
-      `${conversation.staff?.name ?? "Nhân viên khác"} đang trả lời hội thoại này.`,
-    );
-  }
+    const claimedAt = new Date();
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        staffId: session.staffId,
+        replyClaimedAt: claimedAt,
+      },
+    });
 
-  const claimedAt = new Date();
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: {
+    // Không revalidatePath("/inbox"): dễ React #441; client giữ claimOverrides đến soft-refresh.
+
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.conversationClaim,
+      entityType: "Conversation",
+      entityId: conversationId,
+      metadata: {
+        actorName: session.name,
+        channel: conversation.channel,
+        customerName: conversation.customer.name,
+        reason:
+          admin && conversation.staffId && conversation.staffId !== session.staffId
+            ? "admin_takeover"
+            : "manual",
+      },
+    });
+
+    return {
+      ok: true as const,
+      claimedAt: claimedAt.toISOString(),
       staffId: session.staffId,
-      replyClaimedAt: claimedAt,
-    },
-  });
-
-  // Không revalidatePath("/inbox"): dễ React #441; client giữ claimOverrides đến soft-refresh.
-
-  await writeAudit({
-    actor: session,
-    action: AUDIT_ACTIONS.conversationClaim,
-    entityType: "Conversation",
-    entityId: conversationId,
-    metadata: {
-      actorName: session.name,
-      channel: conversation.channel,
-      customerName: conversation.customer.name,
-      reason: admin && conversation.staffId && conversation.staffId !== session.staffId
-        ? "admin_takeover"
-        : "manual",
-    },
-  });
-
-  return { ok: true as const, claimedAt: claimedAt.toISOString() };
+      staffName: session.name,
+    };
+  } catch (err) {
+    console.error("[claimConversation]", err);
+    return {
+      ok: false as const,
+      error: actionFailureMessage(err, "Không nhận được hội thoại"),
+    };
+  }
 }
 
 export async function releaseConversation(
   conversationId: string,
   reason: "manual" | "idle_timeout" = "manual",
 ) {
-  const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
-  const admin = await isInboxAdmin(session);
-  if (!conversationId) {
-    throw new Error("Thiếu hội thoại");
+  try {
+    const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
+    const admin = await isInboxAdmin(session);
+    if (!conversationId) {
+      throw new Error("Thiếu hội thoại");
+    }
+
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, shopId: session.shopId },
+      select: {
+        id: true,
+        staffId: true,
+        replyClaimedAt: true,
+        channel: true,
+        customer: { select: { name: true } },
+      },
+    });
+    if (!conversation) {
+      throw new Error("Không tìm thấy hội thoại");
+    }
+
+    const ttlMs = await shopClaimTtlMs(session.shopId);
+    const access = evaluateReplyClaimRelease({
+      isAdmin: admin,
+      currentStaffId: session.staffId,
+      holderStaffId: conversation.staffId,
+      replyClaimedAt: conversation.replyClaimedAt,
+      ttlMs,
+    });
+    if (!access.ok) {
+      return { ok: false as const, error: access.error };
+    }
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        staffId: null,
+        replyClaimedAt: null,
+      },
+    });
+
+    // Không revalidatePath — giống claim/send (tránh React #441); client refresh.
+
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.conversationRelease,
+      entityType: "Conversation",
+      entityId: conversationId,
+      metadata: {
+        actorName: session.name,
+        channel: conversation.channel,
+        customerName: conversation.customer.name,
+        reason: admin && conversation.staffId !== session.staffId ? `admin_${reason}` : reason,
+      },
+    });
+
+    return { ok: true as const };
+  } catch (err) {
+    console.error("[releaseConversation]", err);
+    return {
+      ok: false as const,
+      error: actionFailureMessage(err, "Không nhả được hội thoại"),
+    };
   }
-
-  const conversation = await prisma.conversation.findFirst({
-    where: { id: conversationId, shopId: session.shopId },
-    select: {
-      id: true,
-      staffId: true,
-      replyClaimedAt: true,
-      channel: true,
-      customer: { select: { name: true } },
-    },
-  });
-  if (!conversation) {
-    throw new Error("Không tìm thấy hội thoại");
-  }
-
-  const ttlMs = await shopClaimTtlMs(session.shopId);
-
-  if (
-    !admin &&
-    conversation.staffId &&
-    conversation.staffId !== session.staffId &&
-    isReplyClaimActive(conversation.replyClaimedAt, Date.now(), ttlMs)
-  ) {
-    throw new Error("Chỉ người đang trả lời mới nhả được hội thoại.");
-  }
-
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: {
-      staffId: null,
-      replyClaimedAt: null,
-    },
-  });
-
-  // Không revalidatePath — giống claim/send (tránh React #441); client refresh.
-
-  await writeAudit({
-    actor: session,
-    action: AUDIT_ACTIONS.conversationRelease,
-    entityType: "Conversation",
-    entityId: conversationId,
-    metadata: {
-      actorName: session.name,
-      channel: conversation.channel,
-      customerName: conversation.customer.name,
-      reason: admin && conversation.staffId !== session.staffId ? `admin_${reason}` : reason,
-    },
-  });
-
-  return { ok: true as const };
 }
 
 /** Gia hạn claim khi đang gõ / còn dùng — tránh timeout vì idle. */
 export async function touchConversationClaim(conversationId: string) {
-  const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
-  const admin = await isInboxAdmin(session);
-  if (!conversationId) {
-    throw new Error("Thiếu hội thoại");
+  try {
+    const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
+    const admin = await isInboxAdmin(session);
+    if (!conversationId) {
+      throw new Error("Thiếu hội thoại");
+    }
+
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, shopId: session.shopId },
+      select: { id: true, staffId: true, replyClaimedAt: true },
+    });
+    if (!conversation) {
+      throw new Error("Không tìm thấy hội thoại");
+    }
+
+    const ttlMs = await shopClaimTtlMs(session.shopId);
+    const access = evaluateReplyClaimTouch({
+      isAdmin: admin,
+      currentStaffId: session.staffId,
+      holderStaffId: conversation.staffId,
+      replyClaimedAt: conversation.replyClaimedAt,
+      ttlMs,
+    });
+    if (!access.ok) {
+      return { ok: false as const, error: access.error };
+    }
+    if (!access.renew) {
+      return { ok: true as const, claimedAt: null, skipped: true as const };
+    }
+
+    const claimedAt = new Date();
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: {
+        staffId: session.staffId,
+        replyClaimedAt: claimedAt,
+      },
+    });
+
+    // Không revalidatePath — tránh nhảy UI khi đang gõ; client tự cập nhật claimedAt.
+    return { ok: true as const, claimedAt: claimedAt.toISOString() };
+  } catch (err) {
+    console.error("[touchConversationClaim]", err);
+    return {
+      ok: false as const,
+      error: actionFailureMessage(err, "Không gia hạn được hội thoại"),
+    };
   }
-
-  const conversation = await prisma.conversation.findFirst({
-    where: { id: conversationId, shopId: session.shopId },
-    select: { id: true, staffId: true, replyClaimedAt: true },
-  });
-  if (!conversation) {
-    throw new Error("Không tìm thấy hội thoại");
-  }
-
-  const ttlMs = await shopClaimTtlMs(session.shopId);
-
-  if (
-    !admin &&
-    (conversation.staffId !== session.staffId ||
-      !isReplyClaimActive(conversation.replyClaimedAt, Date.now(), ttlMs))
-  ) {
-    throw new Error("Bạn không còn giữ hội thoại này.");
-  }
-
-  const claimedAt = new Date();
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: {
-      staffId: session.staffId,
-      replyClaimedAt: claimedAt,
-    },
-  });
-
-  // Không revalidatePath — tránh nhảy UI khi đang gõ; client tự cập nhật claimedAt.
-  return { ok: true as const, claimedAt: claimedAt.toISOString() };
 }
 
 export async function sendMessage(conversationId: string, text: string) {
@@ -593,31 +635,39 @@ export async function reactToMessage(messageId: string, emoji: string) {
 }
 
 export async function markConversationRead(conversationId: string) {
-  const session = await requireActionPermission(PERMISSION_CODES.inboxRead);
-  if (!conversationId) {
-    throw new Error("Thiếu hội thoại");
-  }
+  try {
+    const session = await requireActionPermission(PERMISSION_CODES.inboxRead);
+    if (!conversationId) {
+      throw new Error("Thiếu hội thoại");
+    }
 
-  const conversation = await prisma.conversation.findFirst({
-    where: { id: conversationId, shopId: session.shopId },
-    select: { id: true, unread: true },
-  });
-  if (!conversation) {
-    throw new Error("Không tìm thấy hội thoại");
-  }
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, shopId: session.shopId },
+      select: { id: true, unread: true },
+    });
+    if (!conversation) {
+      throw new Error("Không tìm thấy hội thoại");
+    }
 
-  if (conversation.unread === 0) {
+    if (conversation.unread === 0) {
+      return { ok: true as const };
+    }
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { unread: 0 },
+    });
+
+    // Không revalidatePath("/inbox"): dễ React #441 trên composer.
+    // Client giữ read-receipt local + notifyInboxNoticesRefresh cho Sidebar.
     return { ok: true as const };
+  } catch (err) {
+    console.error("[markConversationRead]", err);
+    return {
+      ok: false as const,
+      error: actionFailureMessage(err, "Không đánh dấu đã đọc được"),
+    };
   }
-
-  await prisma.conversation.update({
-    where: { id: conversationId },
-    data: { unread: 0 },
-  });
-
-  // Không revalidatePath("/inbox"): dễ React #441 trên composer.
-  // Client giữ read-receipt local + notifyInboxNoticesRefresh cho Sidebar.
-  return { ok: true as const };
 }
 
 const RECEIPT_POLL_LIMIT = 80;
@@ -715,6 +765,59 @@ export async function updateConversationTag(
   });
 
   return { ok: true as const };
+}
+
+export async function updateCustomerProfile(input: {
+  customerId: string;
+  phone?: string;
+  address?: string;
+  note?: string;
+}) {
+  const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
+
+  const customerId = input.customerId.trim();
+  if (!customerId) {
+    return { ok: false as const, error: "Thiếu khách hàng." };
+  }
+
+  const parsed = parseCustomerProfileInput(input);
+  if (!parsed.ok) {
+    return { ok: false as const, error: parsed.error };
+  }
+
+  const existing = await prisma.customer.findFirst({
+    where: { id: customerId, shopId: session.shopId },
+    select: { id: true },
+  });
+  if (!existing) {
+    return { ok: false as const, error: "Không tìm thấy khách hàng." };
+  }
+
+  const updated = await prisma.customer.update({
+    where: { id: customerId },
+    data: parsed.profile,
+    select: { phone: true, address: true, note: true },
+  });
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.customerUpdate,
+    entityType: "Customer",
+    entityId: customerId,
+    metadata: { fields: ["phone", "address", "note"] },
+  });
+
+  revalidatePath("/inbox");
+  revalidatePath("/customers");
+
+  return {
+    ok: true as const,
+    customer: {
+      phone: updated.phone ?? undefined,
+      address: updated.address ?? undefined,
+      note: updated.note ?? undefined,
+    },
+  };
 }
 
 export async function createOrder(input: {
