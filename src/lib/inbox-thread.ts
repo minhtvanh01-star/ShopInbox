@@ -3,7 +3,7 @@ import type { Message, MessageLocalStatus } from "@/lib/types";
 export type { MessageLocalStatus };
 
 export type LocalOutboundMessage = Message & {
-  localStatus: MessageLocalStatus;
+  localStatus?: MessageLocalStatus;
 };
 
 /** Khóa ngày lịch VN `YYYY-MM-DD` để nhóm tin theo ngày. */

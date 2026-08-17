@@ -13,6 +13,7 @@ import {
 import { useRouter } from "next/navigation";
 import {
   claimConversation,
+  getConversationReceipts,
   markConversationRead,
   reactToMessage,
   releaseConversation,
@@ -32,8 +33,10 @@ import { CreateOrderForm } from "@/components/inbox/CreateOrderForm";
 import { CustomerAvatar } from "@/components/inbox/CustomerAvatar";
 import { MessageBubble } from "@/components/inbox/MessageBubble";
 import {
+  COMPOSER_LIKE_EMOJI,
   EmojiPickerButton,
   ImagePickerButton,
+  LikeSendButton,
 } from "@/components/inbox/MessageComposerTools";
 import {
   chatDayKey,
@@ -41,6 +44,11 @@ import {
   pruneSyncedOutbound,
   type LocalOutboundMessage,
 } from "@/lib/inbox-thread";
+import {
+  applyMessageReceipts,
+  mergeReceiptOverlay,
+  type MessageReceiptPatch,
+} from "@/lib/message-receipt";
 import {
   CHANNEL_LABEL,
   TAG_LABEL,
@@ -124,6 +132,8 @@ const CLAIM_TOUCH_MIN_INTERVAL_MS = 45_000;
 const CLAIM_HEARTBEAT_MS = 2 * 60 * 1000;
 /** Soft sync gần realtime hơn (không WebSocket) — giống messenger poll nhẹ. */
 const INBOX_SOFT_REFRESH_MS = 8_000;
+/** Tick đã xem: poll nhỏ (không RSC) khi đang mở thread Meta. */
+const RECEIPT_POLL_MS = 2_500;
 
 /**
  * Next/React production ẩn lỗi Server Components thành minified #441.
@@ -148,6 +158,41 @@ function inboxActionErrorMessage(err: unknown, fallback: string) {
     return null;
   }
   return raw.trim() || fallback;
+}
+
+type ConfirmedOutboundResult = {
+  id: string;
+  conversationId: string;
+  sender: Message["sender"];
+  text: string;
+  createdAt: string;
+  attachmentType: string | null;
+  attachmentUrl: string | null;
+  attachmentName: string | null;
+  externalMessageId: string | null;
+  deliveredAt: string | null;
+  readAt: string | null;
+};
+
+function confirmLocalOutbound(
+  item: LocalOutboundMessage,
+  result: ConfirmedOutboundResult,
+): LocalOutboundMessage {
+  return {
+    ...item,
+    id: result.id,
+    conversationId: result.conversationId,
+    sender: result.sender,
+    text: result.text,
+    createdAt: result.createdAt,
+    attachmentType: result.attachmentType,
+    attachmentUrl: result.attachmentUrl,
+    attachmentName: result.attachmentName,
+    externalMessageId: result.externalMessageId,
+    deliveredAt: result.deliveredAt,
+    readAt: result.readAt,
+    localStatus: undefined,
+  };
 }
 
 export function InboxWorkspace({
@@ -215,6 +260,10 @@ export function InboxWorkspace({
   const pendingImageFilesRef = useRef<Record<string, File>>({});
   /** id → lastAt lúc đánh dấu đã đọc — giữ badge=0 đến khi server/sync hoặc có tin mới. */
   const [readReceipts, setReadReceipts] = useState<Record<string, string>>({});
+  /** Meta readAt/deliveredAt poll — lật tick không đợi router.refresh. */
+  const [messageReceiptOverlay, setMessageReceiptOverlay] = useState<
+    Record<string, MessageReceiptPatch>
+  >({});
   /** Claim bền ngoài useOptimistic — tránh khóa composer lại sau khi bấm "Tôi trả lời". */
   const [claimOverrides, setClaimOverrides] = useState<Record<string, ClaimOverride>>({});
   /** Tin đang gửi / thất bại — giữ bubble kiểu messenger (status + gửi lại). */
@@ -304,15 +353,17 @@ export function InboxWorkspace({
       if (overrideCleared && serverCleared) {
         delete next[id];
         changed = true;
-      } else if (
-        sameClaimant &&
-        override.replyStaffId &&
-        server.replyStaffId &&
-        server.replyClaimedAt
-      ) {
+      } else if (serverCleared && !overrideCleared) {
+        // Server đã nhả (idle / người khác) — bỏ override claim còn sót.
+        delete next[id];
+        changed = true;
+      } else if (!sameClaimant) {
+        // Đổi người giữ hội thoại — tin server, bỏ override cũ.
         delete next[id];
         changed = true;
       }
+      // sameClaimant + còn claim: giữ override (mốc client) — không thay bằng replyClaimedAt
+      // server (lệch giờ / latency dễ làm TTL 5p hiện ~4:01 ngay sau soft-refresh).
     }
     if (changed) {
       setClaimOverrides(next);
@@ -340,9 +391,13 @@ export function InboxWorkspace({
 
   const selected = visible.find((item) => item.id === selectedId) ?? visible[0];
   const customer = selected ? customerById(selected.customerId) : undefined;
+  const receiptMessages = applyMessageReceipts(messages, messageReceiptOverlay);
+  const receiptLocalOutbound = applyMessageReceipts(localOutbound, messageReceiptOverlay);
   const thread = selected
-    ? mergeConversationThread(messages, localOutbound, selected.id)
+    ? mergeConversationThread(receiptMessages, receiptLocalOutbound, selected.id)
     : [];
+  const receiptsEnabled =
+    selected?.channel === "facebook" || selected?.channel === "instagram";
   const customerOrders = customer
     ? orders.filter((item) => item.customerId === customer.id)
     : [];
@@ -402,10 +457,16 @@ export function InboxWorkspace({
   }
 
   useEffect(() => {
-    const frame = requestAnimationFrame(() => {
-      setNowMs(Date.now());
-    });
-    return () => cancelAnimationFrame(frame);
+    // Luôn tick đồng hồ client — không chỉ khi đã có claim. Nếu chỉ set 1 lần lúc mount
+    // rồi đợi có claim mới interval, claim/send sẽ đóng dấu replyClaimedAt bằng nowMs cũ
+    // → countdown nhảy ~1 phút (vd. TTL 5p hiện 4:01).
+    const tick = () => setNowMs(Date.now());
+    const frame = requestAnimationFrame(tick);
+    const timer = window.setInterval(tick, 1000);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearInterval(timer);
+    };
   }, []);
 
   // Thu hồi blob / file tạm khi local outbound bị xóa (gửi OK, prune, hủy).
@@ -447,15 +508,39 @@ export function InboxWorkspace({
   }, [router]);
 
   useEffect(() => {
-    const hasClaimFields = conversationsView.some(
-      (item) => Boolean(item.replyStaffId && item.replyClaimedAt),
-    );
-    if (!hasClaimFields) {
-      return;
-    }
-    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, [conversationsView]);
+    if (!selected?.id) return;
+    if (selected.channel !== "facebook" && selected.channel !== "instagram") return;
+    const conversationId = selected.id;
+    let cancelled = false;
+    let inFlight = false;
+
+    const poll = async () => {
+      if (cancelled || inFlight) return;
+      if (document.visibilityState !== "visible") return;
+      inFlight = true;
+      try {
+        const result = await getConversationReceipts(conversationId);
+        if (cancelled || !result.ok) return;
+        setMessageReceiptOverlay((prev) => mergeReceiptOverlay(prev, result.receipts));
+      } catch {
+        // poll im lặng — tick sẽ bắt kịp lần sau
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(poll, RECEIPT_POLL_MS);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void poll();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [selected?.id, selected?.channel]);
 
   useEffect(() => {
     if (nowMs === null) {
@@ -558,7 +643,8 @@ export function InboxWorkspace({
     if (nowMs === null && options?.atMs === undefined) {
       return;
     }
-    const at = options?.atMs ?? nowMs!;
+    // Luôn Date.now() khi không truyền atMs — tránh đóng dấu claim bằng nowMs lệch 1 tick.
+    const at = options?.atMs ?? Date.now();
     if (at < claimTouchFailUntilRef.current) {
       return;
     }
@@ -566,6 +652,7 @@ export function InboxWorkspace({
       return;
     }
     lastClaimTouchRef.current = at;
+    setNowMs(at);
     const claimedAt = new Date(at).toISOString();
     startBackground(() => {
       patchOptimisticConversation({
@@ -576,15 +663,26 @@ export function InboxWorkspace({
       });
     });
     void touchConversationClaim(conversationId)
-      .then((result) => {
+      .then(() => {
         claimTouchFailUntilRef.current = 0;
+        // Giữ mốc client (không dùng server claimedAt) — countdown khớp TTL; server vẫn enforce.
+        const syncedAt = Date.now();
+        const syncedClaimedAt = new Date(syncedAt).toISOString();
+        setNowMs(syncedAt);
         startBackground(() => {
           patchOptimisticConversation({
             id: conversationId,
-            replyClaimedAt: result.claimedAt,
+            replyClaimedAt: syncedClaimedAt,
           });
         });
-        setNowMs(Date.now());
+        setClaimOverrides((prev) => {
+          const cur = prev[conversationId];
+          if (!cur?.replyStaffId) return prev;
+          return {
+            ...prev,
+            [conversationId]: { ...cur, replyClaimedAt: syncedClaimedAt },
+          };
+        });
       })
       .catch(() => {
         // Backoff 2 phút — khớp nhịp heartbeat, tránh spam khi action đang 500.
@@ -677,7 +775,9 @@ export function InboxWorkspace({
 
   function claimReply() {
     if (!selected || sendBusy || replyLockedByOther || nowMs === null) return;
-    const atMs = nowMs;
+    // Date.now() — không dùng nowMs có thể lệch vài trăm ms; quan trọng hơn là tránh mốc cũ khi đồng hồ từng đóng băng.
+    const atMs = Date.now();
+    setNowMs(atMs);
     const claimedAt = new Date(atMs).toISOString();
     const conversationId = selected.id;
     // Ghi đè claim ngay (ngoài useOptimistic) — không refresh RSC để tránh flash khóa lại composer.
@@ -693,20 +793,24 @@ export function InboxWorkspace({
 
     const claimPromise = (async () => {
       try {
-        const result = await claimConversation(conversationId);
-        lastClaimTouchRef.current = atMs;
+        await claimConversation(conversationId);
+        const syncedAt = Date.now();
+        const syncedClaimedAt = new Date(syncedAt).toISOString();
+        setNowMs(syncedAt);
+        lastClaimTouchRef.current = syncedAt;
         claimTouchFailUntilRef.current = 0;
         for (const key of [...idleReleasedRef.current]) {
           if (key.startsWith(`${conversationId}:`)) {
             idleReleasedRef.current.delete(key);
           }
         }
+        // Mốc client lúc xong action — countdown ~TTL đầy; không lấy server claimedAt (lệch giờ / latency audit).
         setClaimOverrides((prev) => ({
           ...prev,
           [conversationId]: {
             replyStaffId: currentStaffId,
             replyStaffName: currentStaffName,
-            replyClaimedAt: result.claimedAt,
+            replyClaimedAt: syncedClaimedAt,
           },
         }));
         startBackground(() => {
@@ -714,7 +818,7 @@ export function InboxWorkspace({
             id: conversationId,
             replyStaffId: currentStaffId,
             replyStaffName: currentStaffName,
-            replyClaimedAt: result.claimedAt,
+            replyClaimedAt: syncedClaimedAt,
           });
         });
         queueMicrotask(() => composerRef.current?.focus());
@@ -801,7 +905,8 @@ export function InboxWorkspace({
       return;
     }
 
-    const atMs = nowMs;
+    const atMs = Date.now();
+    setNowMs(atMs);
     const body = text.trim();
     const tempId = `temp-${crypto.randomUUID()}`;
     const sentAt = new Date(atMs).toISOString();
@@ -884,7 +989,11 @@ export function InboxWorkspace({
           setError(result.error);
           return;
         }
-        setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
+        setLocalOutbound((prev) =>
+          prev.map((item) =>
+            item.id === tempId ? confirmLocalOutbound(item, result) : item,
+          ),
+        );
         notifyInboxNoticesRefresh();
         router.refresh();
         queueMicrotask(() => composerRef.current?.focus());
@@ -941,7 +1050,8 @@ export function InboxWorkspace({
   function sendImage(file: File) {
     if (!selected || sendBusy || !canCompose || nowMs === null) return;
 
-    const atMs = nowMs;
+    const atMs = Date.now();
+    setNowMs(atMs);
     const tempId = `temp-${crypto.randomUUID()}`;
     const sentAt = new Date(atMs).toISOString();
     const conversationId = selected.id;
@@ -1030,7 +1140,11 @@ export function InboxWorkspace({
           setError(result.error);
           return;
         }
-        setLocalOutbound((prev) => prev.filter((item) => item.id !== tempId));
+        setLocalOutbound((prev) =>
+          prev.map((item) =>
+            item.id === tempId ? confirmLocalOutbound(item, result) : item,
+          ),
+        );
         delete pendingImageFilesRef.current[tempId];
         notifyInboxNoticesRefresh();
         router.refresh();
@@ -1474,6 +1588,7 @@ export function InboxWorkspace({
                     ) : null}
                     <MessageBubble
                       message={item}
+                      showReceipt={receiptsEnabled}
                       canReact={Boolean(
                         (isAdmin || replyIsMine) &&
                           !item.id.startsWith("temp-") &&
@@ -1572,14 +1687,21 @@ export function InboxWorkspace({
                   disabled={!canCompose}
                   className="input-field-sm min-h-11 flex-1 resize-none py-2.5"
                 />
-                <button
-                  type="submit"
-                  disabled={!canCompose || sendBusy}
-                  aria-busy={sendBusy}
-                  className="btn-primary-sm shrink-0"
-                >
-                  {sendBusy ? "Đang gửi…" : "Gửi"}
-                </button>
+                {sendBusy || draft.trim() ? (
+                  <button
+                    type="submit"
+                    disabled={!canCompose || sendBusy}
+                    aria-busy={sendBusy}
+                    className="btn-primary-sm shrink-0"
+                  >
+                    {sendBusy ? "Đang gửi…" : "Gửi"}
+                  </button>
+                ) : (
+                  <LikeSendButton
+                    disabled={!canCompose}
+                    onSend={() => send(COMPOSER_LIKE_EMOJI)}
+                  />
+                )}
               </form>
             </footer>
           </>

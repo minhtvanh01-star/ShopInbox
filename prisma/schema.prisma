@@ -257,6 +257,10 @@ model Message {
   attachmentUrl      String?
   attachmentName     String?
   externalMessageId  String?
+  /** Meta delivery watermark — khách đã nhận tin shop. */
+  deliveredAt        DateTime?
+  /** Meta read watermark — khách đã xem tin shop. */
+  readAt             DateTime?
   createdAt          DateTime          @default(now())
   reactions          MessageReaction[]
 

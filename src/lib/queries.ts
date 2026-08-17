@@ -82,6 +82,55 @@ async function loadShopCustomers(shopId: string): Promise<CustomerRow[]> {
   }
 }
 
+type MessageRow = {
+  id: string;
+  conversationId: string;
+  sender: Message["sender"];
+  text: string;
+  createdAt: Date;
+  attachmentType: string | null;
+  attachmentUrl: string | null;
+  attachmentName: string | null;
+  externalMessageId: string | null;
+  deliveredAt?: Date | null;
+  readAt?: Date | null;
+};
+
+async function loadShopMessages(shopId: string): Promise<MessageRow[]> {
+  try {
+    return await prisma.message.findMany({
+      where: { shopId },
+      orderBy: { createdAt: "asc" },
+    });
+  } catch (error) {
+    if (
+      !isMissingDbColumnError(error, "deliveredAt") &&
+      !isMissingDbColumnError(error, "readAt")
+    ) {
+      throw error;
+    }
+    console.error(
+      "[loadShopMessages] deliveredAt/readAt missing — loading without receipts",
+      error,
+    );
+    return prisma.message.findMany({
+      where: { shopId },
+      select: {
+        id: true,
+        conversationId: true,
+        sender: true,
+        text: true,
+        createdAt: true,
+        attachmentType: true,
+        attachmentUrl: true,
+        attachmentName: true,
+        externalMessageId: true,
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+}
+
 export async function getShopContext(): Promise<ShopContext> {
   const session = await requireSession();
   const [staff, policy] = await Promise.all([
@@ -119,10 +168,7 @@ export async function getInboxData() {
       include: { staff: { select: { id: true, name: true } } },
       orderBy: { lastAt: "desc" },
     }),
-    prisma.message.findMany({
-      where: { shopId },
-      orderBy: { createdAt: "asc" },
-    }),
+    loadShopMessages(shopId),
     loadShopCustomers(shopId),
     prisma.order.findMany({
       where: { shopId },
@@ -202,6 +248,8 @@ export async function getInboxData() {
         attachmentUrl: item.attachmentUrl,
         attachmentName: item.attachmentName,
         externalMessageId: item.externalMessageId,
+        deliveredAt: item.deliveredAt ? toIso(item.deliveredAt) : null,
+        readAt: item.readAt ? toIso(item.readAt) : null,
         reactions: reactionsByMessage.get(item.id) ?? [],
       }),
     ),

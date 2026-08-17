@@ -378,6 +378,150 @@ export async function touchChannelWebhook(channel: Channel, externalAccountId: s
   return result.count;
 }
 
+/**
+ * Meta `message_deliveries` / `message_reads`: đánh dấu tin shop outbound
+ * có createdAt <= watermark (và/hoặc theo mid) là đã nhận / đã xem.
+ */
+export async function applyMetaMessageWatermark(input: {
+  channel: Channel;
+  externalAccountId: string;
+  customerExternalId: string;
+  watermarkMs: number;
+  kind: "delivered" | "read";
+  mids?: string[];
+}) {
+  if (!Number.isFinite(input.watermarkMs) || input.watermarkMs <= 0) {
+    return { ok: false as const, reason: "invalid_watermark" as const, updated: 0 };
+  }
+
+  if (input.customerExternalId === input.externalAccountId) {
+    return { ok: false as const, reason: "page_as_reader" as const, updated: 0 };
+  }
+
+  const account = await findChannelAccount(input.channel, input.externalAccountId);
+  if (!account) {
+    return { ok: false as const, reason: "channel_not_found" as const, updated: 0 };
+  }
+
+  const pageIds = [account.pageId, account.linkedPageId, account.oaId].filter(
+    (id): id is string => Boolean(id),
+  );
+  if (pageIds.includes(input.customerExternalId)) {
+    return { ok: false as const, reason: "page_as_reader" as const, updated: 0 };
+  }
+
+  const identity = await prisma.customerIdentity.findFirst({
+    where: {
+      channel: input.channel,
+      externalId: input.customerExternalId,
+      customer: { shopId: account.shopId },
+    },
+    select: { customerId: true },
+  });
+  if (!identity) {
+    return { ok: false as const, reason: "customer_not_found" as const, updated: 0 };
+  }
+
+  const conversation = await prisma.conversation.findFirst({
+    where: {
+      shopId: account.shopId,
+      customerId: identity.customerId,
+      channel: input.channel,
+    },
+    orderBy: { lastAt: "desc" },
+    select: { id: true },
+  });
+  if (!conversation) {
+    return { ok: false as const, reason: "conversation_not_found" as const, updated: 0 };
+  }
+
+  const watermarkAt = new Date(input.watermarkMs);
+  const mids = (input.mids ?? []).filter(Boolean);
+  const baseWhere = {
+    shopId: account.shopId,
+    conversationId: conversation.id,
+    sender: "shop" as const,
+  };
+
+  let updated = 0;
+
+  try {
+    if (input.kind === "delivered") {
+      const byWatermark = await prisma.message.updateMany({
+        where: {
+          ...baseWhere,
+          createdAt: { lte: watermarkAt },
+          deliveredAt: null,
+        },
+        data: { deliveredAt: watermarkAt },
+      });
+      updated += byWatermark.count;
+
+      if (mids.length > 0) {
+        const byMid = await prisma.message.updateMany({
+          where: {
+            ...baseWhere,
+            externalMessageId: { in: mids },
+            deliveredAt: null,
+          },
+          data: { deliveredAt: watermarkAt },
+        });
+        updated += byMid.count;
+      }
+    } else {
+      const deliverMissing = await prisma.message.updateMany({
+        where: {
+          ...baseWhere,
+          createdAt: { lte: watermarkAt },
+          deliveredAt: null,
+        },
+        data: { deliveredAt: watermarkAt },
+      });
+      updated += deliverMissing.count;
+
+      const readByWatermark = await prisma.message.updateMany({
+        where: {
+          ...baseWhere,
+          createdAt: { lte: watermarkAt },
+          readAt: null,
+        },
+        data: { readAt: watermarkAt },
+      });
+      updated += readByWatermark.count;
+
+      if (mids.length > 0) {
+        const deliverByMid = await prisma.message.updateMany({
+          where: {
+            ...baseWhere,
+            externalMessageId: { in: mids },
+            deliveredAt: null,
+          },
+          data: { deliveredAt: watermarkAt },
+        });
+        updated += deliverByMid.count;
+
+        const readByMid = await prisma.message.updateMany({
+          where: {
+            ...baseWhere,
+            externalMessageId: { in: mids },
+            readAt: null,
+          },
+          data: { readAt: watermarkAt },
+        });
+        updated += readByMid.count;
+      }
+    }
+  } catch (error) {
+    if (isMissingDbColumnError(error, "deliveredAt") || isMissingDbColumnError(error, "readAt")) {
+      console.warn("[applyMetaMessageWatermark] missing deliveredAt/readAt column — run migrate");
+      return { ok: false as const, reason: "schema_missing" as const, updated: 0 };
+    }
+    throw error;
+  }
+
+  return { ok: true as const, updated };
+}
+
 export async function upsertMessageReaction(input: {
   shopId: string;
   messageId: string;

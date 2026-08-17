@@ -23,6 +23,20 @@ describe("reply claim", () => {
     expect(formatReplyClaimCountdown(5_000)).toBe("0:05");
   });
 
+  it("formats a fresh 5-minute claim as 5:00 (not ~4:01)", () => {
+    const now = Date.parse("2026-08-15T10:00:00.000Z");
+    const ttlMs = 5 * 60_000;
+    expect(replyClaimRemainingMs(new Date(now), now, ttlMs)).toBe(ttlMs);
+    expect(formatReplyClaimCountdown(ttlMs)).toBe("5:00");
+    // floor còn giây: 4:59 chấp nhận được; ceil đủ TTL vẫn 5:00
+    expect(formatReplyClaimCountdown(ttlMs - 1)).toBe("5:00");
+    expect(formatReplyClaimCountdown(ttlMs - 1000)).toBe("4:59");
+    // Stale claimedAt ~59s (nowMs đóng băng) → hiện 4:01 — đây là bug UI đã sửa phía client
+    expect(formatReplyClaimCountdown(replyClaimRemainingMs(new Date(now - 59_000), now, ttlMs))).toBe(
+      "4:01",
+    );
+  });
+
   it("uses custom TTL when provided", () => {
     const now = Date.parse("2026-08-15T10:00:00.000Z");
     const ttlMs = 5 * 60_000;

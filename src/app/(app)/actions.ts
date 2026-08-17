@@ -21,6 +21,7 @@ import {
   upsertMessageReaction,
 } from "@/backend/message-sync";
 import { prisma } from "@/backend/prisma";
+import { isMissingDbColumnError } from "@/backend/prisma-errors";
 import { saveShopImageUpload } from "@/backend/upload-store";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
 import { replyClaimTtlMs } from "@/lib/shop-policy";
@@ -364,6 +365,8 @@ export async function sendMessage(conversationId: string, text: string) {
       attachmentUrl: null as string | null,
       attachmentName: null as string | null,
       externalMessageId: message.externalMessageId,
+      deliveredAt: null as string | null,
+      readAt: null as string | null,
       reactions: [] as { emoji: string; count: number; reactedByMe: boolean }[],
     };
   } catch (err) {
@@ -486,6 +489,8 @@ export async function sendImageMessage(conversationId: string, formData: FormDat
       attachmentUrl: message.attachmentUrl,
       attachmentName: message.attachmentName,
       externalMessageId: message.externalMessageId,
+      deliveredAt: null as string | null,
+      readAt: null as string | null,
       reactions: [] as { emoji: string; count: number; reactedByMe: boolean }[],
     };
   } catch (err) {
@@ -613,6 +618,62 @@ export async function markConversationRead(conversationId: string) {
   // Không revalidatePath("/inbox"): dễ React #441 trên composer.
   // Client giữ read-receipt local + notifyInboxNoticesRefresh cho Sidebar.
   return { ok: true as const };
+}
+
+const RECEIPT_POLL_LIMIT = 80;
+
+/** Poll nhẹ tick đã xem — không RSC refresh. Chỉ Meta `readAt`/`deliveredAt` tin shop. */
+export async function getConversationReceipts(conversationId: string) {
+  try {
+    const session = await requireActionPermission(PERMISSION_CODES.inboxRead);
+    if (!conversationId) {
+      return { ok: false as const, error: "missing" as const };
+    }
+
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, shopId: session.shopId },
+      select: { id: true },
+    });
+    if (!conversation) {
+      return { ok: false as const, error: "not_found" as const };
+    }
+
+    const rows = await prisma.message.findMany({
+      where: {
+        shopId: session.shopId,
+        conversationId,
+        sender: "shop",
+        OR: [{ readAt: { not: null } }, { deliveredAt: { not: null } }],
+      },
+      select: { id: true, deliveredAt: true, readAt: true },
+      orderBy: { createdAt: "desc" },
+      take: RECEIPT_POLL_LIMIT,
+    });
+
+    return {
+      ok: true as const,
+      conversationId,
+      receipts: rows.map((row) => ({
+        id: row.id,
+        deliveredAt: row.deliveredAt ? row.deliveredAt.toISOString() : null,
+        readAt: row.readAt ? row.readAt.toISOString() : null,
+      })),
+    };
+  } catch (error) {
+    if (isMissingDbColumnError(error, "deliveredAt") || isMissingDbColumnError(error, "readAt")) {
+      return {
+        ok: true as const,
+        conversationId,
+        receipts: [] as Array<{
+          id: string;
+          deliveredAt: string | null;
+          readAt: string | null;
+        }>,
+      };
+    }
+    console.error("[getConversationReceipts]", error);
+    return { ok: false as const, error: "failed" as const };
+  }
 }
 
 const CONVERSATION_TAGS: ConversationTag[] = ["new", "consulting", "closed", "spam"];

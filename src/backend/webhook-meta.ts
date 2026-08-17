@@ -1,4 +1,5 @@
 import {
+  applyMetaMessageWatermark,
   ingestInboundMessage,
   removeMessageReaction,
   touchChannelWebhook,
@@ -10,6 +11,17 @@ import type { Channel } from "@/lib/types";
 type MetaAttachment = {
   type?: string;
   payload?: { url?: string; title?: string };
+};
+
+type MetaDelivery = {
+  mids?: string[];
+  watermark?: number;
+  seq?: number;
+};
+
+type MetaRead = {
+  watermark?: number;
+  seq?: number;
 };
 
 type MetaMessagingEvent = {
@@ -33,6 +45,8 @@ type MetaMessagingEvent = {
     emoji?: string;
     reaction?: string;
   };
+  delivery?: MetaDelivery;
+  read?: MetaRead;
 };
 
 type MetaWebhookChange = {
@@ -52,6 +66,10 @@ type MetaWebhookChange = {
     action?: string;
     mid?: string;
     message_id?: string;
+    mids?: string[];
+    watermark?: number;
+    delivery?: MetaDelivery;
+    read?: MetaRead;
   };
 };
 
@@ -166,6 +184,62 @@ function reactionEventsFromEntry(entry: MetaWebhookEntry): MetaMessagingEvent[] 
   return [...fromMessaging, ...fromChanges];
 }
 
+const META_DELIVERY_FIELDS = new Set(["message_deliveries"]);
+const META_READ_FIELDS = new Set(["message_reads", "messaging_seen"]);
+
+/**
+ * Page/staff echo: sender là Page (entry.id) hoặc trùng recipient.
+ * Read/delivery thật: sender = PSID/IGSID khách, recipient = Page.
+ */
+export function isMetaReceiptFromPage(input: {
+  senderId?: string | null;
+  recipientId?: string | null;
+  entryId?: string | null;
+}) {
+  const senderId = input.senderId?.trim();
+  if (!senderId) return true;
+  const entryId = input.entryId && input.entryId !== "0" ? input.entryId : null;
+  const recipientId = input.recipientId && input.recipientId !== "0" ? input.recipientId : null;
+  if (entryId && senderId === entryId) return true;
+  if (recipientId && senderId === recipientId) return true;
+  return false;
+}
+
+/** delivery / read từ messaging[] hoặc changes (message_deliveries / message_reads / messaging_seen). */
+function receiptEventsFromEntry(entry: MetaWebhookEntry): MetaMessagingEvent[] {
+  const fromMessaging = (entry.messaging ?? []).filter(
+    (event) => event.delivery?.watermark || event.read?.watermark,
+  );
+  const fromChanges = (entry.changes ?? [])
+    .filter(
+      (change) =>
+        (META_DELIVERY_FIELDS.has(change.field ?? "") ||
+          META_READ_FIELDS.has(change.field ?? "")) &&
+        change.value,
+    )
+    .map((change) => {
+      const value = change.value!;
+      const field = change.field ?? "";
+      const delivery = META_DELIVERY_FIELDS.has(field)
+        ? (value.delivery ?? {
+            watermark: value.watermark,
+            mids: value.mids,
+          })
+        : undefined;
+      const read = META_READ_FIELDS.has(field)
+        ? (value.read ?? { watermark: value.watermark })
+        : undefined;
+      return {
+        sender: value.sender,
+        recipient: value.recipient,
+        timestamp: value.timestamp,
+        delivery,
+        read,
+      } satisfies MetaMessagingEvent;
+    });
+  return [...fromMessaging, ...fromChanges];
+}
+
 export function emojiFromMetaReaction(reaction?: string | null, emoji?: string | null) {
   if (emoji?.trim()) return emoji.trim();
   if (!reaction) return "👍";
@@ -222,9 +296,10 @@ export async function processMetaWebhook(body: MetaWebhookBody) {
   for (const entry of body.entry) {
     const events = messagingEventsFromEntry(entry);
     const reactionEvents = reactionEventsFromEntry(entry);
+    const receiptEvents = receiptEventsFromEntry(entry);
     const accountIds = new Set<string>();
 
-    for (const event of [...events, ...reactionEvents]) {
+    for (const event of [...events, ...reactionEvents, ...receiptEvents]) {
       const accountId = resolveMetaExternalAccountId(entry.id, event.recipient?.id);
       if (accountId) accountIds.add(accountId);
     }
@@ -241,6 +316,7 @@ export async function processMetaWebhook(body: MetaWebhookBody) {
 
     for (const event of events) {
       if (event.message?.is_echo) continue;
+      if (event.delivery || event.read) continue;
 
       const senderId = event.sender?.id;
       const text = eventText(event);
@@ -287,6 +363,45 @@ export async function processMetaWebhook(body: MetaWebhookBody) {
         reaction: event.reaction?.reaction,
       });
       if (ok) processed += 1;
+    }
+
+    for (const event of receiptEvents) {
+      const senderId = event.sender?.id;
+      const recipientId = event.recipient?.id;
+      if (
+        isMetaReceiptFromPage({
+          senderId,
+          recipientId,
+          entryId: entry.id,
+        })
+      ) {
+        continue;
+      }
+      const externalAccountId = resolveMetaExternalAccountId(entry.id, recipientId);
+      if (!senderId || !externalAccountId) continue;
+
+      if (event.delivery?.watermark) {
+        const result = await applyMetaMessageWatermark({
+          channel,
+          externalAccountId,
+          customerExternalId: senderId,
+          watermarkMs: event.delivery.watermark,
+          kind: "delivered",
+          mids: event.delivery.mids,
+        });
+        if (result.ok && result.updated > 0) processed += 1;
+      }
+
+      if (event.read?.watermark) {
+        const result = await applyMetaMessageWatermark({
+          channel,
+          externalAccountId,
+          customerExternalId: senderId,
+          watermarkMs: event.read.watermark,
+          kind: "read",
+        });
+        if (result.ok && result.updated > 0) processed += 1;
+      }
     }
   }
 
