@@ -8,8 +8,10 @@ import {
   discardRegisterEmailOtp,
   verifyRegisterEmailOtp,
 } from "@/backend/email-otp";
+import { publicOtpSendError } from "@/backend/email";
 import { hashPassword } from "@/backend/password";
 import { prisma } from "@/backend/prisma";
+import { createOpenRegistrationStaff } from "@/backend/open-registration";
 import {
   planOpenRegistration,
   validateRegisterInput,
@@ -18,9 +20,9 @@ import {
 import { safeInternalPath } from "@/backend/safe-path";
 import { setSessionCookie } from "@/backend/session";
 import { toSessionPayload } from "@/backend/session-token";
-import { AUDIT_ACTIONS, normalizeRoleCode } from "@/lib/rbac-catalog";
-import { assertShopHasActiveSeat, countActiveShopUsers } from "@/backend/shop-seats";
 import { getShopPolicy } from "@/backend/shop-policy";
+import { assertShopHasActiveSeat } from "@/backend/shop-seats";
+import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
 import { shopSeatLimitMessage } from "@/lib/shop-seats";
 
 export type RegisterActionState = {
@@ -73,11 +75,11 @@ export async function registerAction(
         return { error: seatError, step: "form" };
       }
     } else {
-      const [active, policy] = await Promise.all([
-        countActiveShopUsers(plan.shopId),
+      const [total, policy] = await Promise.all([
+        prisma.staff.count({ where: { shopId: plan.shopId } }),
         getShopPolicy(plan.shopId),
       ]);
-      if (active >= policy.maxUsersPerShop) {
+      if (total >= policy.maxUsersPerShop) {
         return { error: shopSeatLimitMessage(policy.maxUsersPerShop), step: "form" };
       }
     }
@@ -91,7 +93,7 @@ export async function registerAction(
     });
   } catch (err) {
     return {
-      error: err instanceof Error ? err.message : "Không gửi được mã xác thực.",
+      error: publicOtpSendError(err, "Không gửi được mã xác thực. Thử lại sau."),
       step: "form",
     };
   }
@@ -118,83 +120,22 @@ export async function verifyRegisterOtpAction(
     return { error: verified.error, step: "otp", email };
   }
 
-  const [staffCount, shop] = await Promise.all([
-    prisma.staff.count(),
-    prisma.shop.findUnique({
-      where: { id: REGISTER_DEFAULT_SHOP_ID },
-      select: { id: true },
-    }),
-  ]);
-
-  const existing = await prisma.staff.findUnique({
-    where: { email: verified.email },
-    select: { id: true },
+  const created = await createOpenRegistrationStaff({
+    email: verified.email,
+    name: verified.payload.name,
+    passwordHash: verified.payload.passwordHash,
   });
 
-  const plan = planOpenRegistration({
-    staffCount,
-    shopExists: Boolean(shop),
-    emailTaken: Boolean(existing),
-  });
-
-  if (!plan.ok) {
+  if (!created.ok) {
     await discardRegisterEmailOtp(verified.email);
-    return { error: plan.error, step: "form", email: verified.email };
+    return { error: created.error, step: "form", email: verified.email };
   }
 
-  if (plan.isActive) {
-    const seatError = await assertShopHasActiveSeat(plan.shopId);
-    if (seatError) {
-      await discardRegisterEmailOtp(verified.email);
-      return { error: seatError, step: "form", email: verified.email };
-    }
-  } else {
-    const [active, policy] = await Promise.all([
-      countActiveShopUsers(plan.shopId),
-      getShopPolicy(plan.shopId),
-    ]);
-    if (active >= policy.maxUsersPerShop) {
-      await discardRegisterEmailOtp(verified.email);
-      return {
-        error: shopSeatLimitMessage(policy.maxUsersPerShop),
-        step: "form",
-        email: verified.email,
-      };
-    }
-  }
-
-  if (plan.createShop) {
-    await prisma.shop.create({
-      data: {
-        id: plan.createShop.id,
-        name: plan.createShop.name,
-      },
-    });
-  }
-
-  const roleCode = normalizeRoleCode(plan.role);
-  let staff;
-  try {
-    staff = await prisma.staff.create({
-      data: {
-        id: `staff-${crypto.randomUUID()}`,
-        shopId: plan.shopId,
-        name: verified.payload.name,
-        email: verified.email,
-        passwordHash: verified.payload.passwordHash,
-        roleCode,
-        isActive: plan.isActive,
-      },
-    });
-  } catch {
-    await discardRegisterEmailOtp(verified.email);
-    return { error: "Email này đã được đăng ký.", step: "form", email: verified.email };
-  }
-
+  const staff = created.staff;
   await consumeRegisterEmailOtp(verified.challengeId);
 
   await writeAudit({
-    actor: plan.isActive
+    actor: staff.isActive
       ? toSessionPayload(staff)
       : {
           id: staff.id,
@@ -210,11 +151,10 @@ export async function verifyRegisterOtpAction(
       roleCode: staff.roleCode,
       isActive: staff.isActive,
       pendingApproval: !staff.isActive,
-      bootstrap: Boolean(plan.createShop) || staffCount === 0,
     },
   });
 
-  if (!plan.isActive) {
+  if (!staff.isActive) {
     redirect("/login?auth_success=pending_approval");
   }
 
@@ -262,7 +202,7 @@ export async function resendRegisterOtpAction(
     });
   } catch (err) {
     return {
-      error: err instanceof Error ? err.message : "Không gửi lại được mã.",
+      error: publicOtpSendError(err, "Không gửi lại được mã. Thử lại sau."),
       step: "otp",
       email,
     };

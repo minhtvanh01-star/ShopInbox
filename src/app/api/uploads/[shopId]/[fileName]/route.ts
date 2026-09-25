@@ -26,6 +26,8 @@ export async function GET(_request: Request, context: RouteContext) {
     status: 200,
     headers: {
       "Content-Type": file.mimeType,
+      "X-Content-Type-Options": "nosniff",
+      "Content-Disposition": "inline",
       "Cache-Control": "private, max-age=86400",
     },
   });

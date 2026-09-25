@@ -1,7 +1,7 @@
 import { InboxWorkspace } from "@/components/inbox/InboxWorkspace";
+import { visibleInboxChannels } from "@/lib/inbox-visibility";
 import { getChannelAccounts, getInboxData, getShopContext } from "@/lib/queries";
 import { isAdminRole, PERMISSION_CODES } from "@/lib/rbac-catalog";
-import type { Channel } from "@/lib/types";
 
 type InboxPageProps = {
   searchParams: Promise<{ c?: string }>;
@@ -15,12 +15,7 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
     getShopContext(),
   ]);
 
-  const activeChannels = [
-    ...new Set<Channel>([
-      ...accounts.filter((item) => item.status === "ready").map((item) => item.channel),
-      ...data.conversations.map((item) => item.channel),
-    ]),
-  ];
+  const activeChannels = visibleInboxChannels(accounts);
 
   const initialConversationId =
     typeof params.c === "string" && data.conversations.some((item) => item.id === params.c)
@@ -43,6 +38,7 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
         shop.permissions.includes(PERMISSION_CODES.customersUpdate) ||
         shop.permissions.includes(PERMISSION_CODES.inboxReply)
       }
+      canMergeOrders={shop.permissions.includes(PERMISSION_CODES.ordersUpdate)}
     />
   );
 }

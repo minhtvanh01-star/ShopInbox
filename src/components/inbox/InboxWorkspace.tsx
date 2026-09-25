@@ -10,11 +10,13 @@ import {
   useTransition,
   type PointerEvent,
 } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   claimConversation,
   getConversationReceipts,
   markConversationRead,
+  mergeCustomerOpenOrdersAction,
   reactToMessage,
   releaseConversation,
   sendImageMessage,
@@ -56,6 +58,7 @@ import {
 import {
   CHANNEL_LABEL,
   TAG_LABEL,
+  ORDER_STATUS_LABEL,
   formatChatDayLabel,
   formatMoney,
   formatTime,
@@ -73,6 +76,11 @@ import {
   clampInboxListWidth,
 } from "@/lib/ui-layout";
 import { notifyInboxNoticesRefresh } from "@/lib/inbox-notices";
+import { MESSAGE_TEXT_MAX } from "@/lib/inbox-media";
+import {
+  getMessagingWindowInfo,
+  latestCustomerMessageAt,
+} from "@/lib/messaging-window";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import type {
   Channel,
@@ -81,7 +89,7 @@ import type {
   Customer,
   Message,
   Order,
-  Product,
+  SellableVariant,
   QuickReply,
 } from "@/lib/types";
 
@@ -92,7 +100,7 @@ type InboxWorkspaceProps = {
   messages: Message[];
   customers: Customer[];
   orders: Order[];
-  products: Product[];
+  products: SellableVariant[];
   quickReplies: QuickReply[];
   currentStaffId: string;
   currentStaffName: string;
@@ -104,6 +112,7 @@ type InboxWorkspaceProps = {
   activeChannels?: Channel[];
   initialConversationId?: string;
   canUpdateCustomer?: boolean;
+  canMergeOrders?: boolean;
 };
 
 type ConversationPatch = {
@@ -209,6 +218,7 @@ export function InboxWorkspace({
   activeChannels,
   initialConversationId,
   canUpdateCustomer = false,
+  canMergeOrders = false,
 }: InboxWorkspaceProps) {
   const router = useRouter();
   const claimTtlMs = replyClaimTtlMs(replyClaimTtlMinutes) || REPLY_CLAIM_TTL_MS;
@@ -396,11 +406,20 @@ export function InboxWorkspace({
   const thread = selected
     ? mergeConversationThread(receiptMessages, receiptLocalOutbound, selected.id)
     : [];
+  const messagingWindow = selected
+    ? getMessagingWindowInfo({
+        channel: selected.channel,
+        lastCustomerMessageAt: latestCustomerMessageAt(thread),
+        now: nowMs === null ? undefined : new Date(nowMs),
+      })
+    : null;
   const receiptsEnabled =
     selected?.channel === "facebook" || selected?.channel === "instagram";
   const customerOrders = customer
     ? orders.filter((item) => item.customerId === customer.id)
     : [];
+  const openNewOrders = customerOrders.filter((item) => item.status === "new");
+  const canMergeOpenOrders = canMergeOrders && openNewOrders.length >= 2;
 
   const claimRemainingMs =
     nowMs !== null && selected?.replyClaimedAt
@@ -1327,7 +1346,19 @@ export function InboxWorkspace({
           <ul className="min-h-0 flex-1 overflow-y-auto">
             {visible.length === 0 ? (
               <li className="px-4 py-8 text-center text-sm text-slate-500">
-                Không có hội thoại phù hợp bộ lọc
+                {activeChannels && activeChannels.length === 0 ? (
+                  <>
+                    Chưa có kênh nào đang nối.{" "}
+                    <Link
+                      href="/settings"
+                      className="font-medium text-teal-700 underline-offset-2 hover:underline"
+                    >
+                      Vào Cài đặt để kết nối
+                    </Link>
+                  </>
+                ) : (
+                  "Không có hội thoại phù hợp bộ lọc"
+                )}
               </li>
             ) : null}
             {visible.map((item) => {
@@ -1653,6 +1684,18 @@ export function InboxWorkspace({
                   {error}
                 </p>
               ) : null}
+              {messagingWindow?.banner ? (
+                <p
+                  role="status"
+                  className={`mb-2 rounded-lg border px-3 py-2 text-xs leading-5 ${
+                    messagingWindow.kind === "closed"
+                      ? "border-rose-200 bg-rose-50 text-rose-900"
+                      : "border-amber-200 bg-amber-50 text-amber-900"
+                  }`}
+                >
+                  {messagingWindow.banner}
+                </p>
+              ) : null}
               {isAdmin ? (
                 <p className="mb-3 flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
                   <span className="activity-dot activity-dot-mine" aria-hidden />
@@ -1693,8 +1736,17 @@ export function InboxWorkspace({
                     key={item.id}
                     type="button"
                     disabled={!canCompose}
-                    onClick={() => send(item.text)}
-                    className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors duration-150 hover:border-teal-200 hover:bg-accent-muted hover:text-teal-800 disabled:opacity-50"
+                    title={`Chèn mẫu: ${item.title}`}
+                    aria-label={`Chèn mẫu tin ${item.title} vào ô soạn`}
+                    onClick={() => {
+                      setDraft(item.text);
+                      setError(null);
+                      if (!isAdmin && replyIsMine && selected) {
+                        renewClaimActivity(selected.id);
+                      }
+                      queueMicrotask(() => composerRef.current?.focus());
+                    }}
+                    className="min-h-9 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors duration-150 hover:border-teal-200 hover:bg-accent-muted hover:text-teal-800 disabled:opacity-50"
                   >
                     {item.title}
                   </button>
@@ -1709,30 +1761,52 @@ export function InboxWorkspace({
               >
                 <div className="flex shrink-0 gap-1 pb-1">
                   <EmojiPickerButton disabled={!canCompose} onPick={insertEmoji} />
-                  <ImagePickerButton disabled={!canCompose} onFile={sendImage} />
+                  <ImagePickerButton
+                    disabled={!canCompose}
+                    onFile={sendImage}
+                    onReject={(message) => setError(message)}
+                  />
                 </div>
-                <textarea
-                  ref={composerRef}
-                  value={draft}
-                  rows={2}
-                  onChange={(event) => onDraftChange(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      send(draft);
+                <div className="relative min-w-0 flex-1">
+                  <textarea
+                    ref={composerRef}
+                    value={draft}
+                    rows={2}
+                    maxLength={MESSAGE_TEXT_MAX}
+                    onChange={(event) => onDraftChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        send(draft);
+                      }
+                    }}
+                    aria-label="Soạn tin nhắn"
+                    aria-describedby="composer-count"
+                    placeholder={
+                      isAdmin || replyIsMine
+                        ? "Nhập tin nhắn… (Enter gửi, Shift+Enter xuống dòng)"
+                        : replyLockedByOther
+                          ? "Đang bị khóa..."
+                          : "Nhận hội thoại để trả lời..."
                     }
-                  }}
-                  aria-label="Soạn tin nhắn"
-                  placeholder={
-                    isAdmin || replyIsMine
-                      ? "Nhập tin nhắn… (Enter gửi, Shift+Enter xuống dòng)"
-                      : replyLockedByOther
-                        ? "Đang bị khóa..."
-                        : "Nhận hội thoại để trả lời..."
-                  }
-                  disabled={!canCompose}
-                  className="input-field-sm min-h-11 flex-1 resize-none py-2.5"
-                />
+                    disabled={!canCompose}
+                    className="input-field-sm min-h-11 w-full resize-none py-2.5"
+                  />
+                  {draft.length >= MESSAGE_TEXT_MAX - 200 ? (
+                    <p
+                      id="composer-count"
+                      className={`mt-1 text-right text-[11px] ${
+                        draft.length >= MESSAGE_TEXT_MAX - 20 ? "text-rose-600" : "text-slate-400"
+                      }`}
+                    >
+                      {draft.length}/{MESSAGE_TEXT_MAX}
+                    </p>
+                  ) : (
+                    <span id="composer-count" className="sr-only">
+                      Tối đa {MESSAGE_TEXT_MAX} ký tự
+                    </span>
+                  )}
+                </div>
                 {sendBusy || draft.trim() ? (
                   <button
                     type="submit"
@@ -1838,6 +1912,35 @@ export function InboxWorkspace({
             )}
             <div className="mt-6 border-t border-border pt-5">
               <p className="section-label">Đơn gần đây</p>
+              {canMergeOpenOrders ? (
+                <button
+                  type="button"
+                  disabled={actionPending}
+                  className="btn-secondary mt-3 w-full min-h-10 text-xs"
+                  onClick={() => {
+                    if (
+                      !customer ||
+                      !window.confirm(
+                        `Gộp ${openNewOrders.length} đơn «Mới» của khách này vào đơn cũ nhất? Các đơn còn lại sẽ hủy.`,
+                      )
+                    ) {
+                      return;
+                    }
+                    startAction(async () => {
+                      const result = await mergeCustomerOpenOrdersAction(customer.id);
+                      if (result.ok) {
+                        router.refresh();
+                      } else {
+                        window.alert(result.error);
+                      }
+                    });
+                  }}
+                >
+                  {actionPending
+                    ? "Đang gộp…"
+                    : `Gộp ${openNewOrders.length} đơn «Mới»`}
+                </button>
+              ) : null}
               <div className="mt-3 space-y-2">
                 {customerOrders.length === 0 && (
                   <p className="text-sm text-slate-500">Chưa có đơn</p>
@@ -1847,7 +1950,12 @@ export function InboxWorkspace({
                     key={order.id}
                     className="rounded-lg border border-border bg-surface-muted px-3 py-2.5 transition-colors duration-150 hover:bg-surface"
                   >
-                    <p className="text-sm font-semibold text-slate-800">{order.code}</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-slate-800">{order.code}</p>
+                      <span className="text-[11px] font-medium text-slate-500">
+                        {ORDER_STATUS_LABEL[order.status]}
+                      </span>
+                    </div>
                     <p className="text-xs text-slate-500">{formatMoney(orderTotal(order.items))}</p>
                   </div>
                 ))}

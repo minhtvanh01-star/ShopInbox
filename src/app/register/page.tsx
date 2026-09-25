@@ -7,7 +7,7 @@ import { DEMO_SHOP_ID } from "@/lib/queries";
 import { safeInternalPath } from "@/backend/safe-path";
 
 type RegisterPageProps = {
-  searchParams: Promise<{ next?: string; auth_error?: string; auth_message?: string }>;
+  searchParams: Promise<{ next?: string; auth_error?: string }>;
 };
 
 export default async function RegisterPage({ searchParams }: RegisterPageProps) {
@@ -34,7 +34,6 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
         emailConfigured={isEmailConfigured()}
         canSendRegisterOtp={canSendRegisterOtp()}
         authError={params.auth_error}
-        authMessage={params.auth_message}
       />
     </AuthShell>
   );

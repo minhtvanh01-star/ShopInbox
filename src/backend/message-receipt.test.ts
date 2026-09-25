@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/backend/prisma", () => ({
   prisma: {
-    channelAccount: { findFirst: vi.fn() },
+    channelAccount: { findFirst: vi.fn(), findMany: vi.fn() },
     customerIdentity: { findFirst: vi.fn() },
     conversation: { findFirst: vi.fn() },
     message: { updateMany: vi.fn() },
@@ -19,13 +19,16 @@ import { prisma } from "@/backend/prisma";
 describe("applyMetaMessageWatermark", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(prisma.channelAccount.findFirst).mockResolvedValue({
-      id: "acc-1",
-      shopId: "shop-1",
-      pageId: "page-1",
-      linkedPageId: "ig-business",
-      oaId: null,
-    } as never);
+    vi.mocked(prisma.channelAccount.findMany).mockResolvedValue([
+      {
+        id: "acc-1",
+        shopId: "shop-1",
+        channel: "facebook",
+        pageId: "page-1",
+        linkedPageId: "ig-business",
+        oaId: null,
+      },
+    ] as never);
     vi.mocked(prisma.customerIdentity.findFirst).mockResolvedValue({
       customerId: "cust-1",
     } as never);
@@ -103,7 +106,6 @@ describe("applyMetaMessageWatermark", () => {
       kind: "read",
     });
     expect(result).toEqual({ ok: false, reason: "page_as_reader", updated: 0 });
-    expect(prisma.channelAccount.findFirst).not.toHaveBeenCalled();
     expect(prisma.message.updateMany).not.toHaveBeenCalled();
   });
 

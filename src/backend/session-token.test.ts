@@ -22,6 +22,7 @@ describe("session-token", () => {
       name: "Minh",
       role: "admin" as const,
       lastActiveAt: now,
+      sessionVersion: 0,
     };
 
     const token = await createSessionToken(payload);

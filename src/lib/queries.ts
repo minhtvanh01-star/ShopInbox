@@ -2,21 +2,24 @@
 import { prisma } from "@/backend/prisma";
 import { requireSession } from "@/backend/auth";
 import { isMissingDbColumnError } from "@/backend/prisma-errors";
-import { getPermissionCodes, hasPermission } from "@/backend/rbac";
+import { getPermissionCodes, hasPermission, requirePermission } from "@/backend/rbac";
 import { resolveReplyClaim } from "@/backend/reply-claim";
 import { getShopPolicy } from "@/backend/shop-policy";
-import { roleLabel } from "@/lib/labels";
+import { roleLabel, parseVnDayEnd, parseVnDayStart } from "@/lib/labels";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 import { replyClaimTtlMs } from "@/lib/shop-policy";
 import type { InboxNoticeSummary } from "@/lib/inbox-notices";
+import { visibleInboxChannels } from "@/lib/inbox-visibility";
 import type {
+  Channel,
   Conversation,
   Customer,
   Message,
   Order,
-  Product,
+  SellableVariant,
   QuickReply,
 } from "@/lib/types";
+import { listSellableVariants } from "@/backend/product-catalog";
 
 export const DEMO_SHOP_ID = "shop1";
 
@@ -96,10 +99,24 @@ type MessageRow = {
   readAt?: Date | null;
 };
 
-async function loadShopMessages(shopId: string): Promise<MessageRow[]> {
+async function loadVisibleInboxChannels(shopId: string): Promise<Channel[]> {
+  const accounts = await prisma.channelAccount.findMany({
+    where: { shopId },
+    select: { channel: true, status: true },
+  });
+  return visibleInboxChannels(accounts);
+}
+
+async function loadShopMessages(shopId: string, channels: Channel[]): Promise<MessageRow[]> {
+  if (channels.length === 0) {
+    return [];
+  }
+
+  const where = { shopId, conversation: { channel: { in: channels } } };
+
   try {
     return await prisma.message.findMany({
-      where: { shopId },
+      where,
       orderBy: { createdAt: "asc" },
     });
   } catch (error) {
@@ -114,7 +131,7 @@ async function loadShopMessages(shopId: string): Promise<MessageRow[]> {
       error,
     );
     return prisma.message.findMany({
-      where: { shopId },
+      where,
       select: {
         id: true,
         conversationId: true,
@@ -159,34 +176,40 @@ export async function getShopContext(): Promise<ShopContext> {
 }
 
 export async function getInboxData() {
-  const session = await requireSession();
+  const session = await requirePermission(PERMISSION_CODES.inboxRead);
   const shopId = session.shopId;
-  const [conversations, messages, customers, orders, products, quickReplies, reactions, policy] =
+  const readyChannels = await loadVisibleInboxChannels(shopId);
+  const hideInbox = readyChannels.length === 0;
+  const [conversations, messages, customers, orders, sellableVariants, quickReplies, reactions, policy] =
     await Promise.all([
-    prisma.conversation.findMany({
-      where: { shopId },
-      include: { staff: { select: { id: true, name: true } } },
-      orderBy: { lastAt: "desc" },
-    }),
-    loadShopMessages(shopId),
+    hideInbox
+      ? Promise.resolve([])
+      : prisma.conversation.findMany({
+          where: { shopId, channel: { in: readyChannels } },
+          include: { staff: { select: { id: true, name: true } } },
+          orderBy: { lastAt: "desc" },
+        }),
+    loadShopMessages(shopId, readyChannels),
     loadShopCustomers(shopId),
     prisma.order.findMany({
       where: { shopId },
       include: { items: true },
       orderBy: { createdAt: "desc" },
     }),
-    prisma.product.findMany({
-      where: { shopId, inStock: true },
-      orderBy: { name: "asc" },
-    }),
+    listSellableVariants(shopId),
     prisma.quickReply.findMany({
       where: { shopId },
       orderBy: { title: "asc" },
     }),
-    prisma.messageReaction.findMany({
-      where: { shopId },
-      select: { messageId: true, emoji: true, reactorKey: true },
-    }),
+    hideInbox
+      ? Promise.resolve([])
+      : prisma.messageReaction.findMany({
+          where: {
+            shopId,
+            message: { conversation: { channel: { in: readyChannels } } },
+          },
+          select: { messageId: true, emoji: true, reactorKey: true },
+        }),
     getShopPolicy(shopId),
   ]);
 
@@ -281,15 +304,7 @@ export async function getInboxData() {
         })),
       }),
     ),
-    products: products.map(
-      (item): Product => ({
-        id: item.id,
-        name: item.name,
-        sku: item.sku ?? undefined,
-        price: item.price,
-        inStock: item.inStock,
-      }),
-    ),
+    products: sellableVariants as SellableVariant[],
     quickReplies: quickReplies.map(
       (item): QuickReply => ({
         id: item.id,
@@ -301,16 +316,23 @@ export async function getInboxData() {
 }
 
 export async function getInboxNotificationSummary(): Promise<InboxNoticeSummary> {
-  const session = await requireSession();
+  const session = await requirePermission(PERMISSION_CODES.inboxRead);
   const shopId = session.shopId;
+  const readyChannels = await loadVisibleInboxChannels(shopId);
+
+  if (readyChannels.length === 0) {
+    return { unreadTotal: 0, unreadConversations: 0, notices: [] };
+  }
+
+  const unreadWhere = { shopId, unread: { gt: 0 }, channel: { in: readyChannels } };
 
   const [unreadRows, noticeRows, policy] = await Promise.all([
     prisma.conversation.findMany({
-      where: { shopId, unread: { gt: 0 } },
+      where: unreadWhere,
       select: { unread: true },
     }),
     prisma.conversation.findMany({
-      where: { shopId, unread: { gt: 0 } },
+      where: unreadWhere,
       include: {
         customer: { select: { name: true } },
         staff: { select: { name: true } },
@@ -349,35 +371,105 @@ export async function getInboxNotificationSummary(): Promise<InboxNoticeSummary>
   };
 }
 
-export async function getOrdersPageData() {
-  const session = await requireSession();
+export async function getOrdersPageData(filters?: {
+  q?: string;
+  status?: string;
+  from?: string;
+  to?: string;
+  page?: number;
+  pageSize?: number;
+}) {
+  const session = await requirePermission(PERMISSION_CODES.ordersRead);
+  const q = filters?.q?.trim() ?? "";
+  const statusRaw = filters?.status?.trim() ?? "";
+  const allowedStatuses = ["new", "confirmed", "shipping", "done", "cancelled"] as const;
+  const status = allowedStatuses.find((item) => item === statusRaw);
+  const from = parseVnDayStart(filters?.from);
+  const to = parseVnDayEnd(filters?.to);
+  const pageSize = filters?.pageSize ?? 25;
+
+  const where: {
+    shopId: string;
+    status?: (typeof allowedStatuses)[number];
+    createdAt?: { gte?: Date; lte?: Date };
+    OR?: Array<
+      | { code: { contains: string; mode: "insensitive" } }
+      | { customer: { name: { contains: string; mode: "insensitive" } } }
+    >;
+  } = {
+    shopId: session.shopId,
+  };
+  if (status) where.status = status;
+  if (from || to) {
+    where.createdAt = {
+      ...(from ? { gte: from } : {}),
+      ...(to ? { lte: to } : {}),
+    };
+  }
+  if (q) {
+    where.OR = [
+      { code: { contains: q, mode: "insensitive" } },
+      { customer: { name: { contains: q, mode: "insensitive" } } },
+    ];
+  }
+
+  const total = await prisma.order.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / pageSize) || 1);
+  const page = Math.min(Math.max(1, filters?.page ?? 1), pageCount);
+
   const orders = await prisma.order.findMany({
-    where: { shopId: session.shopId },
+    where,
     include: {
       customer: true,
       conversation: true,
       items: true,
+      checklistChecks: {
+        include: { template: true },
+      },
     },
     orderBy: { createdAt: "desc" },
+    skip: (page - 1) * pageSize,
+    take: pageSize,
   });
 
-  return orders.map((order) => ({
-    id: order.id,
-    code: order.code,
-    customerName: order.customer.name,
-    channel: order.conversation.channel,
-    status: order.status,
-    createdAt: toIso(order.createdAt),
-    items: order.items.map((item) => ({
-      qty: item.qty,
-      price: item.price,
-    })),
-  }));
+  const rows = orders.map((order) => {
+    const checklist = [...order.checklistChecks]
+      .sort((a, b) => {
+        const aOrder = a.template?.sortOrder ?? 0;
+        const bOrder = b.template?.sortOrder ?? 0;
+        if (aOrder !== bOrder) return aOrder - bOrder;
+        return (a.template?.label ?? "").localeCompare(b.template?.label ?? "");
+      })
+      .map((check) => ({
+        id: check.id,
+        label: check.template?.label ?? "Mục checklist",
+        done: check.done,
+        doneAt: check.doneAt ? toIso(check.doneAt) : null,
+      }));
+
+    return {
+      id: order.id,
+      code: order.code,
+      customerId: order.customerId,
+      customerName: order.customer.name,
+      channel: order.conversation.channel,
+      status: order.status,
+      createdAt: toIso(order.createdAt),
+      items: order.items.map((item) => ({
+        qty: item.qty,
+        price: item.price,
+      })),
+      checklist,
+    };
+  });
+
+  return { total, page, orders: rows };
 }
 
 export async function getCustomersPageData() {
-  const session = await requireSession();
+  const session = await requirePermission(PERMISSION_CODES.customersRead);
   const customers = await loadShopCustomers(session.shopId);
+  const readyChannels = await loadVisibleInboxChannels(session.shopId);
   const [counts, latestConversations] = await Promise.all([
     prisma.customer.findMany({
       where: { shopId: session.shopId },
@@ -386,11 +478,13 @@ export async function getCustomersPageData() {
         _count: { select: { orders: true } },
       },
     }),
-    prisma.conversation.findMany({
-      where: { shopId: session.shopId },
-      select: { id: true, customerId: true },
-      orderBy: { lastAt: "desc" },
-    }),
+    readyChannels.length === 0
+      ? Promise.resolve([])
+      : prisma.conversation.findMany({
+          where: { shopId: session.shopId, channel: { in: readyChannels } },
+          select: { id: true, customerId: true },
+          orderBy: { lastAt: "desc" },
+        }),
   ]);
   const orderCountById = new Map(counts.map((row) => [row.id, row._count.orders]));
   const latestConversationByCustomer = new Map<string, string>();
@@ -426,9 +520,10 @@ export async function getChannelAccounts() {
     status: account.status,
     note: account.note,
     appId: canConnect ? account.appId : null,
-    appSecret: canConnect ? account.appSecret : null,
+    /** Không serialize secret xuống client — chỉ cờ đã có / chưa. */
+    hasAppSecret: canConnect ? Boolean(account.appSecret?.trim()) : false,
     pageId: canConnect ? account.pageId : null,
-    webhookSecret: canConnect ? account.webhookSecret : null,
+    hasWebhookSecret: canConnect ? Boolean(account.webhookSecret?.trim()) : false,
     oaId: canConnect ? account.oaId : null,
     displayName: account.displayName,
     expiresAt: account.expiresAt ? toIso(account.expiresAt) : null,

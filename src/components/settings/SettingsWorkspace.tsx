@@ -8,12 +8,19 @@ import { STORAGE_KEYS } from "@/lib/ui-layout";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import {
   AddConnectionModal,
-  OAUTH_ERROR_MESSAGES,
   type ChannelAccountView,
 } from "./AddConnectionModal";
+import { QuickReplyManager } from "./QuickReplyManager";
+import { AutoReplyManager, type AutoReplyRuleView } from "./AutoReplyManager";
+import {
+  OrderChecklistManager,
+  type ChecklistTemplateView,
+} from "./OrderChecklistManager";
 import { ShopPolicyForm } from "./ShopPolicyForm";
 import { disconnectChannelAction, syncMetaChannelAction } from "@/app/(app)/settings/actions";
 import type { PendingMetaPages } from "@/lib/oauth-types";
+import { formatOAuthFlashError, formatOAuthFlashSuccess } from "@/lib/oauth-flash";
+import type { QuickReply } from "@/lib/types";
 
 type SettingsWorkspaceProps = {
   channels: ChannelAccountView[];
@@ -21,6 +28,9 @@ type SettingsWorkspaceProps = {
   canUpdateSettings: boolean;
   replyClaimTtlMinutes: number;
   maxUsersPerShop: number;
+  quickReplies: QuickReply[];
+  autoReplyRules: AutoReplyRuleView[];
+  checklistTemplates: ChecklistTemplateView[];
   metaOAuthConfigured: boolean;
   zaloOAuthConfigured: boolean;
   metaMissingEnvVars: string[];
@@ -113,6 +123,9 @@ export function SettingsWorkspace({
   canUpdateSettings,
   replyClaimTtlMinutes,
   maxUsersPerShop,
+  quickReplies,
+  autoReplyRules,
+  checklistTemplates,
   metaOAuthConfigured,
   zaloOAuthConfigured,
   metaMissingEnvVars,
@@ -147,20 +160,14 @@ export function SettingsWorkspace({
 
   const flashMessage = useMemo(() => {
     if (oauthFlash?.success) {
-      const label =
-        oauthFlash.success === "facebook"
-          ? "Facebook Messenger"
-          : oauthFlash.success === "instagram"
-            ? "Instagram DM"
-            : oauthFlash.success === "zalo"
-              ? "Zalo OA"
-              : oauthFlash.success;
-      return { type: "success" as const, text: `Đã kết nối ${label} thành công.` };
+      return {
+        type: "success" as const,
+        title: formatOAuthFlashSuccess(oauthFlash.success),
+      };
     }
     if (oauthFlash?.error) {
-      const base = OAUTH_ERROR_MESSAGES[oauthFlash.error] ?? "Kết nối OAuth thất bại.";
-      const text = oauthFlash.errorMessage ? `${base} (${oauthFlash.errorMessage})` : base;
-      return { type: "error" as const, text };
+      const view = formatOAuthFlashError(oauthFlash.error, oauthFlash.errorMessage);
+      return { type: "error" as const, ...view };
     }
     return null;
   }, [oauthFlash]);
@@ -177,7 +184,7 @@ export function SettingsWorkspace({
     const confirmed = window.confirm(
       isCancelOAuth
         ? "Hủy phiên OAuth đang chờ? Bạn có thể kết nối lại sau."
-        : "Ngắt kết nối kênh này? Token OAuth sẽ bị xóa trên server.",
+        : "Ngắt kết nối kênh này? Token OAuth sẽ bị xóa. Hội thoại kênh này sẽ ẩn khỏi Inbox đến khi nối lại.",
     );
     if (!confirmed) return;
 
@@ -232,17 +239,28 @@ export function SettingsWorkspace({
           className={`shrink-0 border-b px-6 py-3 text-sm ${
             flashMessage.type === "success"
               ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-amber-200 bg-amber-50 text-amber-800"
+              : "border-amber-200 bg-amber-50 text-amber-900"
           }`}
         >
-          {flashMessage.text}
+          <p className="font-medium">{flashMessage.title}</p>
+          {flashMessage.type === "error" && flashMessage.hint ? (
+            <p className="mt-1 text-xs leading-5 text-amber-800/90">{flashMessage.hint}</p>
+          ) : null}
+          {flashMessage.type === "error" && flashMessage.detail ? (
+            <p className="mt-1 font-mono text-[11px] leading-4 text-amber-700/80 break-all">
+              {flashMessage.detail}
+            </p>
+          ) : null}
         </div>
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="border-b border-border bg-accent-muted/50 px-6 py-3.5">
           <p className="text-sm leading-6 text-slate-600">
-            Thiết lập OAuth app & webhook:{" "}
+            Thiết lập OAuth & webhook Meta:{" "}
+            <span className="font-semibold text-teal-800">docs/ket-noi-meta-fb-ig.md</span>
+            {" · "}
+            tổng quan kênh:{" "}
             <span className="font-semibold text-teal-800">docs/ket-noi-kenh.md</span>
             {!metaOAuthConfigured || !zaloOAuthConfigured ? (
               <span className="mt-1.5 block rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-800">
@@ -339,11 +357,14 @@ export function SettingsWorkspace({
         ) : null}
 
         {canUpdateSettings ? (
-          <div className="mx-6 mt-6">
+          <div className="mx-6 mt-6 space-y-6">
             <ShopPolicyForm
               replyClaimTtlMinutes={replyClaimTtlMinutes}
               maxUsersPerShop={maxUsersPerShop}
             />
+            <QuickReplyManager items={quickReplies} />
+            <AutoReplyManager items={autoReplyRules} />
+            <OrderChecklistManager items={checklistTemplates} />
           </div>
         ) : null}
 

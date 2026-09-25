@@ -31,7 +31,7 @@ describe("buildMetaOAuthUrl", () => {
         {
           appId: "app-1",
           appSecret: "secret",
-          redirectUri: "https://shopinbox-production.up.railway.app/api/connect/meta/callback",
+          redirectUri: "https://shopinbox.example.com/api/connect/meta/callback",
           webhookVerifyToken: "",
         },
         "state-1",
@@ -147,21 +147,22 @@ describe("subscribeMetaAppWebhook", () => {
           redirectUri: "https://example.com/callback",
           webhookVerifyToken: "verify-me",
         },
-        "https://shopinbox-production.up.railway.app/api/webhooks/meta",
+        "https://shopinbox.example.com/api/webhooks/meta",
       ),
     ).resolves.toBe(true);
 
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("/app-1/subscriptions");
     expect(url).toContain("access_token=app-1%7Csecret");
     expect(init.method).toBe("POST");
-    const body = String(init.body);
-    expect(body).toContain("object=page");
-    expect(body).toContain("verify_token=verify-me");
-    expect(body).toContain(
-      "callback_url=https%3A%2F%2Fshopinbox-production.up.railway.app%2Fapi%2Fwebhooks%2Fmeta",
+    const pageBody = String(init.body);
+    expect(pageBody).toContain("object=page");
+    expect(pageBody).toContain("verify_token=verify-me");
+    expect(pageBody).toContain(
+      "callback_url=https%3A%2F%2Fshopinbox.example.com%2Fapi%2Fwebhooks%2Fmeta",
     );
+    expect(String(fetchMock.mock.calls[1]?.[1]?.body)).toContain("object=instagram");
   });
 });
 
@@ -194,6 +195,14 @@ describe("isOutsideMessagingWindowError", () => {
       ),
     ).toBe(true);
     expect(isOutsideMessagingWindowError("Invalid OAuth access token")).toBe(false);
+  });
+
+  it("nhận diện lỗi cửa sổ 24h tiếng Việt (locale Graph)", () => {
+    expect(
+      isOutsideMessagingWindowError(
+        "(#10) Tin nhắn này được gửi ngoài khoảng thời gian cho phép. Tìm hiểu thêm về chính sách mới tại đây: https://developers.facebook.com/docs/messenger-platform/policy-overview",
+      ),
+    ).toBe(true);
   });
 });
 
@@ -242,12 +251,67 @@ describe("sendMetaMessage", () => {
         accessToken: "token",
         recipientId: "psid-1",
         text: "follow up",
+        channel: "facebook",
       }),
     ).resolves.toEqual({ externalMessageId: "mid.human" });
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const retryBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
     expect(retryBody.messaging_type).toBe("MESSAGE_TAG");
+    expect(retryBody.tag).toBe("HUMAN_AGENT");
+  });
+
+  it("Instagram ngoài 24h → không retry HUMAN_AGENT", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({
+        error: { message: "This message is sent outside of allowed window." },
+      }),
+    });
+
+    await expect(
+      sendMetaMessage({
+        pageId: "page-1",
+        accessToken: "token",
+        recipientId: "igsid-1",
+        text: "follow up",
+        channel: "instagram",
+      }),
+    ).rejects.toThrow(/Instagram không hỗ trợ thẻ Human Agent/i);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("lỗi #10 tiếng Việt → retry HUMAN_AGENT", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          error: {
+            message:
+              "(#10) Tin nhắn này được gửi ngoài khoảng thời gian cho phép. Tìm hiểu thêm về chính sách mới tại đây: https://developers.facebook.com/docs/messenger-platform/policy-overview",
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ message_id: "mid.human.vi" }),
+      });
+
+    await expect(
+      sendMetaMessage({
+        pageId: "page-1",
+        accessToken: "token",
+        recipientId: "psid-1",
+        text: "follow up",
+        channel: "facebook",
+      }),
+    ).resolves.toEqual({ externalMessageId: "mid.human.vi" });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retryBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
     expect(retryBody.tag).toBe("HUMAN_AGENT");
   });
 });

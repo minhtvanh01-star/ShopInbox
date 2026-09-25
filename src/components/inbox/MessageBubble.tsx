@@ -1,6 +1,7 @@
 "use client";
 
 import { formatTime } from "@/lib/labels";
+import { isMediaPlaceholderText } from "@/lib/inbox-media";
 import { outboundReceiptState } from "@/lib/message-receipt";
 import type { Message, MessageLocalStatus } from "@/lib/types";
 import { QUICK_REACT_EMOJIS } from "@/components/inbox/MessageComposerTools";
@@ -14,6 +15,69 @@ type MessageBubbleProps = {
   showReceipt?: boolean;
 };
 
+function AttachmentBlock({ message }: { message: Message }) {
+  const url = message.attachmentUrl;
+  if (!url) return null;
+
+  const type = message.attachmentType ?? "file";
+  const name = message.attachmentName ?? "Tệp đính kèm";
+
+  if (type === "image") {
+    return (
+      // Native img: attachment may be local /api/uploads or Meta CDN URL.
+      // eslint-disable-next-line @next/next/no-img-element -- dynamic upload/CDN URLs
+      <img
+        src={url}
+        alt={name}
+        className="mb-2 max-h-56 w-full rounded-lg object-cover"
+      />
+    );
+  }
+
+  if (type === "video") {
+    return (
+      <video
+        src={url}
+        controls
+        preload="metadata"
+        className="mb-2 max-h-64 w-full rounded-lg bg-black/80"
+        aria-label={name}
+      >
+        Trình duyệt không phát được video.{" "}
+        <a href={url} target="_blank" rel="noopener noreferrer" className="underline">
+          Mở file
+        </a>
+      </video>
+    );
+  }
+
+  if (type === "audio") {
+    return (
+      <audio src={url} controls preload="metadata" className="mb-2 w-full" aria-label={name}>
+        <a href={url} target="_blank" rel="noopener noreferrer" className="underline">
+          Mở audio
+        </a>
+      </audio>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`mb-2 inline-flex max-w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium underline-offset-2 hover:underline ${
+        message.sender === "shop"
+          ? "border-teal-500/40 bg-teal-800/40 text-teal-50"
+          : "border-slate-200 bg-slate-50 text-teal-800"
+      }`}
+    >
+      <span aria-hidden>📎</span>
+      <span className="truncate">{name}</span>
+    </a>
+  );
+}
+
 export function MessageBubble({
   message,
   canReact,
@@ -22,7 +86,7 @@ export function MessageBubble({
   showReceipt = false,
 }: MessageBubbleProps) {
   const isShop = message.sender === "shop";
-  const showText = message.text && message.text !== "[Ảnh]";
+  const showText = Boolean(message.text) && !isMediaPlaceholderText(message.text);
   const status: MessageLocalStatus | undefined = message.localStatus;
   const isFailed = status === "failed";
   const isSending = status === "sending";
@@ -39,16 +103,11 @@ export function MessageBubble({
                 : "rounded-bl-md border border-slate-200 bg-white text-slate-800 shadow-sm"
           } ${isSending ? "opacity-80" : ""}`}
         >
-          {message.attachmentUrl ? (
-            // Native img: attachment may be local /api/uploads or Meta CDN URL.
-            // eslint-disable-next-line @next/next/no-img-element -- dynamic upload/CDN URLs
-            <img
-              src={message.attachmentUrl}
-              alt={message.attachmentName ?? "Ảnh đính kèm"}
-              className="mb-2 max-h-56 w-full rounded-lg object-cover"
-            />
-          ) : null}
+          <AttachmentBlock message={message} />
           {showText ? <p className="whitespace-pre-wrap">{message.text}</p> : null}
+          {!showText && !message.attachmentUrl ? (
+            <p className="whitespace-pre-wrap">{message.text || " "}</p>
+          ) : null}
           <div
             className={`mt-1.5 flex items-center gap-1.5 text-[10px] ${
               isFailed ? "text-red-600" : isShop ? "text-teal-100" : "text-slate-400"
@@ -65,7 +124,7 @@ export function MessageBubble({
             <button
               type="button"
               onClick={() => onRetry(message.id)}
-              className="rounded-full border border-red-200 bg-white px-2.5 py-1 text-[11px] font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40"
+              className="min-h-9 rounded-full border border-red-200 bg-white px-3 py-1.5 text-[11px] font-medium text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40"
             >
               Gửi lại
             </button>
@@ -104,7 +163,7 @@ export function MessageBubble({
                 onClick={() => onReact(message.id, reaction.emoji)}
                 aria-label={`${reaction.emoji}, ${reaction.count} phản ứng`}
                 aria-pressed={reaction.reactedByMe}
-                className={`rounded-full border px-1.5 py-0.5 text-[11px] ${
+                className={`min-h-8 rounded-full border px-2 py-1 text-[11px] ${
                   reaction.reactedByMe
                     ? "border-teal-300 bg-teal-50 text-teal-800"
                     : "border-border bg-surface text-slate-600"

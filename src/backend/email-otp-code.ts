@@ -1,9 +1,10 @@
-import { createHash, randomInt } from "node:crypto";
+import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
 
 export const EMAIL_OTP_PURPOSE_REGISTER = "register";
 export const EMAIL_OTP_PURPOSE_PASSWORD_RESET = "password_reset";
 export const EMAIL_OTP_TTL_MS = 10 * 60 * 1000;
 export const EMAIL_OTP_RESEND_COOLDOWN_MS = 60 * 1000;
+export const EMAIL_OTP_LOCKOUT_MS = 15 * 60 * 1000;
 export const EMAIL_OTP_MAX_ATTEMPTS = 5;
 export const EMAIL_OTP_CODE_LENGTH = 6;
 
@@ -21,8 +22,34 @@ export function generateEmailOtpCode() {
   return String(randomInt(0, max)).padStart(EMAIL_OTP_CODE_LENGTH, "0");
 }
 
-export function hashEmailOtpCode(code: string) {
-  return createHash("sha256").update(code.trim()).digest("hex");
+function otpHmacKey() {
+  const secret = process.env.SESSION_SECRET?.trim();
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("Thiếu SESSION_SECRET để hash OTP.");
+    }
+    return "shopinbox-otp-dev-key";
+  }
+  return secret;
+}
+
+export function hashEmailOtpCode(code: string, context?: { purpose?: string; email?: string }) {
+  const purpose = context?.purpose ?? "";
+  const email = context?.email ?? "";
+  return createHmac("sha256", otpHmacKey())
+    .update(`${purpose}:${email}:${code.trim()}`)
+    .digest("hex");
+}
+
+export function emailOtpCodesEqual(left: string, right: string) {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  if (a.length !== b.length) return false;
+  try {
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 export function parseRegisterOtpPayload(raw: string): RegisterOtpPayload | null {

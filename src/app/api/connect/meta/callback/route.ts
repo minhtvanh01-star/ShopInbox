@@ -21,6 +21,7 @@ import {
 import { absoluteAppUrl } from "@/backend/public-url";
 import type { Channel } from "@/lib/types";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { sanitizeOAuthFlashMessage } from "@/lib/meta-webhook-security";
 
 function settingsUrl(request: Request, params: Record<string, string>) {
   const url = absoluteAppUrl(request, "/settings");
@@ -139,7 +140,9 @@ export async function GET(request: Request) {
     });
     return response;
   } catch (err) {
-    const message = err instanceof Error ? err.message : "meta_failed";
+    const message = sanitizeOAuthFlashMessage(
+      err instanceof Error ? err.message : "meta_failed",
+    );
     return NextResponse.redirect(
       settingsUrl(request, { oauth_error: "meta_failed", oauth_message: message, channel }),
     );

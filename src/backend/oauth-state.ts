@@ -1,4 +1,7 @@
 import { SignJWT, jwtVerify } from "jose";
+import { sessionSecretBytes } from "@/backend/app-secret";
+import { prisma } from "@/backend/prisma";
+import { openSecret, sealSecret } from "@/backend/token-crypto";
 import type { MetaPageOption } from "@/lib/oauth-types";
 import type { Channel } from "@/lib/types";
 
@@ -11,6 +14,7 @@ export type OAuthStatePayload = {
   shopId: string;
   channel: Channel;
   nonce: string;
+  codeVerifier?: string;
 };
 
 export type { MetaPageOption } from "@/lib/oauth-types";
@@ -22,11 +26,7 @@ export type OAuthPagesPayload = {
 };
 
 function getSecret() {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 16) {
-    throw new Error("Thiếu SESSION_SECRET (tối thiểu 16 ký tự) trong .env");
-  }
-  return new TextEncoder().encode(secret);
+  return sessionSecretBytes();
 }
 
 export async function createOAuthStateToken(payload: OAuthStatePayload) {
@@ -34,6 +34,7 @@ export async function createOAuthStateToken(payload: OAuthStatePayload) {
     shopId: payload.shopId,
     channel: payload.channel,
     nonce: payload.nonce,
+    ...(payload.codeVerifier ? { codeVerifier: payload.codeVerifier } : {}),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -61,6 +62,7 @@ export async function verifyOAuthStateToken(token: string): Promise<OAuthStatePa
       shopId: payload.shopId,
       channel,
       nonce: payload.nonce,
+      codeVerifier: typeof payload.codeVerifier === "string" ? payload.codeVerifier : undefined,
     };
   } catch {
     return null;
@@ -68,35 +70,46 @@ export async function verifyOAuthStateToken(token: string): Promise<OAuthStatePa
 }
 
 export async function createOAuthPagesToken(payload: OAuthPagesPayload) {
-  return new SignJWT({
-    shopId: payload.shopId,
-    channel: payload.channel,
-    pages: payload.pages,
-  })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime("15m")
-    .sign(getSecret());
+  const id = `opp-${crypto.randomUUID()}`;
+  await prisma.oAuthPagePick.create({
+    data: {
+      id,
+      shopId: payload.shopId,
+      channel: payload.channel,
+      pagesJson: sealSecret(JSON.stringify(payload.pages)) ?? "",
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000),
+    },
+  });
+  return id;
 }
 
 export async function verifyOAuthPagesToken(token: string): Promise<OAuthPagesPayload | null> {
+  if (!token.startsWith("opp-")) {
+    return null;
+  }
+
   try {
-    const { payload } = await jwtVerify(token, getSecret());
-    if (typeof payload.shopId !== "string" || typeof payload.channel !== "string") {
+    const row = await prisma.oAuthPagePick.findUnique({ where: { id: token } });
+    if (!row || row.expiresAt.getTime() <= Date.now()) {
+      if (row) {
+        await prisma.oAuthPagePick.delete({ where: { id: token } }).catch(() => undefined);
+      }
       return null;
     }
 
-    const channel = payload.channel;
+    const channel = row.channel;
     if (channel !== "facebook" && channel !== "instagram") {
       return null;
     }
 
-    if (!Array.isArray(payload.pages)) {
+    const rawJson = openSecret(row.pagesJson) ?? row.pagesJson;
+    const parsed = JSON.parse(rawJson) as unknown;
+    if (!Array.isArray(parsed)) {
       return null;
     }
 
     const pages: MetaPageOption[] = [];
-    for (const item of payload.pages) {
+    for (const item of parsed) {
       if (
         typeof item !== "object" ||
         item === null ||
@@ -121,8 +134,12 @@ export async function verifyOAuthPagesToken(token: string): Promise<OAuthPagesPa
       return null;
     }
 
-    return { shopId: payload.shopId, channel, pages };
+    return { shopId: row.shopId, channel, pages };
   } catch {
     return null;
   }
+}
+
+export async function consumeOAuthPagesToken(token: string) {
+  await prisma.oAuthPagePick.delete({ where: { id: token } }).catch(() => undefined);
 }

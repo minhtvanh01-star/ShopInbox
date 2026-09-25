@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextOrderCode, normalizeOrderItems } from "@/backend/order-code";
+import { nextOrderCode, normalizeOrderItems, ORDER_ITEM_QTY_MAX } from "@/backend/order-code";
 
 describe("nextOrderCode", () => {
   it("increments the highest DH code", () => {
@@ -16,16 +16,20 @@ describe("nextOrderCode", () => {
 });
 
 describe("normalizeOrderItems", () => {
-  it("drops invalid rows and merges duplicate products", () => {
+  it("drops invalid rows and merges duplicate variants", () => {
     expect(
       normalizeOrderItems([
-        { productId: "p1", qty: 1 },
-        { productId: "p1", qty: 2 },
-        { productId: "", qty: 3 },
-        { productId: "p2", qty: 0 },
+        { variantId: "pv1", qty: 1 },
+        { variantId: "pv1", qty: 2 },
+        { variantId: "", qty: 3 },
+        { variantId: "pv2", qty: 0 },
       ]),
-    ).toEqual([
-      { productId: "p1", qty: 3 },
+    ).toEqual([{ variantId: "pv1", qty: 3 }]);
+  });
+
+  it("caps quantity at ORDER_ITEM_QTY_MAX", () => {
+    expect(normalizeOrderItems([{ variantId: "pv1", qty: ORDER_ITEM_QTY_MAX + 50 }])).toEqual([
+      { variantId: "pv1", qty: ORDER_ITEM_QTY_MAX },
     ]);
   });
 });

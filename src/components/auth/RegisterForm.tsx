@@ -24,7 +24,6 @@ type RegisterFormProps = {
   /** Có thể gửi OTP (SMTP hoặc EMAIL_OTP_DEV_LOG=1). */
   canSendRegisterOtp: boolean;
   authError?: string;
-  authMessage?: string;
 };
 
 export function RegisterForm({
@@ -34,7 +33,6 @@ export function RegisterForm({
   emailConfigured,
   canSendRegisterOtp,
   authError,
-  authMessage,
 }: RegisterFormProps) {
   const [registerState, registerFormAction, registerPending] = useActionState(
     registerAction,
@@ -158,6 +156,17 @@ export function RegisterForm({
         <form action={verifyFormAction} className="space-y-5">
           <input type="hidden" name="email" value={otpEmail} />
           <input type="hidden" name="next" value={nextPath} />
+          {otpError ? (
+            <p
+              ref={otpErrorRef}
+              id={otpErrorId}
+              role="alert"
+              tabIndex={-1}
+              className="alert-error outline-none"
+            >
+              {otpError}
+            </p>
+          ) : null}
           <div className="field-group">
             <label htmlFor="code" className="label mb-0">
               Mã xác thực
@@ -176,20 +185,15 @@ export function RegisterForm({
               aria-invalid={otpError ? true : undefined}
               aria-describedby={otpError ? otpErrorId : undefined}
             />
+            <p className="text-xs text-slate-500">Dán mã từ email được. Không cần gõ tay từng số.</p>
           </div>
-          {otpError ? (
-            <p
-              ref={otpErrorRef}
-              id={otpErrorId}
-              role="alert"
-              tabIndex={-1}
-              className="alert-error outline-none"
-            >
-              {otpError}
-            </p>
-          ) : null}
-          <button type="submit" disabled={verifyPending} className="btn-primary w-full">
-            {verifyPending ? "Đang xác thực..." : "Xác nhận và tạo tài khoản"}
+          <button
+            type="submit"
+            disabled={verifyPending}
+            aria-busy={verifyPending}
+            className="btn-primary w-full"
+          >
+            {verifyPending ? "Đang xác thực…" : "Xác nhận và tạo tài khoản"}
           </button>
         </form>
         <form action={resendFormAction} className="flex flex-col gap-2">
@@ -232,7 +236,7 @@ export function RegisterForm({
         </div>
       ) : (
         <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-          Đăng ký Google chưa bật — cần cấu hình GOOGLE_CLIENT_ID trên server.
+          Đăng ký Google chưa được bật trên server.
         </p>
       )}
 
@@ -247,15 +251,11 @@ export function RegisterForm({
 
       {!canSendRegisterOtp ? (
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
-          Gửi mã Gmail chưa cấu hình — cần{" "}
-          <code className="rounded bg-amber-100 px-1">GMAIL_USER</code> +{" "}
-          <code className="rounded bg-amber-100 px-1">GMAIL_APP_PASSWORD</code> trên server (xem{" "}
-          <code className="rounded bg-amber-100 px-1">docs/dang-ky-email-otp.md</code>).
+          Gửi mã email chưa được cấu hình trên server. Liên hệ quản trị viên.
         </p>
       ) : !emailConfigured ? (
         <p className="mb-4 rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-xs text-sky-900">
-          Chế độ dev: chưa có SMTP — mã OTP sẽ in ra console server (
-          <code className="rounded bg-sky-100 px-1">EMAIL_OTP_DEV_LOG=1</code>).
+          Chế độ phát triển: mã xác thực được ghi ra nhật ký server, chưa gửi email.
         </p>
       ) : null}
 
@@ -269,6 +269,17 @@ export function RegisterForm({
         className="space-y-5"
       >
         <input type="hidden" name="next" value={nextPath} />
+        {formAlert ? (
+          <p
+            ref={formErrorRef}
+            id={formErrorId}
+            role="alert"
+            tabIndex={-1}
+            className="alert-error outline-none"
+          >
+            {formError ?? oauthErrorText}
+          </p>
+        ) : null}
         <div className="field-group">
           <label htmlFor="name" className="label mb-0">
             Họ tên
@@ -294,7 +305,8 @@ export function RegisterForm({
             id="email"
             name="email"
             type="email"
-            autoComplete="username"
+            autoComplete="email"
+            inputMode="email"
             required
             defaultValue={draftEmail}
             className="input-field"
@@ -315,8 +327,11 @@ export function RegisterForm({
             minLength={8}
             className="input-field"
             aria-invalid={formAlert ? true : undefined}
-            aria-describedby={formAlert ? formErrorId : undefined}
+            aria-describedby={formAlert ? `${formErrorId} password-hint` : "password-hint"}
           />
+          <p id="password-hint" className="text-xs text-slate-500">
+            Tối thiểu 8 ký tự. Trình quản lý mật khẩu được phép điền sẵn.
+          </p>
         </div>
         <div className="field-group">
           <label htmlFor="confirmPassword" className="label mb-0">
@@ -334,28 +349,13 @@ export function RegisterForm({
             aria-describedby={formAlert ? formErrorId : undefined}
           />
         </div>
-        {formAlert ? (
-          <p
-            ref={formErrorRef}
-            id={formErrorId}
-            role="alert"
-            tabIndex={-1}
-            className="alert-error outline-none"
-          >
-            {formError ?? (
-              <>
-                {oauthErrorText}
-                {authMessage ? ` (${authMessage})` : null}
-              </>
-            )}
-          </p>
-        ) : null}
         <button
           type="submit"
           disabled={registerPending || !canSendRegisterOtp}
+          aria-busy={registerPending}
           className="btn-primary w-full"
         >
-          {registerPending ? "Đang gửi mã..." : `Gửi mã xác thực · ${shopName}`}
+          {registerPending ? "Đang gửi mã…" : `Gửi mã xác thực · ${shopName}`}
         </button>
       </form>
 

@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+process.env.SESSION_SECRET ??= "shopinbox-test-session-secret";
+
 vi.mock("@/backend/prisma", () => ({
   prisma: {
     channelAccount: {
       findUnique: vi.fn(),
       update: vi.fn(),
+      updateMany: vi.fn(),
     },
     customerIdentity: {
       findUnique: vi.fn(),
@@ -83,6 +86,7 @@ describe("dispatchOutboundMessage", () => {
       accessToken: "page-token",
       recipientId: "psid-1",
       text: "Trả lời FB",
+      channel: "facebook",
     });
   });
 
@@ -111,7 +115,11 @@ describe("dispatchOutboundMessage", () => {
     });
 
     expect(sendMetaMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ pageId: "fb-page-9", recipientId: "igsid-1" }),
+      expect.objectContaining({
+        pageId: "fb-page-9",
+        recipientId: "igsid-1",
+        channel: "instagram",
+      }),
     );
   });
 
@@ -163,6 +171,7 @@ describe("dispatchOutboundMessage", () => {
       expiresAt: new Date(Date.now() + 3_600_000),
     });
     vi.mocked(prisma.channelAccount.update).mockResolvedValue({} as never);
+    vi.mocked(prisma.channelAccount.updateMany).mockResolvedValue({ count: 1 } as never);
     vi.mocked(sendZaloOaMessage).mockResolvedValue({ externalMessageId: "zmsg-1" });
 
     await expect(
@@ -180,9 +189,101 @@ describe("dispatchOutboundMessage", () => {
       recipientId: "zalo-user-1",
       text: "Zalo hi",
     });
+    expect(prisma.channelAccount.updateMany).toHaveBeenCalled();
   });
 
-  it("facebook disconnected → local demo", async () => {
+  it("Zalo expiresAt null vẫn refresh", async () => {
+    vi.mocked(prisma.channelAccount.findUnique).mockResolvedValue({
+      id: "ch-zalo",
+      channel: "zalo",
+      status: "ready",
+      accessToken: "old-token",
+      refreshToken: "refresh-1",
+      expiresAt: null,
+      pageId: null,
+      linkedPageId: null,
+      oaId: "oa-1",
+    } as never);
+    vi.mocked(prisma.customerIdentity.findUnique).mockResolvedValue({
+      externalId: "zalo-user-1",
+    } as never);
+    vi.mocked(refreshZaloAccessToken).mockResolvedValue({
+      accessToken: "new-token",
+      refreshToken: "refresh-2",
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    vi.mocked(prisma.channelAccount.updateMany).mockResolvedValue({ count: 1 } as never);
+    vi.mocked(sendZaloOaMessage).mockResolvedValue({ externalMessageId: "zmsg-2" });
+
+    await expect(
+      dispatchOutboundMessage({
+        shopId: "shop1",
+        channel: "zalo",
+        customerId: "cust1",
+        text: "Zalo hi",
+      }),
+    ).resolves.toEqual({ mode: "remote", externalMessageId: "zmsg-2" });
+
+    expect(refreshZaloAccessToken).toHaveBeenCalled();
+  });
+
+  it("Zalo refresh thua cuộc đua thì dùng token vừa lưu", async () => {
+    vi.mocked(prisma.channelAccount.findUnique)
+      .mockResolvedValueOnce({
+        id: "ch-zalo",
+        channel: "zalo",
+        status: "ready",
+        accessToken: "old-token",
+        refreshToken: "refresh-1",
+        expiresAt: new Date(Date.now() + 60_000),
+        pageId: null,
+        linkedPageId: null,
+        oaId: "oa-1",
+      } as never)
+      .mockResolvedValueOnce({
+        id: "ch-zalo",
+        channel: "zalo",
+        status: "ready",
+        accessToken: "old-token",
+        refreshToken: "refresh-1",
+        expiresAt: new Date(Date.now() + 60_000),
+        pageId: null,
+        linkedPageId: null,
+        oaId: "oa-1",
+      } as never)
+      .mockResolvedValueOnce({
+        id: "ch-zalo",
+        accessToken: "winner-token",
+        expiresAt: new Date(Date.now() + 3_600_000),
+      } as never);
+    vi.mocked(prisma.customerIdentity.findUnique).mockResolvedValue({
+      externalId: "zalo-user-1",
+    } as never);
+    vi.mocked(refreshZaloAccessToken).mockResolvedValue({
+      accessToken: "new-token",
+      refreshToken: "refresh-2",
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    vi.mocked(prisma.channelAccount.updateMany).mockResolvedValue({ count: 0 } as never);
+    vi.mocked(sendZaloOaMessage).mockResolvedValue({ externalMessageId: "zmsg-3" });
+
+    await expect(
+      dispatchOutboundMessage({
+        shopId: "shop1",
+        channel: "zalo",
+        customerId: "cust1",
+        text: "Zalo hi",
+      }),
+    ).resolves.toEqual({ mode: "remote", externalMessageId: "zmsg-3" });
+
+    expect(sendZaloOaMessage).toHaveBeenCalledWith({
+      accessToken: "winner-token",
+      recipientId: "zalo-user-1",
+      text: "Zalo hi",
+    });
+  });
+
+  it("facebook disconnected → lỗi rõ (không ghi tin ảo local)", async () => {
     vi.mocked(prisma.channelAccount.findUnique).mockResolvedValue({
       id: "ch-fb",
       channel: "facebook",
@@ -202,7 +303,7 @@ describe("dispatchOutboundMessage", () => {
         customerId: "cust1",
         text: "demo",
       }),
-    ).resolves.toEqual({ mode: "local" });
+    ).rejects.toThrow(/chưa kết nối OAuth/i);
 
     expect(sendMetaMessage).not.toHaveBeenCalled();
   });

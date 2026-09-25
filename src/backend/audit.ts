@@ -2,6 +2,7 @@ import { headers } from "next/headers";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/backend/prisma";
 import type { SessionPayload } from "@/backend/session-token";
+import { clientIpFromHeaders } from "@/lib/client-ip";
 
 const SECRET_KEY = /password|token|secret|authorization|cookie|hash|refresh/i;
 
@@ -70,7 +71,7 @@ export function sanitizeAuditMetadata(
 
 export function auditMetaFromRequest(request: Request): { ip?: string; userAgent?: string } {
   return {
-    ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || undefined,
+    ip: clientIpFromHeaders((name) => request.headers.get(name)),
     userAgent: request.headers.get("user-agent") || undefined,
   };
 }
@@ -79,7 +80,7 @@ export async function readAuditRequestMeta(): Promise<{ ip?: string; userAgent?:
   try {
     const h = await headers();
     return {
-      ip: h.get("x-forwarded-for")?.split(",")[0]?.trim() || h.get("x-real-ip") || undefined,
+      ip: clientIpFromHeaders((name) => h.get(name)),
       userAgent: h.get("user-agent") || undefined,
     };
   } catch {

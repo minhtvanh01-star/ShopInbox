@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { writeAudit } from "@/backend/audit";
+import { bumpStaffSessionVersion, loadStaffSession } from "@/backend/auth";
 import { requirePermission } from "@/backend/rbac";
 import { validateProfileInput } from "@/backend/google-auth";
 import { hashPassword, verifyPassword } from "@/backend/password";
@@ -94,6 +95,8 @@ export async function changePasswordAction(
       passwordHash: await hashPassword(newPassword),
     },
   });
+  await bumpStaffSessionVersion(session.staffId);
+  await setSessionCookie(await loadStaffSession(session.staffId));
 
   await writeAudit({
     actor: session,

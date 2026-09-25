@@ -20,11 +20,11 @@ describe("getRequestOrigin / absoluteAppUrl", () => {
 
   it("prefers NEXT_PUBLIC_APP_URL over Railway internal localhost:8080", () => {
     stash();
-    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox-production.up.railway.app";
+    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox.example.com";
     const request = new Request("http://localhost:8080/api/auth/google/callback?code=x");
-    expect(getRequestOrigin(request)).toBe("https://shopinbox-production.up.railway.app");
+    expect(getRequestOrigin(request)).toBe("https://shopinbox.example.com");
     expect(absoluteAppUrl(request, "/inbox").toString()).toBe(
-      "https://shopinbox-production.up.railway.app/inbox",
+      "https://shopinbox.example.com/inbox",
     );
   });
 
@@ -34,11 +34,31 @@ describe("getRequestOrigin / absoluteAppUrl", () => {
     delete process.env.APP_URL;
     const request = new Request("http://localhost:8080/login", {
       headers: {
-        "x-forwarded-host": "shopinbox-production.up.railway.app",
+        "x-forwarded-host": "shopinbox.example.com",
         "x-forwarded-proto": "https",
       },
     });
-    expect(getRequestOrigin(request)).toBe("https://shopinbox-production.up.railway.app");
+    expect(getRequestOrigin(request)).toBe("https://shopinbox.example.com");
+  });
+
+  it("ignores forwarded host in production when app URL is set to localhost fallback", () => {
+    stash();
+    const env = process.env as { NODE_ENV?: string };
+    const previous = env.NODE_ENV;
+    env.NODE_ENV = "production";
+    delete process.env.NEXT_PUBLIC_APP_URL;
+    delete process.env.APP_URL;
+    try {
+      const request = new Request("http://localhost:8080/login", {
+        headers: {
+          "x-forwarded-host": "evil.example",
+          "x-forwarded-proto": "https",
+        },
+      });
+      expect(getRequestOrigin(request)).not.toContain("evil.example");
+    } finally {
+      env.NODE_ENV = previous;
+    }
   });
 
   it("maps bare localhost:8080 to getPublicAppUrl fallback", () => {

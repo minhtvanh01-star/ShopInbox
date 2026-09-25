@@ -51,6 +51,10 @@ URL cố định (copy từ **Cài đặt** trong app cũng được):
 
 ## 1. Meta (Facebook + Instagram)
 
+> Hướng dẫn chi tiết + checklist + bảng lỗi (nên đọc khi đang bí kết nối): [ket-noi-meta-fb-ig.md](./ket-noi-meta-fb-ig.md).  
+> Use case: [UC-CH-01_ket-noi-facebook-instagram.md](./UC-CH-01_ket-noi-facebook-instagram.md).  
+> Yêu cầu tổng: [yeu-cau-he-thong.md](./yeu-cau-he-thong.md).
+
 ### Tạo Meta Developer app
 
 1. [Meta for Developers](https://developers.facebook.com/) → **Create App** (Business).
@@ -59,17 +63,18 @@ URL cố định (copy từ **Cài đặt** trong app cũng được):
 
 ### Miền ứng dụng + Redirect (bắt buộc trên production)
 
-Lỗi Facebook *"Miền của URL này không được đưa vào miền của ứng dụng"* = chưa khai báo domain Railway trên Meta.
+Lỗi Facebook *"Miền của URL này không được đưa vào miền của ứng dụng"* = chưa khai báo hostname production trên Meta.
 
-Trên app **ShopInbox** → **Cài đặt ứng dụng → Thông tin cơ bản**:
+Trên app Meta → **Cài đặt ứng dụng → Thông tin cơ bản**:
 
 1. **Miền ứng dụng (App Domains)** — thêm (không có `https://`):
    ```
-   shopinbox-production.up.railway.app
+   <hostname-production>
    ```
+   Ví dụ: `app.example.com` hoặc subdomain host bạn đang dùng.
 2. **Thêm nền tảng → Website** (nếu chưa có) → **URL trang web**:
    ```
-   https://shopinbox-production.up.railway.app/
+   https://<hostname-production>/
    ```
 3. Bấm **Lưu thay đổi**.
 
@@ -78,24 +83,24 @@ Trên app **ShopInbox** → **Cài đặt ứng dụng → Thông tin cơ bản*
 Trong app Meta → **Đăng nhập bằng Facebook → Cài đặt → Valid OAuth Redirect URIs**:
 
 ```
-https://shopinbox-production.up.railway.app/api/connect/meta/callback
+https://<hostname-production>/api/connect/meta/callback
 ```
 
 Local qua ngrok: dùng URL ngrok tương ứng (và thêm miền ngrok vào App Domains nếu Meta yêu cầu).
 
-### Biến môi trường server (Railway)
+### Biến môi trường server
 
 ```env
 META_APP_ID=
 META_APP_SECRET=
 META_WEBHOOK_VERIFY_TOKEN=chuoi-bi-mat-tuy-chon
-NEXT_PUBLIC_APP_URL=https://shopinbox-production.up.railway.app
+NEXT_PUBLIC_APP_URL=https://<hostname-production>
 # META_REDIRECT_URI tuỳ chọn — nếu trống hoặc còn localhost, app suy từ NEXT_PUBLIC_APP_URL
 ```
 
 `META_WEBHOOK_VERIFY_TOKEN` dùng khi Meta gọi GET verify webhook (`/api/webhooks/meta`).
 
-> **Railway:** đặt đúng `NEXT_PUBLIC_APP_URL` = domain public. App lắng nghe cổng nội bộ `8080` — code suy OAuth callback / webhook từ URL này (tránh nhảy `localhost:8080`).
+> Đặt đúng `NEXT_PUBLIC_APP_URL` = domain public HTTPS. Một số host lắng nghe cổng nội bộ (vd. `8080`) — code suy OAuth callback / webhook từ URL public (tránh nhảy `localhost`).
 
 ### Webhook tin nhắn
 
@@ -168,10 +173,13 @@ Modal có mục **Cấu hình nâng cao (dev)** để dán App ID / Secret thủ
 
 ## 5. Bảo mật
 
-- App Secret chỉ trên server (`.env`), không gửi xuống client.
-- Access token lưu trong `channel_accounts` — mã hóa at-rest là nâng cấp sau.
-- OAuth dùng `state` JWT + cookie CSRF (15 phút).
-- Chỉ role **owner** gọi `/api/connect/*`.
+- `META_APP_SECRET` / `ZALO_APP_SECRET` chỉ trên server (`.env`). Page/OA **access token** chỉ trong DB — **không** serialize xuống RSC/client.
+- Form «Cấu hình nâng cao (dev)» có thể *ghi* secret mới; UI **không** đọc lại giá trị đã lưu (chỉ hiện placeholder «đã lưu»).
+- `META_WEBHOOK_VERIFY_TOKEN` được hiện trên Cài đặt cho người có `channels.connect` để copy sang Meta (cố ý phục vụ setup).
+- Webhook Meta POST bắt buộc `X-Hub-Signature-256` khớp App Secret. Webhook Zalo hiện **chưa** ký (hạn chế đã biết).
+- Access token trong DB: plaintext — mã hóa at-rest là nâng cấp sau.
+- OAuth dùng `state` JWT + cookie CSRF (~15 phút).
+- Chỉ session có quyền `channels.connect` gọi `/api/connect/*`.
 
 ---
 
@@ -183,11 +191,12 @@ Modal có mục **Cấu hình nâng cao (dev)** để dán App ID / Secret thủ
 - [ ] App Meta/Zalo ở chế độ **Live**
 - [ ] Chỉ chủ shop kết nối kênh
 
-**Giới hạn hiện tại (Lát 4+):**
+**Giới hạn hiện tại:**
 
-- **Đồng bộ inbound:** Webhook Meta/Zalo ghi tin nhắn khách vào PostgreSQL → hiện trong Inbox khi tải/trang refresh (`revalidatePath` sau webhook).
-- **Gửi outbound:** Inbox gọi Meta Graph Send API / Zalo OA send khi kênh `ready` + có token; lưu `external_message_id` để dedup với webhook echo. Kênh web / demo (chưa OAuth) vẫn chỉ ghi DB.
-- **Dedup:** `external_message_id` (mid/msg_id) tránh ghi trùng; Meta echo (`is_echo`) bỏ qua inbound.
+- **Đồng bộ inbound:** Webhook Meta/Zalo ghi tin vào PostgreSQL. Inbox soft-poll ~8s + `revalidatePath` sau webhook (chưa SSE/WS).
+- **Gửi outbound:** Meta chữ + ảnh; Zalo chữ. Kênh web / chưa OAuth không giả lập gửi platform.
+- **Dedup:** `external_message_id`; Meta echo (`is_echo`) bỏ qua inbound.
+- **Zalo media / ký webhook:** chưa.
 
 ---
 

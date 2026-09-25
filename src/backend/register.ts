@@ -1,13 +1,15 @@
 import { isActiveForOpenRegistration, roleCodeForNewStaff } from "@/lib/rbac-catalog";
-import { REGISTER_MIN_PASSWORD_LENGTH } from "@/lib/auth-password";
+import {
+  EMAIL_RE,
+  REGISTER_MIN_PASSWORD_LENGTH,
+  REGISTER_NAME_MAX,
+} from "@/lib/auth-password";
 
 /** Shop mặc định — khớp DEMO_SHOP_ID / Google signup */
 export const REGISTER_DEFAULT_SHOP_ID = "shop1";
 export const REGISTER_DEFAULT_SHOP_NAME = "ShopInbox";
-export { REGISTER_MIN_PASSWORD_LENGTH };
+export { REGISTER_MIN_PASSWORD_LENGTH, REGISTER_NAME_MAX };
 export { isActiveForOpenRegistration };
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export type RegisterInput = {
   name: string;
@@ -39,8 +41,8 @@ export function validateRegisterInput(raw: {
   if (!name) {
     return { ok: false, error: "Họ tên không được để trống." };
   }
-  if (name.length > 100) {
-    return { ok: false, error: "Họ tên tối đa 100 ký tự." };
+  if (name.length > REGISTER_NAME_MAX) {
+    return { ok: false, error: `Họ tên tối đa ${REGISTER_NAME_MAX} ký tự.` };
   }
   if (!email) {
     return { ok: false, error: "Email không được để trống." };

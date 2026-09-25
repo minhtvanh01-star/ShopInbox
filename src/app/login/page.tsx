@@ -9,7 +9,6 @@ type LoginPageProps = {
   searchParams: Promise<{
     next?: string;
     auth_error?: string;
-    auth_message?: string;
     auth_success?: string;
     reset?: string;
     reason?: string;
@@ -37,7 +36,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         nextPath={nextPath}
         googleOAuthConfigured={Boolean(getGoogleOAuthConfig())}
         authError={params.auth_error}
-        authMessage={params.auth_message}
         authSuccess={params.auth_success}
         resetSuccess={params.reset === "1"}
         idleTimeout={params.reason === "idle"}

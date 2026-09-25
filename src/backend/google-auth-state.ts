@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
+import { cookieSecureFlag, sessionSecretBytes } from "@/backend/app-secret";
 
 export const GOOGLE_AUTH_STATE_COOKIE = "shopinbox_google_auth_state";
 export const GOOGLE_PKCE_COOKIE = "shopinbox_google_pkce";
@@ -12,19 +13,11 @@ export type GoogleAuthStatePayload = {
   staffId?: string;
 };
 
-function getSecret() {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 16) {
-    throw new Error("Thiếu SESSION_SECRET (tối thiểu 16 ký tự) trong .env");
-  }
-  return new TextEncoder().encode(secret);
-}
-
 export function googleAuthCookieOptions() {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSecureFlag(),
     path: "/",
     maxAge: 60 * 15,
   };
@@ -40,14 +33,14 @@ export async function createGoogleAuthStateToken(payload: GoogleAuthStatePayload
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("15m")
-    .sign(getSecret());
+    .sign(sessionSecretBytes());
 }
 
 export async function verifyGoogleAuthStateToken(
   token: string,
 ): Promise<GoogleAuthStatePayload | null> {
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, sessionSecretBytes());
     if (typeof payload.nonce !== "string" || typeof payload.next !== "string") {
       return null;
     }
@@ -78,12 +71,12 @@ export async function createGooglePkceToken(codeVerifier: string) {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime("15m")
-    .sign(getSecret());
+    .sign(sessionSecretBytes());
 }
 
 export async function verifyGooglePkceToken(token: string): Promise<string | null> {
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, sessionSecretBytes());
     return typeof payload.v === "string" && payload.v.length >= 43 ? payload.v : null;
   } catch {
     return null;

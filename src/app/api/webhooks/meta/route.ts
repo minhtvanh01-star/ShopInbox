@@ -1,7 +1,8 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getMetaOAuthConfig } from "@/backend/oauth-config";
-import { processMetaWebhook } from "@/backend/webhook-meta";
+import { processMetaWebhook, type MetaWebhookBody } from "@/backend/webhook-meta";
+import { verifyMetaWebhookSignature } from "@/lib/meta-webhook-security";
 
 export async function GET(request: Request) {
   const config = getMetaOAuthConfig();
@@ -28,8 +29,22 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
-  if (!body) {
+  const config = getMetaOAuthConfig();
+  if (!config?.appSecret) {
+    console.warn("[webhook/meta] META_APP_SECRET chưa cấu hình — từ chối POST");
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const rawBody = await request.text();
+  const signature = request.headers.get("x-hub-signature-256");
+  if (!verifyMetaWebhookSignature(rawBody, signature, config.appSecret)) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 403 });
+  }
+
+  let body: MetaWebhookBody;
+  try {
+    body = JSON.parse(rawBody) as MetaWebhookBody;
+  } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
@@ -41,15 +56,15 @@ export async function POST(request: Request) {
     }
     if (result.processed === 0 && result.touched === 0 && !result.skipped) {
       console.warn("[webhook/meta] received but no channel matched", {
-        object: (body as { object?: string }).object,
-        entryIds: Array.isArray((body as { entry?: Array<{ id?: string }> }).entry)
-          ? (body as { entry: Array<{ id?: string }> }).entry.map((entry) => entry.id)
+        object: body.object,
+        entryIds: Array.isArray(body.entry)
+          ? body.entry.map((entry) => entry.id)
           : [],
       });
     }
     return NextResponse.json({ received: true, ...result });
   } catch (err) {
     console.error("[webhook/meta] ingest error", err);
-    return NextResponse.json({ received: true, error: "ingest_failed" });
+    return NextResponse.json({ received: true, error: "ingest_failed" }, { status: 500 });
   }
 }

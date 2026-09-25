@@ -14,6 +14,8 @@ describe("db backup plan", () => {
     expect(order.indexOf("customers")).toBeLessThan(order.indexOf("orders"));
     expect(order.indexOf("orders")).toBeLessThan(order.indexOf("orderItems"));
     expect(order.indexOf("conversations")).toBeLessThan(order.indexOf("messages"));
+    expect(order.indexOf("messages")).toBeLessThan(order.indexOf("messageReactions"));
+    expect(order.indexOf("shops")).toBeLessThan(order.indexOf("oauthPagePicks"));
   });
 
   it("builds a Windows-safe backup filename stamp", () => {

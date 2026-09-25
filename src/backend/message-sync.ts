@@ -4,7 +4,9 @@ import {
   type MetaConversation,
 } from "@/backend/meta-oauth";
 import { prisma } from "@/backend/prisma";
-import { isMissingDbColumnError } from "@/backend/prisma-errors";
+import { isMissingDbColumnError, isUniqueConstraintError } from "@/backend/prisma-errors";
+import { openSecret } from "@/backend/token-crypto";
+import { pickOwnedChannelAccount } from "@/backend/channel-account-pick";
 import { normalizeCustomerAvatarUrl } from "@/lib/customer-avatar";
 import type { Channel } from "@/lib/types";
 
@@ -30,6 +32,8 @@ export type InboundMessageInput = {
   externalMessageId?: string;
   sentAt?: Date;
   touchWebhook?: boolean;
+  /** Sync lịch sử / backfill — không chạy auto-reply. */
+  skipAutoReply?: boolean;
   attachmentType?: string | null;
   attachmentUrl?: string | null;
   attachmentName?: string | null;
@@ -49,18 +53,34 @@ function defaultSenderName(channel: Channel, senderExternalId: string) {
 
 export async function findChannelAccount(channel: Channel, externalAccountId: string) {
   if (channel === "zalo") {
-    return prisma.channelAccount.findFirst({
+    const rows = await prisma.channelAccount.findMany({
       where: { channel: "zalo", oaId: externalAccountId, status: "ready" },
     });
+    return pickOwnedChannelAccount(rows);
   }
 
-  return prisma.channelAccount.findFirst({
+  const exact = await prisma.channelAccount.findMany({
     where: {
       channel,
       status: "ready",
       OR: [{ pageId: externalAccountId }, { linkedPageId: externalAccountId }],
     },
   });
+  const hit = pickOwnedChannelAccount(exact);
+  if (hit) return hit;
+
+  if (channel === "facebook") {
+    const ig = await prisma.channelAccount.findMany({
+      where: {
+        channel: "instagram",
+        status: "ready",
+        OR: [{ pageId: externalAccountId }, { linkedPageId: externalAccountId }],
+      },
+    });
+    return pickOwnedChannelAccount(ig);
+  }
+
+  return null;
 }
 
 async function findCustomerIdentity(shopId: string, channel: Channel, senderExternalId: string) {
@@ -188,18 +208,30 @@ export async function findOrCreateConversation(
     return existing;
   }
 
-  return prisma.conversation.create({
-    data: {
-      id: `conv-${crypto.randomUUID()}`,
-      shopId,
-      customerId,
-      channel,
-      lastMessage: "",
-      lastAt: new Date(),
-      unread: 0,
-      tag: "new",
-    },
-  });
+  try {
+    return await prisma.conversation.create({
+      data: {
+        id: `conv-${crypto.randomUUID()}`,
+        shopId,
+        customerId,
+        channel,
+        lastMessage: "",
+        lastAt: new Date(),
+        unread: 0,
+        tag: "new",
+      },
+    });
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      throw error;
+    }
+    const raced = await prisma.conversation.findFirst({
+      where: { shopId, customerId, channel },
+      orderBy: { lastAt: "desc" },
+    });
+    if (!raced) throw error;
+    return raced;
+  }
 }
 
 async function enrichCustomerAvatarFromMeta(input: {
@@ -250,9 +282,11 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
     }
   }
 
+  const ingestChannel = account.channel;
+
   const customer = await findOrCreateCustomer(
     account.shopId,
-    input.channel,
+    ingestChannel,
     input.senderExternalId,
     input.senderName,
     input.senderAvatarUrl,
@@ -265,16 +299,19 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
 
   if (
     !customerAvatar &&
-    (input.channel === "facebook" || input.channel === "instagram") &&
+    (ingestChannel === "facebook" || ingestChannel === "instagram") &&
     account.accessToken
   ) {
     try {
-      await enrichCustomerAvatarFromMeta({
-        customerId: customer.id,
-        senderExternalId: input.senderExternalId,
-        pageAccessToken: account.accessToken,
-        currentName: customer.name,
-      });
+      const pageAccessToken = openSecret(account.accessToken);
+      if (pageAccessToken) {
+        await enrichCustomerAvatarFromMeta({
+          customerId: customer.id,
+          senderExternalId: input.senderExternalId,
+          pageAccessToken,
+          currentName: customer.name,
+        });
+      }
     } catch (error) {
       console.error("[ingestInboundMessage] enrich avatar failed", error);
     }
@@ -283,7 +320,7 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
   const conversation = await findOrCreateConversation(
     account.shopId,
     customer.id,
-    input.channel,
+    ingestChannel,
   );
 
   const sentAt = input.sentAt ?? new Date();
@@ -325,12 +362,93 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
         ]),
   ]);
 
+  if (!input.skipAutoReply) {
+    try {
+      const { tryAutoReplyAfterInbound } = await import("@/backend/auto-reply");
+      await tryAutoReplyAfterInbound({
+        shopId: account.shopId,
+        conversationId: conversation.id,
+        channel: ingestChannel,
+        customerId: customer.id,
+        customerText: text,
+      });
+    } catch (error) {
+      console.error("[ingestInboundMessage] auto-reply failed", error);
+    }
+  }
+
   return {
     ok: true as const,
     duplicate: false as const,
     conversationId: conversation.id,
     shopId: account.shopId,
   };
+}
+
+/** Tin shop gửi từ Inbox Meta / echo — ghi sender=shop, không tạo khách từ Page. */
+export async function ingestShopEchoMessage(input: {
+  channel: Channel;
+  externalAccountId: string;
+  customerExternalId: string;
+  text: string;
+  externalMessageId?: string;
+  sentAt?: Date;
+}) {
+  const account = await findChannelAccount(input.channel, input.externalAccountId);
+  if (!account) {
+    return { ok: false as const, reason: "channel_not_found" as const };
+  }
+
+  if (input.externalMessageId) {
+    const duplicate = await prisma.message.findFirst({
+      where: { shopId: account.shopId, externalMessageId: input.externalMessageId },
+    });
+    if (duplicate) {
+      return { ok: true as const, duplicate: true as const };
+    }
+  }
+
+  const identity = await findCustomerIdentity(
+    account.shopId,
+    account.channel,
+    input.customerExternalId,
+  );
+  if (!identity) {
+    return { ok: false as const, reason: "customer_not_found" as const };
+  }
+
+  const conversation = await findOrCreateConversation(
+    account.shopId,
+    identity.customerId,
+    account.channel,
+  );
+  const sentAt = input.sentAt ?? new Date();
+  const text = input.text.trim();
+  if (!text) {
+    return { ok: false as const, reason: "empty_text" as const };
+  }
+
+  await prisma.$transaction([
+    prisma.message.create({
+      data: {
+        shopId: account.shopId,
+        conversationId: conversation.id,
+        sender: "shop",
+        text,
+        externalMessageId: input.externalMessageId ?? null,
+        createdAt: sentAt,
+      },
+    }),
+    prisma.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        lastMessage: text,
+        lastAt: sentAt,
+      },
+    }),
+  ]);
+
+  return { ok: true as const, duplicate: false as const, conversationId: conversation.id };
 }
 
 export async function ingestRecentMetaMessages(input: {
@@ -353,6 +471,7 @@ export async function ingestRecentMetaMessages(input: {
       externalMessageId: message.externalMessageId,
       sentAt: message.sentAt,
       touchWebhook: false,
+      skipAutoReply: true,
     });
     if (result.ok && !result.duplicate) {
       ingested += 1;
@@ -378,7 +497,18 @@ export async function touchChannelWebhook(channel: Channel, externalAccountId: s
     },
     data: { lastWebhookAt: new Date() },
   });
-  return result.count;
+  if (result.count > 0 || channel !== "facebook") {
+    return result.count;
+  }
+
+  const ig = await prisma.channelAccount.updateMany({
+    where: {
+      channel: "instagram",
+      OR: [{ pageId: externalAccountId }, { linkedPageId: externalAccountId }],
+    },
+    data: { lastWebhookAt: new Date() },
+  });
+  return ig.count;
 }
 
 /**
@@ -415,7 +545,7 @@ export async function applyMetaMessageWatermark(input: {
 
   const identity = await prisma.customerIdentity.findFirst({
     where: {
-      channel: input.channel,
+      channel: account.channel,
       externalId: input.customerExternalId,
       customer: { shopId: account.shopId },
     },
@@ -429,7 +559,7 @@ export async function applyMetaMessageWatermark(input: {
     where: {
       shopId: account.shopId,
       customerId: identity.customerId,
-      channel: input.channel,
+      channel: account.channel,
     },
     orderBy: { lastAt: "desc" },
     select: { id: true },

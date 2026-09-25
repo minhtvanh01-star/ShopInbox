@@ -63,10 +63,87 @@ export const channelAccounts: ChannelAccount[] = [
 ];
 
 export const products: Product[] = [
-  { id: "p1", name: "Áo sơ mi trắng", sku: "SM-TRANG", price: 290000, inStock: true },
-  { id: "p2", name: "Đầm hoa midi", sku: "DAM-HOA", price: 450000, inStock: true },
-  { id: "p3", name: "Áo croptop be", sku: "CROP-BE", price: 220000, inStock: true },
-  { id: "p4", name: "Đầm hoa", sku: "DAM-HOA-NHO", price: 390000, inStock: true },
+  {
+    id: "p1",
+    code: "SP001",
+    name: "Áo sơ mi trắng",
+    vatPolicy: "exempt",
+    selling: true,
+    variants: [
+      {
+        id: "pv-p1",
+        sku: "SM-TRANG",
+        name: "Áo sơ mi trắng",
+        price: 290000,
+        costPrice: 120000,
+        selling: true,
+        sortOrder: 0,
+      },
+    ],
+  },
+  {
+    id: "p2",
+    code: "SP002",
+    name: "Đầm hoa midi",
+    vatPolicy: "exempt",
+    selling: true,
+    variants: [
+      {
+        id: "pv-p2",
+        sku: "DAM-HOA",
+        name: "Đầm hoa midi",
+        price: 450000,
+        costPrice: 200000,
+        selling: true,
+        sortOrder: 0,
+      },
+    ],
+  },
+  {
+    id: "p3",
+    code: "SP003",
+    name: "Áo croptop be",
+    vatPolicy: "exempt",
+    selling: true,
+    variants: [
+      {
+        id: "pv-p3",
+        sku: "CROP-BE",
+        name: "Áo croptop be",
+        price: 220000,
+        costPrice: 90000,
+        selling: true,
+        sortOrder: 0,
+      },
+    ],
+  },
+  {
+    id: "p4",
+    code: "SP004",
+    name: "Đầm hoa",
+    vatPolicy: "exempt",
+    selling: true,
+    variants: [
+      {
+        id: "pv-p4-m",
+        sku: "DAM-HOA-M",
+        name: "Size M",
+        price: 390000,
+        costPrice: 180000,
+        selling: true,
+        sortOrder: 0,
+      },
+      {
+        id: "pv-p4-l",
+        sku: "DAM-HOA-L",
+        name: "Size L",
+        price: 390000,
+        costPrice: 180000,
+        selling: true,
+        sortOrder: 1,
+      },
+    ],
+  },
 ];
 
 export const customers: Customer[] = [

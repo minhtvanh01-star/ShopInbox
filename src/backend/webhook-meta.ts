@@ -1,6 +1,8 @@
 import {
   applyMetaMessageWatermark,
+  findChannelAccount,
   ingestInboundMessage,
+  ingestShopEchoMessage,
   removeMessageReaction,
   touchChannelWebhook,
   upsertMessageReaction,
@@ -80,7 +82,7 @@ type MetaWebhookEntry = {
   changes?: MetaWebhookChange[];
 };
 
-type MetaWebhookBody = {
+export type MetaWebhookBody = {
   object?: string;
   entry?: MetaWebhookEntry[];
 };
@@ -107,17 +109,47 @@ function firstImageAttachment(attachments?: MetaAttachment[]) {
   const image = attachments?.find((item) => item.type === "image" && item.payload?.url);
   if (!image?.payload?.url) return null;
   return {
+    type: "image" as const,
     url: image.payload.url,
     name: image.payload.title ?? null,
   };
+}
+
+/** Ảnh / video / audio / file có URL — lưu để Inbox hiển thị (không chỉ placeholder). */
+function firstRenderableAttachment(attachments?: MetaAttachment[]) {
+  const image = firstImageAttachment(attachments);
+  if (image) return image;
+
+  const preferred = ["video", "audio", "file"] as const;
+  for (const type of preferred) {
+    const hit = attachments?.find((item) => item.type === type && item.payload?.url);
+    if (hit?.payload?.url) {
+      return {
+        type,
+        url: hit.payload.url,
+        name: hit.payload.title ?? null,
+      };
+    }
+  }
+  return null;
+}
+
+function attachmentPlaceholder(attachments?: MetaAttachment[]) {
+  if (!attachments?.length) return null;
+  if (attachments.some((item) => item.type === "image")) return "[Ảnh]";
+  if (attachments.some((item) => item.type === "video")) return "[Video]";
+  if (attachments.some((item) => item.type === "audio")) return "[Audio]";
+  if (attachments.some((item) => item.type === "file")) return "[File]";
+  return "[Đính kèm]";
 }
 
 function eventText(event: MetaMessagingEvent) {
   if (event.message?.text) {
     return event.message.text;
   }
-  if (firstImageAttachment(event.message?.attachments)) {
-    return "[Ảnh]";
+  const fromAttachment = attachmentPlaceholder(event.message?.attachments);
+  if (fromAttachment) {
+    return fromAttachment;
   }
   if (event.postback?.title) {
     return `[Postback] ${event.postback.title}`;
@@ -255,13 +287,7 @@ async function ingestMetaReaction(input: {
   emoji?: string | null;
   reaction?: string | null;
 }) {
-  const account = await prisma.channelAccount.findFirst({
-    where: {
-      channel: input.channel,
-      status: "ready",
-      OR: [{ pageId: input.externalAccountId }, { linkedPageId: input.externalAccountId }],
-    },
-  });
+  const account = await findChannelAccount(input.channel, input.externalAccountId);
   if (!account) return false;
 
   const message = await prisma.message.findFirst({
@@ -315,12 +341,41 @@ export async function processMetaWebhook(body: MetaWebhookBody) {
     }
 
     for (const event of events) {
-      if (event.message?.is_echo) continue;
       if (event.delivery || event.read) continue;
 
       const senderId = event.sender?.id;
       const text = eventText(event);
-      const image = firstImageAttachment(event.message?.attachments);
+      const media = firstRenderableAttachment(event.message?.attachments);
+      const pageIsSender = isMetaReceiptFromPage({
+        senderId,
+        recipientId: event.recipient?.id,
+        entryId: entry.id,
+      });
+
+      if (event.message?.is_echo || pageIsSender) {
+        const pageId = resolveMetaExternalAccountId(entry.id, pageIsSender ? senderId : null);
+        const customerExternalId =
+          event.recipient?.id && event.recipient.id !== pageId
+            ? event.recipient.id
+            : !pageIsSender
+              ? senderId
+              : null;
+        if (pageId && customerExternalId && text) {
+          const echo = await ingestShopEchoMessage({
+            channel,
+            externalAccountId: pageId,
+            customerExternalId,
+            text,
+            externalMessageId: externalMessageId(event),
+            sentAt: event.timestamp ? new Date(event.timestamp) : undefined,
+          });
+          if (echo.ok && !("duplicate" in echo && echo.duplicate)) {
+            processed += 1;
+          }
+        }
+        continue;
+      }
+
       const externalAccountId = resolveMetaExternalAccountId(entry.id, event.recipient?.id);
       if (!senderId || !text || !externalAccountId) continue;
 
@@ -331,9 +386,9 @@ export async function processMetaWebhook(body: MetaWebhookBody) {
         text,
         externalMessageId: externalMessageId(event),
         sentAt: event.timestamp ? new Date(event.timestamp) : undefined,
-        attachmentType: image ? "image" : null,
-        attachmentUrl: image?.url ?? null,
-        attachmentName: image?.name ?? null,
+        attachmentType: media?.type ?? null,
+        attachmentUrl: media?.url ?? null,
+        attachmentName: media?.name ?? null,
       });
 
       if (result.ok && !result.duplicate) {

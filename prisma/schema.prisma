@@ -55,7 +55,11 @@ model Shop {
   messages              Message[]
   orders                Order[]
   products              Product[]
+  productGroups         ProductGroup[]
   quickReplies          QuickReply[]
+  autoReplyRules        AutoReplyRule[]
+  orderChecklistTemplates OrderChecklistTemplate[]
+  oauthPagePicks        OAuthPagePick[]
   auditLogs             AuditLog[]
   messageReactions      MessageReaction[]
 
@@ -109,16 +113,28 @@ model Staff {
   roleCode      String
   role          Role           @relation(fields: [roleCode], references: [code], onDelete: Restrict)
   isActive      Boolean        @default(true)
+  sessionVersion Int           @default(0)
   createdAt     DateTime       @default(now())
   assignedChats Conversation[]
   sentMessages  Message[]
   messageReactions MessageReaction[]
   auditLogs     AuditLog[]
+  checklistMarks OrderChecklistCheck[]
 
   @@index([shopId])
   @@index([roleCode])
   @@index([shopId, isActive])
   @@map("staff")
+}
+
+/** Đếm lần đăng nhập sai theo email — cửa sổ trượt, tự hết sau LOGIN_FAIL_WINDOW_MS. */
+model AuthLoginThrottle {
+  email           String   @id
+  failCount       Int      @default(0)
+  windowStartedAt DateTime
+  updatedAt       DateTime @updatedAt
+
+  @@map("auth_login_throttles")
 }
 
 /** OTP email (đăng ký…) — mã đã hash, payload tạm (tên + passwordHash). */
@@ -215,6 +231,7 @@ model CustomerIdentity {
   externalId String?
 
   @@unique([customerId, channel])
+  @@unique([channel, externalId])
   @@index([channel, externalId])
   @@map("customer_identities")
 }
@@ -237,6 +254,7 @@ model Conversation {
   messages   Message[]
   orders     Order[]
 
+  @@unique([shopId, customerId, channel])
   @@index([shopId, lastAt])
   @@index([customerId])
   @@index([staffId])
@@ -289,18 +307,60 @@ model MessageReaction {
   @@map("message_reactions")
 }
 
-model Product {
-  id      String      @id
-  shopId  String
-  shop    Shop        @relation(fields: [shopId], references: [id], onDelete: Cascade)
-  name    String
-  sku     String?
-  price   Int
-  inStock Boolean     @default(true)
-  items   OrderItem[]
+enum VatPolicy {
+  exempt
+  taxable
+  zero
+}
 
+model ProductGroup {
+  id        String    @id
+  shopId    String
+  shop      Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  name      String
+  sortOrder Int       @default(0)
+  products  Product[]
+
+  @@unique([shopId, name])
+  @@index([shopId, sortOrder])
+  @@map("product_groups")
+}
+
+model Product {
+  id        String           @id
+  shopId    String
+  shop      Shop             @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  groupId   String?
+  group     ProductGroup?    @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  code      String
+  name      String
+  vatPolicy VatPolicy        @default(exempt)
+  /** Phần trăm thuế 0–100 khi vatPolicy = taxable. */
+  taxRate   Int?
+  selling   Boolean          @default(true)
+  variants  ProductVariant[]
+  items     OrderItem[]
+
+  @@unique([shopId, code])
   @@index([shopId])
+  @@index([groupId])
   @@map("products")
+}
+
+model ProductVariant {
+  id        String      @id
+  productId String
+  product   Product     @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sku       String?
+  name      String
+  price     Int
+  costPrice Int         @default(0)
+  selling   Boolean     @default(true)
+  sortOrder Int         @default(0)
+  items     OrderItem[]
+
+  @@index([productId, sortOrder])
+  @@map("product_variants")
 }
 
 model Order {
@@ -316,6 +376,7 @@ model Order {
   status         OrderStatus
   createdAt      DateTime     @default(now())
   items          OrderItem[]
+  checklistChecks OrderChecklistCheck[]
 
   @@unique([shopId, code])
   @@index([customerId])
@@ -325,18 +386,52 @@ model Order {
 }
 
 model OrderItem {
-  id        String   @id @default(cuid())
+  id        String          @id @default(cuid())
   orderId   String
-  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   productId String?
-  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  product   Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId String?
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
   name      String
   qty       Int
   price     Int
 
   @@index([orderId])
   @@index([productId])
+  @@index([variantId])
   @@map("order_items")
+}
+
+/** Mục checklist vận hành đơn (cấu hình theo shop) — tick thủ công trên từng đơn. */
+model OrderChecklistTemplate {
+  id        String                @id
+  shopId    String
+  shop      Shop                  @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  label     String
+  sortOrder Int                   @default(0)
+  enabled   Boolean               @default(true)
+  checks    OrderChecklistCheck[]
+
+  @@index([shopId, sortOrder])
+  @@map("order_checklist_templates")
+}
+
+model OrderChecklistCheck {
+  id            String                 @id
+  orderId       String
+  order         Order                  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  templateId    String?
+  template      OrderChecklistTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  done          Boolean                @default(false)
+  doneAt        DateTime?
+  doneByStaffId String?
+  doneByStaff   Staff?                 @relation(fields: [doneByStaffId], references: [id], onDelete: SetNull)
+
+  @@unique([orderId, templateId])
+  @@index([templateId])
+  @@index([doneByStaffId])
+  @@map("order_checklist_checks")
 }
 
 model QuickReply {
@@ -348,4 +443,43 @@ model QuickReply {
 
   @@index([shopId])
   @@map("quick_replies")
+}
+
+/** Phiên chọn Fanpage OAuth — token nằm trên server, cookie chỉ giữ id. */
+model OAuthPagePick {
+  id        String   @id
+  shopId    String
+  shop      Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  channel   Channel
+  pagesJson String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([shopId])
+  @@index([expiresAt])
+  @@map("oauth_page_picks")
+}
+
+/** Trả lời tự động: ngoài giờ hoặc theo từ khóa (original ShopInbox). */
+model AutoReplyRule {
+  id              String   @id
+  shopId          String
+  shop            Shop     @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  enabled         Boolean  @default(true)
+  /** off_hours | keyword */
+  kind            String
+  /** Từ khóa cách nhau bởi dấu phẩy (kind=keyword). */
+  keywords        String   @default("")
+  replyText       String
+  /** Phút từ 0h VN — giờ mở cửa (kind=off_hours). */
+  openMinute      Int?
+  /** Phút từ 0h VN — giờ đóng cửa (kind=off_hours). */
+  closeMinute     Int?
+  /** Không gửi lại auto-reply cùng hội thoại trong khoảng này. */
+  cooldownMinutes Int      @default(120)
+  sortOrder       Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@index([shopId, enabled])
+  @@map("auto_reply_rules")
 }

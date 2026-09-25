@@ -19,15 +19,14 @@ export type InboxChannelFilter = { id: "all" | Channel; label: string };
 
 /**
  * Bộ lọc kênh Inbox từ CHANNEL_LABEL.
- * Nếu truyền `activeChannels`, chỉ hiện kênh đang có hội thoại / đã nối;
- * danh sách rỗng → hiện đủ catalog.
+ * Truyền `activeChannels` (kênh đang nối) → chỉ hiện các pill đó;
+ * mảng rỗng = chưa nối kênh nào (không fallback catalog).
  */
 export function getInboxChannelFilters(activeChannels?: Iterable<Channel>): InboxChannelFilter[] {
   const active = activeChannels ? new Set(activeChannels) : null;
-  const channels =
-    active && active.size > 0
-      ? CHANNEL_ORDER.filter((id) => active.has(id))
-      : CHANNEL_ORDER;
+  const channels = active
+    ? CHANNEL_ORDER.filter((id) => active.has(id))
+    : CHANNEL_ORDER;
 
   return [
     { id: "all", label: "Tất cả" },

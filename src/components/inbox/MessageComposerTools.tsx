@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { validateImageFileForUpload } from "@/lib/inbox-media";
 
 export const COMPOSER_EMOJIS = [
   "😀",
@@ -114,9 +115,10 @@ export function EmojiPickerButton({ disabled, onPick }: EmojiPickerButtonProps) 
 type ImagePickerButtonProps = {
   disabled?: boolean;
   onFile: (file: File) => void;
+  onReject?: (message: string) => void;
 };
 
-export function ImagePickerButton({ disabled, onFile }: ImagePickerButtonProps) {
+export function ImagePickerButton({ disabled, onFile, onReject }: ImagePickerButtonProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   return (
@@ -126,10 +128,18 @@ export function ImagePickerButton({ disabled, onFile }: ImagePickerButtonProps) 
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif"
         className="hidden"
+        tabIndex={-1}
+        aria-hidden="true"
         onChange={(event) => {
           const file = event.target.files?.[0];
           event.target.value = "";
-          if (file) onFile(file);
+          if (!file) return;
+          const check = validateImageFileForUpload(file);
+          if (!check.ok) {
+            onReject?.(check.error);
+            return;
+          }
+          onFile(file);
         }}
       />
       <button
@@ -137,8 +147,8 @@ export function ImagePickerButton({ disabled, onFile }: ImagePickerButtonProps) 
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
         className="icon-btn"
-        aria-label="Gửi ảnh"
-        title="Gửi ảnh"
+        aria-label="Gửi ảnh JPEG, PNG, WebP hoặc GIF, tối đa 100MB"
+        title="Gửi ảnh (JPEG, PNG, WebP, GIF — tối đa 100MB)"
       >
         🖼️
       </button>

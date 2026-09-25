@@ -10,8 +10,10 @@ import {
   parsePasswordResetOtpPayload,
   verifyPasswordResetEmailOtp,
 } from "@/backend/email-otp";
+import { publicOtpSendError } from "@/backend/email";
 import { hashPassword } from "@/backend/password";
 import { prisma } from "@/backend/prisma";
+import { bumpStaffSessionVersion } from "@/backend/auth";
 import { validatePasswordResetInput } from "@/backend/register";
 import { toSessionPayload } from "@/backend/session-token";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
@@ -57,7 +59,7 @@ export async function requestPasswordResetAction(
       });
     } catch (err) {
       return {
-        error: err instanceof Error ? err.message : "Không gửi được mã xác minh.",
+        error: publicOtpSendError(err, "Không gửi được mã xác minh. Thử lại sau."),
         step: "form",
       };
     }
@@ -110,6 +112,7 @@ export async function verifyPasswordResetOtpAction(
     where: { id: staff.id },
     data: { passwordHash: verified.payload.passwordHash },
   });
+  await bumpStaffSessionVersion(staff.id);
   await consumePasswordResetEmailOtp(verified.challengeId);
 
   await writeAudit({
@@ -159,7 +162,7 @@ export async function resendPasswordResetOtpAction(
     });
   } catch (err) {
     return {
-      error: err instanceof Error ? err.message : "Không gửi lại được mã.",
+      error: publicOtpSendError(err, "Không gửi lại được mã. Thử lại sau."),
       step: "otp",
       email,
     };

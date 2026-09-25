@@ -187,11 +187,11 @@ export async function subscribeMetaPageWebhook(pageId: string, pageAccessToken: 
  * Đăng ký callback URL cấp app (Graph `{app-id}/subscriptions`).
  * `subscribed_apps` trên Page chỉ gửi event tới app — thiếu bước này thì Inbox không nhận tin.
  */
-export async function subscribeMetaAppWebhook(config: MetaOAuthConfig, callbackUrl: string) {
-  if (!config.webhookVerifyToken) {
-    return false;
-  }
-
+async function subscribeMetaAppObject(
+  config: MetaOAuthConfig,
+  callbackUrl: string,
+  object: "page" | "instagram",
+) {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${config.appId}/subscriptions`);
   url.searchParams.set("access_token", `${config.appId}|${config.appSecret}`);
 
@@ -199,7 +199,7 @@ export async function subscribeMetaAppWebhook(config: MetaOAuthConfig, callbackU
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      object: "page",
+      object,
       callback_url: callbackUrl,
       fields: META_PAGE_WEBHOOK_FIELDS.join(","),
       verify_token: config.webhookVerifyToken,
@@ -208,6 +208,20 @@ export async function subscribeMetaAppWebhook(config: MetaOAuthConfig, callbackU
 
   const data = await readJson<{ success?: boolean }>(response);
   return Boolean(data.success);
+}
+
+export async function subscribeMetaAppWebhook(config: MetaOAuthConfig, callbackUrl: string) {
+  if (!config.webhookVerifyToken) {
+    return false;
+  }
+
+  const pageOk = await subscribeMetaAppObject(config, callbackUrl, "page");
+  try {
+    await subscribeMetaAppObject(config, callbackUrl, "instagram");
+  } catch (error) {
+    console.warn("[meta] subscribe instagram object failed", error);
+  }
+  return pageOk;
 }
 
 export type MetaConversation = {
@@ -306,7 +320,7 @@ type MetaAttachmentUploadResponse = {
 
 /** Meta chặn RESPONSE ngoài cửa sổ 24h — cần MESSAGE_TAG / HUMAN_AGENT (≤7 ngày). */
 export function isOutsideMessagingWindowError(message: string) {
-  return /outside of allowed window|outside the allowed window|24[\s-]?hour messaging window|message tag is required|requires a message tag|2018278|cannot message this user|thread owner/i.test(
+  return /outside of allowed window|outside the allowed window|24[\s-]?hour messaging window|message tag is required|requires a message tag|2018278|cannot message this user|thread owner|ngoài khoảng thời gian cho phép|khoảng thời gian cho phép|policy-overview/i.test(
     message,
   );
 }
@@ -367,6 +381,8 @@ export async function sendMetaMessage(input: {
   text?: string;
   attachmentId?: string;
   imageUrl?: string;
+  /** IG không retry HUMAN_AGENT (Meta thường báo Unsupported message tag). */
+  channel?: "facebook" | "instagram";
 }) {
   const message = buildMetaMessagePayload(input);
   const recipient = { id: input.recipientId };
@@ -387,8 +403,14 @@ export async function sendMetaMessage(input: {
       throw error;
     }
 
+    if (input.channel === "instagram") {
+      throw new Error(
+        "Hết cửa sổ 24 giờ Instagram DM. Instagram không hỗ trợ thẻ Human Agent qua API — cần khách nhắn lại rồi mới trả lời được.",
+      );
+    }
+
     try {
-      // Nhân viên trả lời tay trong Inbox — đúng use case HUMAN_AGENT (≤7 ngày).
+      // Messenger: nhân viên trả lời tay — HUMAN_AGENT (≤7 ngày, cần Advanced Access).
       return await postMetaPageMessage({
         pageId: input.pageId,
         accessToken: input.accessToken,
@@ -402,8 +424,13 @@ export async function sendMetaMessage(input: {
     } catch (retryError) {
       const retryDetail =
         retryError instanceof Error ? retryError.message : String(retryError);
+      if (/unsupported message tag|human.?agent.*(not|không)|(#100).*tag/i.test(retryDetail)) {
+        throw new Error(
+          "Hết cửa sổ 24 giờ Messenger. Thẻ Human Agent chưa được Meta duyệt cho app này (App Review / Advanced Access). Cần khách nhắn lại, hoặc xin quyền Human Agent trên Meta Developers.",
+        );
+      }
       throw new Error(
-        `Hết cửa sổ 24 giờ Messenger/Instagram. Đã thử thẻ Human Agent nhưng thất bại: ${retryDetail}. ` +
+        `Hết cửa sổ 24 giờ Messenger. Đã thử thẻ Human Agent nhưng thất bại: ${retryDetail}. ` +
           `Cần khách nhắn lại, hoặc bật Advanced Access “Human Agent” trên Meta App.`,
       );
     }
