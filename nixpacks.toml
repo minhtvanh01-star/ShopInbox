@@ -1,0 +1,5 @@
+# VibeHost/Nixpacks mặc định Node 22.11 — Prisma 7 từ chối (< 22.12).
+# Ép Node 24 để `npm ci` qua được preinstall.
+
+[variables]
+NIXPACKS_NODE_VERSION = "24"

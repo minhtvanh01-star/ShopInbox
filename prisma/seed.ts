@@ -77,12 +77,74 @@ async function syncRbacCatalog() {
   });
 }
 
+async function lockDemoAccounts() {
+  await prisma.shop.upsert({
+    where: { id: SHOP.id },
+    create: { id: SHOP.id, name: SHOP.name },
+    update: { name: SHOP.name },
+  });
+
+  const adminHash = await hash(SHOP.staffPassword, 12);
+  await prisma.staff.upsert({
+    where: { email: SHOP.staffEmail },
+    create: {
+      id: SHOP.staffId,
+      shopId: SHOP.id,
+      name: SHOP.staffName,
+      email: SHOP.staffEmail,
+      passwordHash: adminHash,
+      roleCode: normalizeRoleCode(SHOP.role),
+      isActive: true,
+    },
+    update: {
+      name: SHOP.staffName,
+      shopId: SHOP.id,
+      passwordHash: adminHash,
+      roleCode: normalizeRoleCode(SHOP.role),
+      isActive: true,
+    },
+  });
+
+  for (const member of EXTRA_STAFF) {
+    const passwordHash = await hash(member.password, 12);
+    await prisma.staff.upsert({
+      where: { email: member.email },
+      create: {
+        id: member.id,
+        shopId: SHOP.id,
+        name: member.name,
+        email: member.email,
+        passwordHash,
+        roleCode: normalizeRoleCode(member.role),
+        isActive: true,
+      },
+      update: {
+        name: member.name,
+        shopId: SHOP.id,
+        passwordHash,
+        roleCode: normalizeRoleCode(member.role),
+        isActive: true,
+      },
+    });
+  }
+
+  console.log("Đã khóa tài khoản demo vào DB (không xóa dữ liệu khác):");
+  console.log(`  Admin   ${SHOP.staffEmail} / ${SHOP.staffPassword}`);
+  console.log(`  Nhân viên ${EXTRA_STAFF[0]?.email} / ${EXTRA_STAFF[0]?.password}`);
+}
+
 async function main() {
   const shopCount = await prisma.shop.count();
   const mode = resolveSeedMode(process.env, shopCount);
   const scope = resolveSeedScope(process.env, process.argv);
+  const lockAccounts = process.argv.includes("--lock") || process.env.SEED_LOCK === "1";
 
   await syncRbacCatalog();
+
+  if (lockAccounts) {
+    await lockDemoAccounts();
+    return;
+  }
 
   if (mode === "skip") {
     console.log("Seed: DB đã có dữ liệu, bỏ qua demo (chỉ đồng bộ RBAC).");
