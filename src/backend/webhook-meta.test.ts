@@ -2,6 +2,8 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 
 vi.mock("@/backend/message-sync", () => ({
   ingestInboundMessage: vi.fn(),
+  ingestShopEchoMessage: vi.fn(),
+  findChannelAccount: vi.fn(),
   touchChannelWebhook: vi.fn(),
   upsertMessageReaction: vi.fn(),
   removeMessageReaction: vi.fn(),
@@ -18,6 +20,7 @@ vi.mock("@/backend/prisma", () => ({
 import {
   applyMetaMessageWatermark,
   ingestInboundMessage,
+  ingestShopEchoMessage,
   touchChannelWebhook,
 } from "@/backend/message-sync";
 import {
@@ -73,10 +76,15 @@ describe("processMetaWebhook", () => {
       conversationId: "conv-test",
       shopId: "shop1",
     });
+    vi.mocked(ingestShopEchoMessage).mockResolvedValue({
+      ok: true,
+      duplicate: false,
+      conversationId: "conv-test",
+    });
     vi.mocked(applyMetaMessageWatermark).mockResolvedValue({ ok: true, updated: 1 });
   });
 
-  it("bỏ qua echo message", async () => {
+  it("ghi echo vào hội thoại shop, không coi là tin khách", async () => {
     const result = await processMetaWebhook({
       object: "page",
       entry: [
@@ -92,8 +100,17 @@ describe("processMetaWebhook", () => {
       ],
     });
 
-    expect(result.processed).toBe(0);
+    expect(result.processed).toBe(1);
     expect(ingestInboundMessage).not.toHaveBeenCalled();
+    expect(ingestShopEchoMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "facebook",
+        externalAccountId: "page-1",
+        customerExternalId: "user-1",
+        text: "hello",
+        externalMessageId: "m1",
+      }),
+    );
   });
 
   it("xử lý tin nhắn text inbound", async () => {
@@ -236,6 +253,36 @@ describe("processMetaWebhook", () => {
         attachmentType: "image",
         attachmentUrl: "https://cdn.example/a.jpg",
         externalMessageId: "m-img",
+      }),
+    );
+  });
+
+  it("không bỏ qua tin chỉ có video — lưu placeholder + URL", async () => {
+    await processMetaWebhook({
+      object: "page",
+      entry: [
+        {
+          id: "page-1",
+          messaging: [
+            {
+              sender: { id: "user-1" },
+              recipient: { id: "page-1" },
+              message: {
+                mid: "m-vid",
+                attachments: [{ type: "video", payload: { url: "https://cdn.example/a.mp4" } }],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(ingestInboundMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "[Video]",
+        attachmentType: "video",
+        attachmentUrl: "https://cdn.example/a.mp4",
+        externalMessageId: "m-vid",
       }),
     );
   });

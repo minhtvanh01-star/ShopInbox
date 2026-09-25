@@ -14,6 +14,13 @@ export function getRequestOrigin(request: Request): string {
     return configured.replace(/\/$/, "");
   }
 
+  if (process.env.NODE_ENV === "production") {
+    if (configured) {
+      return configured.replace(/\/$/, "");
+    }
+    return getPublicAppUrl();
+  }
+
   const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
   const forwardedProto =
     request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "https";

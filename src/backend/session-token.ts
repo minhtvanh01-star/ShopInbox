@@ -1,4 +1,6 @@
 import { SignJWT, jwtVerify } from "jose";
+import { cookieSecureFlag, sessionSecretBytes } from "@/backend/app-secret";
+import { sessionVersionOf } from "@/backend/session-live";
 import { normalizeRoleCode } from "@/lib/rbac-catalog";
 import {
   SESSION_ABSOLUTE_MAX,
@@ -20,7 +22,7 @@ export function sessionCookieOptions(maxAgeSec = SESSION_COOKIE_MAX_AGE_SEC) {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
-    secure: process.env.NODE_ENV === "production",
+    secure: cookieSecureFlag(),
     path: "/",
     maxAge: maxAgeSec,
   };
@@ -34,6 +36,8 @@ export type SessionPayload = {
   role: string;
   /** Epoch ms — lần hoạt động gần nhất (sliding idle). */
   lastActiveAt: number;
+  /** Khớp Staff.sessionVersion — đổi mật khẩu / vô hiệu hóa làm JWT cũ hết hạn. */
+  sessionVersion?: number;
 };
 
 export function toSessionPayload(staff: {
@@ -42,6 +46,7 @@ export function toSessionPayload(staff: {
   email: string;
   name: string;
   roleCode: string;
+  sessionVersion?: number;
 }): Omit<SessionPayload, "lastActiveAt"> {
   return {
     staffId: staff.id,
@@ -49,15 +54,8 @@ export function toSessionPayload(staff: {
     email: staff.email,
     name: staff.name,
     role: normalizeRoleCode(staff.roleCode),
+    sessionVersion: sessionVersionOf(staff.sessionVersion),
   };
-}
-
-function getSecret() {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret || secret.length < 16) {
-    throw new Error("Thiếu SESSION_SECRET (tối thiểu 16 ký tự) trong .env");
-  }
-  return new TextEncoder().encode(secret);
 }
 
 export async function createSessionToken(
@@ -65,6 +63,7 @@ export async function createSessionToken(
 ) {
   const role = normalizeRoleCode(payload.role);
   const lastActiveAt = payload.lastActiveAt ?? Date.now();
+  const sessionVersion = sessionVersionOf(payload.sessionVersion);
   return new SignJWT({
     staffId: payload.staffId,
     shopId: payload.shopId,
@@ -72,11 +71,12 @@ export async function createSessionToken(
     name: payload.name,
     role,
     lastActiveAt,
+    sessionVersion,
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(SESSION_ABSOLUTE_MAX)
-    .sign(getSecret());
+    .sign(sessionSecretBytes());
 }
 
 export function isSessionIdleExpired(lastActiveAt: number, now = Date.now()) {
@@ -92,7 +92,7 @@ export async function verifySessionToken(
   now = Date.now(),
 ): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, sessionSecretBytes());
     if (
       typeof payload.staffId !== "string" ||
       typeof payload.shopId !== "string" ||
@@ -122,6 +122,7 @@ export async function verifySessionToken(
       name: payload.name,
       role: normalizeRoleCode(payload.role),
       lastActiveAt,
+      sessionVersion: sessionVersionOf(payload.sessionVersion),
     };
   } catch {
     return null;

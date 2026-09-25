@@ -34,14 +34,27 @@ export function isEmailConfigured() {
   return getSmtpConfig() !== null;
 }
 
-/** SMTP thật hoặc chế độ dev in mã ra console. */
+/** Chỉ in mã OTP khi dev chủ động bật — không bao giờ in trên production. */
+export function shouldLogEmailOtpCode() {
+  return process.env.NODE_ENV !== "production" && process.env.EMAIL_OTP_DEV_LOG === "1";
+}
+
+/** SMTP thật, hoặc dev opt-in in mã ra console. Production bắt buộc SMTP. */
 export function canSendRegisterOtp() {
-  return isEmailConfigured() || process.env.EMAIL_OTP_DEV_LOG === "1";
+  if (isEmailConfigured()) return true;
+  return shouldLogEmailOtpCode();
 }
 
 /** Alias — dùng chung cho đăng ký và quên mật khẩu. */
 export function canSendEmailOtp() {
   return canSendRegisterOtp();
+}
+
+/** Lỗi gửi OTP cho UI — giữ cooldown, ẩn chi tiết SMTP/server. */
+export function publicOtpSendError(err: unknown, fallback: string) {
+  const message = err instanceof Error ? err.message : "";
+  if (message.startsWith("Vui lòng đợi")) return message;
+  return fallback;
 }
 
 export async function sendEmail(input: {

@@ -49,15 +49,16 @@ function zaloSentAt(timestamp?: string | number) {
   return undefined;
 }
 
-export async function processZaloWebhook(body: ZaloWebhookBody) {
-  const eventName = body.event_name ?? "";
+export async function processZaloWebhook(body: ZaloWebhookBody | Record<string, unknown>) {
+  const event = body as ZaloWebhookBody;
+  const eventName = event.event_name ?? "";
   if (!TEXT_EVENTS.has(eventName)) {
     return { processed: 0, skipped: true };
   }
 
-  const oaId = body.oa_id;
-  const senderId = body.sender?.id;
-  const text = zaloEventText(body);
+  const oaId = event.oa_id;
+  const senderId = event.sender?.id;
+  const text = zaloEventText(event);
 
   if (!oaId || !senderId || !text) {
     return { processed: 0, skipped: true };
@@ -69,11 +70,11 @@ export async function processZaloWebhook(body: ZaloWebhookBody) {
     channel: "zalo",
     externalAccountId: oaId,
     senderExternalId: senderId,
-    senderName: body.sender?.name,
-    senderAvatarUrl: body.sender?.avatar,
+    senderName: event.sender?.name,
+    senderAvatarUrl: event.sender?.avatar,
     text,
-    externalMessageId: body.message?.msg_id,
-    sentAt: zaloSentAt(body.timestamp),
+    externalMessageId: event.message?.msg_id,
+    sentAt: zaloSentAt(event.timestamp),
   });
 
   return {

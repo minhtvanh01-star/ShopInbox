@@ -1,4 +1,11 @@
+import { createHash, randomBytes } from "node:crypto";
 import type { ZaloOAuthConfig } from "@/backend/oauth-config";
+
+export function generateZaloPkce() {
+  const verifier = randomBytes(32).toString("base64url");
+  const challenge = createHash("sha256").update(verifier).digest("base64url");
+  return { verifier, challenge };
+}
 
 type ZaloTokenResponse = {
   access_token?: string;
@@ -32,24 +39,42 @@ function readZaloError(data: ZaloTokenResponse | ZaloOaResponse) {
   return "Zalo API lỗi";
 }
 
-export function buildZaloOAuthUrl(config: ZaloOAuthConfig, state: string) {
+export function buildZaloOAuthUrl(
+  config: ZaloOAuthConfig,
+  state: string,
+  codeChallenge?: string,
+) {
   const url = new URL("https://oauth.zaloapp.com/v4/oa/permission");
   url.searchParams.set("app_id", config.appId);
   url.searchParams.set("redirect_uri", config.redirectUri);
   url.searchParams.set("state", state);
+  if (codeChallenge) {
+    url.searchParams.set("code_challenge", codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
+  }
   return url.toString();
 }
 
-export async function exchangeZaloCode(config: ZaloOAuthConfig, code: string) {
+export async function exchangeZaloCode(
+  config: ZaloOAuthConfig,
+  code: string,
+  codeVerifier?: string | null,
+) {
   const body = new URLSearchParams({
     app_id: config.appId,
-    app_secret: config.appSecret,
     code,
+    grant_type: "authorization_code",
   });
+  if (codeVerifier) {
+    body.set("code_verifier", codeVerifier);
+  }
 
   const response = await fetch("https://oauth.zaloapp.com/v4/oa/access_token", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      secret_key: config.appSecret,
+    },
     body: body.toString(),
   });
 
@@ -61,10 +86,12 @@ export async function exchangeZaloCode(config: ZaloOAuthConfig, code: string) {
   const expiresIn =
     typeof data.expires_in === "string" ? Number.parseInt(data.expires_in, 10) : data.expires_in;
 
-  const expiresAt =
-    typeof expiresIn === "number" && Number.isFinite(expiresIn)
-      ? new Date(Date.now() + expiresIn * 1000)
-      : null;
+  const expiresAt = new Date(
+    Date.now() +
+      (typeof expiresIn === "number" && Number.isFinite(expiresIn) && expiresIn > 0
+        ? expiresIn * 1000
+        : 25 * 60 * 60 * 1000),
+  );
 
   return {
     accessToken: data.access_token,
@@ -73,7 +100,7 @@ export async function exchangeZaloCode(config: ZaloOAuthConfig, code: string) {
   };
 }
 
-export async function fetchZaloOaInfo(accessToken: string, oaIdHint?: string | null) {
+export async function fetchZaloOaInfo(accessToken: string) {
   const url = new URL("https://openapi.zalo.me/v2.0/oa/getoa");
   url.searchParams.set("access_token", accessToken);
 
@@ -84,7 +111,7 @@ export async function fetchZaloOaInfo(accessToken: string, oaIdHint?: string | n
     throw new Error(readZaloError(data));
   }
 
-  const oaId = data.data?.oa_id ?? data.data?.id ?? oaIdHint ?? "";
+  const oaId = data.data?.oa_id ?? data.data?.id ?? "";
   const name = data.data?.name ?? "Zalo OA";
 
   if (!oaId) {
@@ -121,10 +148,12 @@ export async function refreshZaloAccessToken(
   const expiresIn =
     typeof data.expires_in === "string" ? Number.parseInt(data.expires_in, 10) : data.expires_in;
 
-  const expiresAt =
-    typeof expiresIn === "number" && Number.isFinite(expiresIn)
-      ? new Date(Date.now() + expiresIn * 1000)
-      : null;
+  const expiresAt = new Date(
+    Date.now() +
+      (typeof expiresIn === "number" && Number.isFinite(expiresIn) && expiresIn > 0
+        ? expiresIn * 1000
+        : 25 * 60 * 60 * 1000),
+  );
 
   return {
     accessToken: data.access_token,
@@ -146,11 +175,13 @@ export async function sendZaloOaMessage(input: {
   text: string;
 }) {
   const url = new URL("https://openapi.zalo.me/v3.0/oa/message/cs");
-  url.searchParams.set("access_token", input.accessToken);
 
   const response = await fetch(url.toString(), {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      access_token: input.accessToken,
+    },
     body: JSON.stringify({
       recipient: { user_id: input.recipientId },
       message: { text: input.text },

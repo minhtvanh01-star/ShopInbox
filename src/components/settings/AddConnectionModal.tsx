@@ -21,17 +21,19 @@ import { CHANNEL_STATUS_LABEL, formatDateTime } from "@/lib/labels";
 import { LAYOUT_CLASS } from "@/lib/ui-layout";
 import type { Channel, ChannelStatus } from "@/lib/types";
 import type { MetaPagePickerOption } from "@/lib/oauth-types";
+import { OAUTH_ERROR_MESSAGES } from "@/lib/oauth-flash";
 
 export type ChannelAccountView = {
   id: string;
   channel: Channel;
-  name: string;
   status: ChannelStatus;
+  name: string;
   note: string;
   appId?: string | null;
-  appSecret?: string | null;
+  /** Đã lưu app secret trên server (không gửi giá trị xuống UI). */
+  hasAppSecret?: boolean;
   pageId?: string | null;
-  webhookSecret?: string | null;
+  hasWebhookSecret?: boolean;
   oaId?: string | null;
   displayName?: string | null;
   expiresAt?: string | null;
@@ -60,21 +62,6 @@ type AddConnectionModalProps = {
 const saveInitialState: SaveChannelCredentialsState = {};
 const pickInitialState: CompleteMetaPageState = {};
 
-const OAUTH_ERROR_MESSAGES: Record<string, string> = {
-  meta_not_configured: "Chưa cấu hình OAuth Meta — liên hệ admin (META_APP_ID, META_APP_SECRET).",
-  zalo_not_configured: "Chưa cấu hình OAuth Zalo — liên hệ admin (ZALO_APP_ID, ZALO_APP_SECRET, ZALO_REDIRECT_URI).",
-  meta_denied: "Bạn đã hủy cấp quyền Meta.",
-  zalo_denied: "Bạn đã hủy cấp quyền Zalo.",
-  meta_state: "Phiên OAuth Meta không hợp lệ — thử kết nối lại.",
-  zalo_state: "Phiên OAuth Zalo không hợp lệ — thử kết nối lại.",
-  meta_invalid: "Callback Meta thiếu mã xác thực.",
-  zalo_invalid: "Callback Zalo thiếu mã xác thực.",
-  meta_no_pages: "Không tìm thấy Fanpage nào trên tài khoản Meta.",
-  meta_no_instagram: "Không có Instagram Business liên kết Fanpage.",
-  meta_failed: "Kết nối Meta thất bại.",
-  zalo_failed: "Kết nối Zalo thất bại.",
-};
-
 function PlatformIcon({ platform }: { platform: PlatformOption }) {
   const letter = platform.name.charAt(0).toUpperCase();
   return (
@@ -87,11 +74,13 @@ function PlatformIcon({ platform }: { platform: PlatformOption }) {
   );
 }
 
-function maskSecret(value?: string | null) {
-  if (!value) {
-    return "";
-  }
-  return "••••••••";
+function secretFieldHasValue(
+  account: ChannelAccountView,
+  key: "appSecret" | "webhookSecret",
+): boolean {
+  return key === "appSecret"
+    ? Boolean(account.hasAppSecret)
+    : Boolean(account.hasWebhookSecret);
 }
 
 function oauthStartUrl(platform: PlatformOption) {
@@ -294,7 +283,9 @@ export function AddConnectionModal({
 
   async function handleDisconnect() {
     if (!account || !canConnect || disconnecting) return;
-    const confirmed = window.confirm("Ngắt kết nối kênh này? Token OAuth sẽ bị xóa trên server.");
+    const confirmed = window.confirm(
+      "Ngắt kết nối kênh này? Token OAuth sẽ bị xóa. Hội thoại kênh này sẽ ẩn khỏi Inbox đến khi nối lại.",
+    );
     if (!confirmed) return;
     setDisconnecting(true);
     const formData = new FormData();
@@ -728,7 +719,15 @@ export function AddConnectionModal({
 
                     {selected.fields.map((field) => {
                       const isSecret = field.key === "appSecret" || field.key === "webhookSecret";
-                      const existing = account[field.key];
+                      const hasSecret =
+                        isSecret &&
+                        secretFieldHasValue(account, field.key as "appSecret" | "webhookSecret");
+                      const existingNonSecret = isSecret
+                        ? ""
+                        : ((account[field.key as "appId" | "pageId" | "oaId"] as
+                            | string
+                            | null
+                            | undefined) ?? "");
                       return (
                         <div key={field.key}>
                           <label htmlFor={`${account.channel}-${field.key}`} className="label">
@@ -739,14 +738,19 @@ export function AddConnectionModal({
                             id={`${account.channel}-${field.key}`}
                             name={field.key}
                             type={isSecret ? "password" : "text"}
-                            placeholder={isSecret && existing ? maskSecret(existing) : field.placeholder}
-                            defaultValue={isSecret ? "" : (existing ?? "")}
+                            autoComplete="off"
+                            placeholder={
+                              hasSecret
+                                ? "•••••••• (đã lưu — để trống nếu giữ)"
+                                : field.placeholder
+                            }
+                            defaultValue={isSecret ? "" : existingNonSecret}
                             disabled={!canConnect}
                             className="input-field-sm disabled:bg-surface-muted"
                           />
-                          {isSecret && existing ? (
+                          {hasSecret ? (
                             <p className="mt-1 text-[11px] text-slate-400">
-                              Để trống nếu giữ secret hiện tại.
+                              Secret không hiện lại trên UI. Để trống nếu giữ giá trị đã lưu.
                             </p>
                           ) : null}
                         </div>

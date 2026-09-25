@@ -1,8 +1,11 @@
 import { cookies } from "next/headers";
+import { prisma } from "@/backend/prisma";
+import { isLiveStaffSession } from "@/backend/session-live";
 import {
   SESSION_COOKIE,
   createSessionToken,
   sessionCookieOptions,
+  toSessionPayload,
   verifySessionToken,
   type SessionPayload,
 } from "@/backend/session-token";
@@ -30,9 +33,45 @@ export async function clearSessionCookie() {
   jar.delete(SESSION_COOKIE);
 }
 
+async function hydrateLiveSession(payload: SessionPayload): Promise<SessionPayload | null> {
+  const staff = await prisma.staff.findUnique({
+    where: { id: payload.staffId },
+    select: {
+      id: true,
+      shopId: true,
+      email: true,
+      name: true,
+      roleCode: true,
+      isActive: true,
+      sessionVersion: true,
+    },
+  });
+
+  if (!staff || !isLiveStaffSession(payload, staff)) {
+    return null;
+  }
+
+  return {
+    ...toSessionPayload(staff),
+    lastActiveAt: payload.lastActiveAt,
+  };
+}
+
 export async function getSession(): Promise<SessionPayload | null> {
   const jar = await cookies();
   const token = jar.get(SESSION_COOKIE)?.value;
   if (!token) return null;
-  return verifySessionToken(token);
+  const payload = await verifySessionToken(token);
+  if (!payload) return null;
+  return hydrateLiveSession(payload);
+}
+
+/** JWT còn hạn nhưng staff đã tắt / đổi mật khẩu. */
+export async function hasRevokedSessionCookie() {
+  const jar = await cookies();
+  const token = jar.get(SESSION_COOKIE)?.value;
+  if (!token) return false;
+  const payload = await verifySessionToken(token);
+  if (!payload) return false;
+  return (await hydrateLiveSession(payload)) === null;
 }

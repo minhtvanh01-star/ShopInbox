@@ -2,6 +2,13 @@
 
 import { redirect } from "next/navigation";
 import { writeAudit } from "@/backend/audit";
+import {
+  LOGIN_GENERIC_ERROR,
+  LOGIN_THROTTLE_ERROR,
+  clearLoginFailures,
+  isLoginEmailThrottled,
+  recordLoginFailure,
+} from "@/backend/login-throttle";
 import { prisma } from "@/backend/prisma";
 import { verifyPassword } from "@/backend/password";
 import { toSessionPayload } from "@/backend/session-token";
@@ -28,15 +35,26 @@ export async function loginAction(
     return { error: "Nhập email và mật khẩu." };
   }
 
+  if (await isLoginEmailThrottled(email)) {
+    await writeAudit({
+      actorEmail: email,
+      action: AUDIT_ACTIONS.authLoginFail,
+      entityType: "Session",
+      metadata: { reason: "rate_limited", method: "password" },
+    });
+    return { error: LOGIN_THROTTLE_ERROR };
+  }
+
   const staff = await prisma.staff.findUnique({ where: { email } });
   if (!staff) {
+    await recordLoginFailure(email);
     await writeAudit({
       actorEmail: email,
       action: AUDIT_ACTIONS.authLoginFail,
       entityType: "Session",
       metadata: { reason: "not_found", method: "password" },
     });
-    return { error: "Email hoặc mật khẩu không đúng." };
+    return { error: LOGIN_GENERIC_ERROR };
   }
 
   if (!staff.passwordHash) {
@@ -52,7 +70,8 @@ export async function loginAction(
       entityId: staff.id,
       metadata: { reason: "google_only", method: "password" },
     });
-    return { error: "Tài khoản này đăng nhập bằng Google." };
+    await recordLoginFailure(email);
+    return { error: LOGIN_GENERIC_ERROR };
   }
 
   if (!staff.isActive) {
@@ -68,11 +87,13 @@ export async function loginAction(
       entityId: staff.id,
       metadata: { reason: "inactive", method: "password" },
     });
-    return { error: "Tài khoản chưa được kích hoạt hoặc đã bị tắt. Liên hệ quản trị viên để phê duyệt và phân quyền." };
+    await recordLoginFailure(email);
+    return { error: LOGIN_GENERIC_ERROR };
   }
 
   const ok = await verifyPassword(password, staff.passwordHash);
   if (!ok) {
+    await recordLoginFailure(email);
     await writeAudit({
       actor: {
         id: staff.id,
@@ -85,9 +106,10 @@ export async function loginAction(
       entityId: staff.id,
       metadata: { reason: "bad_password", method: "password" },
     });
-    return { error: "Email hoặc mật khẩu không đúng." };
+    return { error: LOGIN_GENERIC_ERROR };
   }
 
+  await clearLoginFailures(email);
   const session = toSessionPayload(staff);
   await setSessionCookie(session);
   await writeAudit({

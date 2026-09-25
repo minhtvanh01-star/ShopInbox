@@ -12,6 +12,28 @@ export type CustomerProfileParseResult =
   | { ok: true; profile: CustomerProfileInput }
   | { ok: false; error: string };
 
+export function parseOrderDeliveryInput(raw: {
+  address?: unknown;
+  phone?: unknown;
+}):
+  | { ok: true; address: string; phone?: string }
+  | { ok: false; error: string } {
+  const address = String(raw.address ?? "").trim();
+  const phone = String(raw.phone ?? "").trim();
+
+  if (!address) {
+    return { ok: false, error: "Nhập địa chỉ giao hàng." };
+  }
+  if (address.length > CUSTOMER_ADDRESS_MAX) {
+    return { ok: false, error: `Địa chỉ tối đa ${CUSTOMER_ADDRESS_MAX} ký tự.` };
+  }
+  if (phone && !PHONE_RE.test(phone)) {
+    return { ok: false, error: "Số điện thoại không hợp lệ." };
+  }
+
+  return { ok: true, address, phone: phone || undefined };
+}
+
 export function parseCustomerProfileInput(raw: {
   phone?: unknown;
   address?: unknown;

@@ -25,11 +25,13 @@ import {
   removeMessageReaction,
   upsertMessageReaction,
 } from "@/backend/message-sync";
+import { attachChecklistToOrder } from "@/backend/order-checklist";
 import { prisma } from "@/backend/prisma";
-import { isMissingDbColumnError } from "@/backend/prisma-errors";
+import { isMissingDbColumnError, isUniqueConstraintError } from "@/backend/prisma-errors";
 import { saveShopImageUpload } from "@/backend/upload-store";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
-import { parseCustomerProfileInput } from "@/lib/customer-profile";
+import { parseCustomerProfileInput, parseOrderDeliveryInput } from "@/lib/customer-profile";
+import { parseOutboundMessageText, validateImageFileForUpload } from "@/lib/inbox-media";
 import { replyClaimTtlMs } from "@/lib/shop-policy";
 import type { ConversationTag, OrderStatus } from "@/lib/types";
 import type { SessionPayload } from "@/backend/session-token";
@@ -109,13 +111,81 @@ async function assertCanReplyOrClaim(input: {
   ) {
     return;
   }
-  await prisma.conversation.update({
-    where: { id: input.conversationId },
+  const expiredBefore = new Date(Date.now() - input.ttlMs);
+  const claimed = await prisma.conversation.updateMany({
+    where: {
+      id: input.conversationId,
+      OR: [
+        { staffId: null },
+        { staffId: input.currentStaffId },
+        { replyClaimedAt: null },
+        { replyClaimedAt: { lt: expiredBefore } },
+      ],
+    },
     data: {
       staffId: input.currentStaffId,
       replyClaimedAt: new Date(),
     },
   });
+  if (claimed.count === 0) {
+    throw new Error("Hội thoại đang được nhân viên khác trả lời.");
+  }
+}
+
+async function persistOutboundThread(input: {
+  shopId: string;
+  conversationId: string;
+  staffId: string;
+  text: string;
+  createdAt: Date;
+  externalMessageId: string | null;
+  attachmentType?: string | null;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  admin: boolean;
+  conversationStaffId: string | null;
+}) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const message = await tx.message.create({
+          data: {
+            shopId: input.shopId,
+            conversationId: input.conversationId,
+            staffId: input.staffId,
+            sender: "shop",
+            text: input.text,
+            attachmentType: input.attachmentType ?? null,
+            attachmentUrl: input.attachmentUrl ?? null,
+            attachmentName: input.attachmentName ?? null,
+            externalMessageId: input.externalMessageId,
+            createdAt: input.createdAt,
+          },
+        });
+        await tx.conversation.update({
+          where: { id: input.conversationId },
+          data: {
+            lastMessage: input.text,
+            lastAt: input.createdAt,
+            unread: 0,
+            ...(input.admin
+              ? input.conversationStaffId === input.staffId
+                ? { staffId: null, replyClaimedAt: null }
+                : {}
+              : {
+                  replyClaimedAt: input.createdAt,
+                  staffId: input.staffId,
+                }),
+          },
+        });
+        return message;
+      });
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Không lưu được tin đã gửi.");
 }
 
 export async function claimConversation(conversationId: string) {
@@ -151,13 +221,28 @@ export async function claimConversation(conversationId: string) {
     }
 
     const claimedAt = new Date();
-    await prisma.conversation.update({
-      where: { id: conversationId },
+    const expiredBefore = new Date(claimedAt.getTime() - ttlMs);
+    const claimed = await prisma.conversation.updateMany({
+      where: admin
+        ? { id: conversationId, shopId: session.shopId }
+        : {
+            id: conversationId,
+            shopId: session.shopId,
+            OR: [
+              { staffId: null },
+              { staffId: session.staffId },
+              { replyClaimedAt: null },
+              { replyClaimedAt: { lt: expiredBefore } },
+            ],
+          },
       data: {
         staffId: session.staffId,
         replyClaimedAt: claimedAt,
       },
     });
+    if (claimed.count === 0) {
+      return { ok: false as const, error: "Hội thoại vừa được người khác nhận." };
+    }
 
     // Không revalidatePath("/inbox"): dễ React #441; client giữ claimOverrides đến soft-refresh.
 
@@ -295,13 +380,20 @@ export async function touchConversationClaim(conversationId: string) {
     }
 
     const claimedAt = new Date();
-    await prisma.conversation.update({
-      where: { id: conversationId },
+    const touched = await prisma.conversation.updateMany({
+      where: {
+        id: conversationId,
+        shopId: session.shopId,
+        staffId: session.staffId,
+      },
       data: {
         staffId: session.staffId,
         replyClaimedAt: claimedAt,
       },
     });
+    if (touched.count === 0) {
+      return { ok: false as const, error: "Hội thoại vừa được người khác nhận." };
+    }
 
     // Không revalidatePath — tránh nhảy UI khi đang gõ; client tự cập nhật claimedAt.
     return { ok: true as const, claimedAt: claimedAt.toISOString() };
@@ -318,10 +410,14 @@ export async function sendMessage(conversationId: string, text: string) {
   try {
     const session = await requireActionPermission(PERMISSION_CODES.inboxReply);
     const admin = await isInboxAdmin(session);
-    const body = text.trim();
-    if (!conversationId || !body) {
-      throw new Error("Tin nhắn không hợp lệ");
+    const parsed = parseOutboundMessageText(text);
+    if (!conversationId) {
+      throw new Error("Thiếu hội thoại");
     }
+    if (!parsed.ok) {
+      throw new Error(parsed.error);
+    }
+    const body = parsed.value;
 
     const conversation = await prisma.conversation.findFirst({
       where: { id: conversationId, shopId: session.shopId },
@@ -348,35 +444,26 @@ export async function sendMessage(conversationId: string, text: string) {
     });
 
     const createdAt = new Date();
-    const message = await prisma.message.create({
-      data: {
+    let message;
+    try {
+      message = await persistOutboundThread({
         shopId: session.shopId,
         conversationId,
         staffId: session.staffId,
-        sender: "shop",
         text: body,
-        externalMessageId: outbound.mode === "remote" ? outbound.externalMessageId : null,
         createdAt,
-      },
-    });
-
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: {
-        lastMessage: body,
-        lastAt: createdAt,
-        unread: 0,
-        // Admin: không claim mới; nếu chính admin đang giữ claim thì nhả để không khóa NV.
-        ...(admin
-          ? conversation.staffId === session.staffId
-            ? { staffId: null, replyClaimedAt: null }
-            : {}
-          : {
-              replyClaimedAt: createdAt,
-              staffId: session.staffId,
-            }),
-      },
-    });
+        externalMessageId: outbound.mode === "remote" ? outbound.externalMessageId : null,
+        admin,
+        conversationStaffId: conversation.staffId,
+      });
+    } catch (error) {
+      if (outbound.mode === "remote") {
+        throw new Error(
+          "Đã gửi trên kênh nhưng không lưu được inbox. Tải lại trang để kiểm tra.",
+        );
+      }
+      throw error;
+    }
 
     // Không revalidatePath("/inbox"): kết hợp với useOptimistic + soft-refresh
     // dễ làm flight RSC fail (React #441) — tin biến mất / báo gửi lỗi giả.
@@ -429,8 +516,12 @@ export async function sendImageMessage(conversationId: string, formData: FormDat
     }
 
     const file = formData.get("file");
-    if (!(file instanceof File) || file.size <= 0) {
+    if (!(file instanceof File)) {
       throw new Error("Chọn một ảnh để gửi.");
+    }
+    const fileCheck = validateImageFileForUpload(file);
+    if (!fileCheck.ok) {
+      throw new Error(fileCheck.error);
     }
 
     const conversation = await prisma.conversation.findFirst({
@@ -468,40 +559,38 @@ export async function sendImageMessage(conversationId: string, formData: FormDat
     });
 
     const createdAt = new Date();
-    const caption = String(formData.get("caption") ?? "").trim();
-    const text = caption || "[Ảnh]";
+    const captionRaw = String(formData.get("caption") ?? "").trim();
+    const caption = captionRaw
+      ? parseOutboundMessageText(captionRaw)
+      : ({ ok: true as const, value: "" } as const);
+    if (!caption.ok) {
+      throw new Error(caption.error);
+    }
+    const text = caption.value || "[Ảnh]";
 
-    const message = await prisma.message.create({
-      data: {
+    let message;
+    try {
+      message = await persistOutboundThread({
         shopId: session.shopId,
         conversationId,
         staffId: session.staffId,
-        sender: "shop",
         text,
+        createdAt,
+        externalMessageId: outbound.mode === "remote" ? outbound.externalMessageId : null,
         attachmentType: "image",
         attachmentUrl: saved.publicPath,
         attachmentName: saved.fileName,
-        externalMessageId: outbound.mode === "remote" ? outbound.externalMessageId : null,
-        createdAt,
-      },
-    });
-
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: {
-        lastMessage: text,
-        lastAt: createdAt,
-        unread: 0,
-        ...(admin
-          ? conversation.staffId === session.staffId
-            ? { staffId: null, replyClaimedAt: null }
-            : {}
-          : {
-              replyClaimedAt: createdAt,
-              staffId: session.staffId,
-            }),
-      },
-    });
+        admin,
+        conversationStaffId: conversation.staffId,
+      });
+    } catch (error) {
+      if (outbound.mode === "remote") {
+        throw new Error(
+          "Đã gửi ảnh trên kênh nhưng không lưu được inbox. Tải lại trang để kiểm tra.",
+        );
+      }
+      throw error;
+    }
 
     // Không revalidatePath — xem sendMessage (tránh React #441 / tin biến mất).
 
@@ -612,7 +701,18 @@ export async function reactToMessage(messageId: string, emoji: string) {
         emoji: nextEmoji,
       });
     } catch (err) {
-      console.warn("[react] Meta reaction failed", err);
+      if (existing?.emoji) {
+        await upsertMessageReaction({
+          shopId: session.shopId,
+          messageId,
+          reactorKey,
+          emoji: existing.emoji,
+          staffId: session.staffId,
+        });
+      } else {
+        await removeMessageReaction(messageId, reactorKey);
+      }
+      throw err instanceof Error ? err : new Error("Không gửi được reaction.");
     }
   }
 
@@ -827,15 +927,18 @@ export async function createOrder(input: {
   items: DraftOrderItem[];
 }) {
   const session = await requireActionPermission(PERMISSION_CODES.ordersCreate);
-  const address = input.address.trim();
-  const phone = input.phone?.trim() || undefined;
-  const items = normalizeOrderItems(input.items);
+  const delivery = parseOrderDeliveryInput({
+    address: input.address,
+    phone: input.phone,
+  });
+  if (!delivery.ok) {
+    throw new Error(delivery.error);
+  }
+  const { address, phone } = delivery;
+  const items = normalizeOrderItems(Array.isArray(input.items) ? input.items : []);
 
   if (!input.conversationId) {
     throw new Error("Thiếu hội thoại");
-  }
-  if (!address) {
-    throw new Error("Nhập địa chỉ giao hàng");
   }
   if (items.length === 0) {
     throw new Error("Chọn ít nhất một sản phẩm");
@@ -849,70 +952,94 @@ export async function createOrder(input: {
     throw new Error("Không tìm thấy hội thoại");
   }
 
-  const products = await prisma.product.findMany({
+  const variants = await prisma.productVariant.findMany({
     where: {
-      shopId: session.shopId,
-      id: { in: items.map((item) => item.productId) },
+      id: { in: items.map((item) => item.variantId) },
+      selling: true,
+      product: { shopId: session.shopId, selling: true },
     },
+    include: { product: true },
   });
-  if (products.length !== items.length) {
-    throw new Error("Sản phẩm không hợp lệ");
+  if (variants.length !== items.length) {
+    throw new Error("Biến thể sản phẩm không hợp lệ hoặc đã ngưng bán");
   }
 
-  const productById = new Map(products.map((item) => [item.id, item]));
-  const existing = await prisma.order.findMany({
-    where: { shopId: session.shopId },
-    select: { code: true },
-  });
-  const code = nextOrderCode(existing.map((item) => item.code));
+  const variantById = new Map(variants.map((item) => [item.id, item]));
 
-  const order = await prisma.$transaction(async (tx) => {
-    const created = await tx.order.create({
-      data: {
-        id: `o-${crypto.randomUUID()}`,
-        shopId: session.shopId,
-        customerId: conversation.customerId,
-        conversationId: conversation.id,
-        code,
-        address,
-        status: "new",
-        items: {
-          create: items.map((item) => {
-            const product = productById.get(item.productId);
-            if (!product) {
-              throw new Error("Sản phẩm không hợp lệ");
-            }
-            return {
-              productId: product.id,
-              name: product.name,
-              qty: item.qty,
-              price: product.price,
-            };
-          }),
-        },
-      },
-      include: { items: true },
+  let order: Awaited<ReturnType<typeof prisma.order.create>> | null = null;
+  let lastCreateError: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const existing = await prisma.order.findMany({
+      where: { shopId: session.shopId },
+      select: { code: true },
     });
+    const code = nextOrderCode(existing.map((item) => item.code));
+    try {
+      order = await prisma.$transaction(async (tx) => {
+        const created = await tx.order.create({
+          data: {
+            id: `o-${crypto.randomUUID()}`,
+            shopId: session.shopId,
+            customerId: conversation.customerId,
+            conversationId: conversation.id,
+            code,
+            address,
+            status: "new",
+            items: {
+              create: items.map((item) => {
+                const variant = variantById.get(item.variantId);
+                if (!variant) {
+                  throw new Error("Biến thể sản phẩm không hợp lệ");
+                }
+                const lineName =
+                  variant.name === variant.product.name
+                    ? variant.product.name
+                    : `${variant.product.name} — ${variant.name}`;
+                return {
+                  productId: variant.productId,
+                  variantId: variant.id,
+                  name: lineName,
+                  qty: item.qty,
+                  price: variant.price,
+                };
+              }),
+            },
+          },
+          include: { items: true },
+        });
 
-    await tx.customer.update({
-      where: { id: conversation.customerId },
-      data: {
-        address,
-        ...(phone ? { phone } : {}),
-      },
-    });
+        await tx.customer.update({
+          where: { id: conversation.customerId },
+          data: {
+            address,
+            ...(phone ? { phone } : {}),
+          },
+        });
 
-    await tx.conversation.update({
-      where: { id: conversation.id },
-      data: { tag: "closed" },
-    });
+        await tx.conversation.update({
+          where: { id: conversation.id },
+          data: { tag: "closed" },
+        });
 
-    return created;
-  });
+        await attachChecklistToOrder(session.shopId, created.id, tx);
+        return created;
+      });
+      break;
+    } catch (error) {
+      lastCreateError = error;
+      if (!isUniqueConstraintError(error) || attempt === 3) {
+        throw error;
+      }
+    }
+  }
+  if (!order) {
+    throw lastCreateError instanceof Error ? lastCreateError : new Error("Không tạo được đơn");
+  }
 
   revalidatePath("/inbox");
   revalidatePath("/orders");
   revalidatePath("/customers");
+  revalidatePath("/products");
 
   await writeAudit({
     actor: session,
@@ -958,4 +1085,140 @@ export async function updateOrderStatus(orderId: string, status: OrderStatus) {
 
   revalidatePath("/orders");
   revalidatePath("/inbox");
+}
+
+export async function toggleOrderChecklistAction(
+  orderId: string,
+  checkId: string,
+  done: boolean,
+) {
+  try {
+    const session = await requireActionPermission(PERMISSION_CODES.ordersUpdate);
+    const { setOrderChecklistDone } = await import("@/backend/order-checklist");
+    const result = await setOrderChecklistDone({
+      shopId: session.shopId,
+      orderId,
+      checkId,
+      done,
+      staffId: session.staffId,
+    });
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.orderChecklistToggle,
+      entityType: "OrderChecklistCheck",
+      entityId: checkId,
+      metadata: {
+        orderId,
+        orderCode: result.orderCode,
+        label: result.label,
+        from: result.from,
+        to: result.to,
+        actorName: session.name,
+      },
+    });
+    revalidatePath("/orders");
+    revalidatePath("/inbox");
+    return { ok: true as const };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: err instanceof Error ? err.message : "Không cập nhật checklist.",
+    };
+  }
+}
+
+export async function attachOrderChecklistAction(orderId: string) {
+  try {
+    const session = await requireActionPermission(PERMISSION_CODES.ordersUpdate);
+    if (!orderId) {
+      return { ok: false as const, error: "Thiếu đơn hàng." };
+    }
+    const { ensureChecklistOnOrder } = await import("@/backend/order-checklist");
+    const checks = await ensureChecklistOnOrder(session.shopId, orderId);
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.orderChecklistToggle,
+      entityType: "Order",
+      entityId: orderId,
+      metadata: {
+        op: "attach_checklist",
+        count: checks.length,
+        actorName: session.name,
+      },
+    });
+    revalidatePath("/orders");
+    revalidatePath("/inbox");
+    return { ok: true as const, count: checks.length };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: err instanceof Error ? err.message : "Không gắn được checklist.",
+    };
+  }
+}
+
+export async function mergeCustomerOpenOrdersAction(customerId: string) {
+  try {
+    const session = await requireActionPermission(PERMISSION_CODES.ordersUpdate);
+    if (!customerId) {
+      return { ok: false as const, error: "Thiếu khách hàng." };
+    }
+    const { mergeNewOrdersForCustomer } = await import("@/backend/order-merge");
+    const result = await mergeNewOrdersForCustomer(session.shopId, customerId);
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.orderStatusChange,
+      entityType: "Order",
+      entityId: result.targetOrderId,
+      metadata: {
+        op: "merge_open_orders",
+        targetCode: result.targetCode,
+        cancelledCodes: result.cancelledCodes,
+        actorName: session.name,
+      },
+    });
+    revalidatePath("/orders");
+    revalidatePath("/inbox");
+    revalidatePath("/customers");
+    return {
+      ok: true as const,
+      message: `Đã gộp vào ${result.targetCode}; hủy ${result.cancelledCodes.join(", ")}.`,
+    };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: err instanceof Error ? err.message : "Không gộp được đơn.",
+    };
+  }
+}
+
+export async function mergeCustomersAction(keepId: string, absorbId: string) {
+  try {
+    const session = await requireActionPermission(PERMISSION_CODES.customersUpdate);
+    const { mergeCustomers } = await import("@/backend/customer-merge");
+    const result = await mergeCustomers(session.shopId, keepId, absorbId);
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.customerUpdate,
+      entityType: "Customer",
+      entityId: result.keepId,
+      metadata: {
+        op: "merge_customers",
+        absorbId: result.absorbId,
+        actorName: session.name,
+      },
+    });
+    revalidatePath("/customers");
+    revalidatePath("/inbox");
+    revalidatePath("/orders");
+    return {
+      ok: true as const,
+      message: `Đã gộp khách vào «${result.keepName}».`,
+    };
+  } catch (err) {
+    return {
+      ok: false as const,
+      error: err instanceof Error ? err.message : "Không gộp được khách.",
+    };
+  }
 }

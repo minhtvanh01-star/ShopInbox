@@ -12,18 +12,21 @@ export function nextOrderCode(existingCodes: string[]) {
   return `DH${String(max + 1).padStart(5, "0")}`;
 }
 
+export const ORDER_ITEM_QTY_MAX = 999;
+
 export type DraftOrderItem = {
-  productId: string;
+  variantId: string;
   qty: number;
 };
 
 export function normalizeOrderItems(items: DraftOrderItem[]) {
   const merged = new Map<string, number>();
   for (const item of items) {
-    const productId = item.productId.trim();
+    const variantId = String(item.variantId ?? "").trim();
     const qty = Math.floor(Number(item.qty));
-    if (!productId || !Number.isFinite(qty) || qty < 1) continue;
-    merged.set(productId, (merged.get(productId) ?? 0) + qty);
+    if (!variantId || !Number.isFinite(qty) || qty < 1) continue;
+    const next = Math.min(ORDER_ITEM_QTY_MAX, (merged.get(variantId) ?? 0) + qty);
+    merged.set(variantId, next);
   }
-  return [...merged.entries()].map(([productId, qty]) => ({ productId, qty }));
+  return [...merged.entries()].map(([variantId, qty]) => ({ variantId, qty }));
 }

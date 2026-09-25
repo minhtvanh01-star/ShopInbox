@@ -1,6 +1,7 @@
 import "dotenv/config";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { backupKeepCount, backupsToDelete } from "@/lib/db-backup-retention";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
 import {
@@ -39,14 +40,27 @@ function tableDelegates(prisma: PrismaClient): Record<BackupTable, TableDelegate
     channelAccounts: asDelegate(prisma.channelAccount),
     customers: asDelegate(prisma.customer),
     customerIdentities: asDelegate(prisma.customerIdentity),
+    productGroups: asDelegate(prisma.productGroup),
     products: asDelegate(prisma.product),
+    productVariants: asDelegate(prisma.productVariant),
     conversations: asDelegate(prisma.conversation),
     messages: asDelegate(prisma.message),
+    messageReactions: asDelegate(prisma.messageReaction),
     orders: asDelegate(prisma.order),
     orderItems: asDelegate(prisma.orderItem),
+    orderChecklistTemplates: asDelegate(prisma.orderChecklistTemplate),
+    orderChecklistChecks: asDelegate(prisma.orderChecklistCheck),
     quickReplies: asDelegate(prisma.quickReply),
+    autoReplyRules: asDelegate(prisma.autoReplyRule),
+    oauthPagePicks: asDelegate(prisma.oAuthPagePick),
+    emailOtpChallenges: asDelegate(prisma.emailOtpChallenge),
+    authLoginThrottles: asDelegate(prisma.authLoginThrottle),
     auditLogs: asDelegate(prisma.auditLog),
   };
+}
+
+export function resolveBackupDir(explicit?: string) {
+  return explicit?.trim() || process.env.BACKUP_DIR?.trim() || path.join(process.cwd(), "backups");
 }
 
 export async function dumpDatabase(prisma: PrismaClient) {
@@ -64,12 +78,21 @@ export async function dumpDatabase(prisma: PrismaClient) {
 
 export async function writeBackupFile(
   payload: Awaited<ReturnType<typeof dumpDatabase>>,
-  backupsDir = path.join(process.cwd(), "backups"),
+  backupsDir = resolveBackupDir(),
 ) {
   await mkdir(backupsDir, { recursive: true });
   const filePath = path.join(backupsDir, `shopinbox-${backupFileStamp()}.json`);
   await writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   return filePath;
+}
+
+export async function pruneBackupDir(backupsDir = resolveBackupDir(), keep = backupKeepCount()) {
+  const names = await readdir(backupsDir).catch(() => [] as string[]);
+  const stale = backupsToDelete(names, keep);
+  for (const name of stale) {
+    await unlink(path.join(backupsDir, name)).catch(() => undefined);
+  }
+  return stale;
 }
 
 export async function restoreDatabase(

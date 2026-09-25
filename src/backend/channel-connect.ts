@@ -1,4 +1,5 @@
 import { prisma } from "@/backend/prisma";
+import { openSecret, sealSecret } from "@/backend/token-crypto";
 import {
   fetchRecentMetaConversations,
   subscribeMetaAppWebhook,
@@ -85,6 +86,11 @@ export async function syncConnectedMetaInbox(shopId: string, channel: Channel) {
     throw new Error("Kênh chưa kết nối OAuth.");
   }
 
+  const accessToken = openSecret(account.accessToken);
+  if (!accessToken) {
+    throw new Error("Kênh chưa kết nối OAuth.");
+  }
+
   const graphPageId = metaGraphPageId(channel, account.pageId, account.linkedPageId);
   if (!graphPageId || !account.pageId) {
     throw new Error("Thiếu Page ID trên kênh.");
@@ -92,12 +98,12 @@ export async function syncConnectedMetaInbox(shopId: string, channel: Channel) {
 
   const webhookNote = await registerMetaWebhooks({
     channel,
-    accessToken: account.accessToken,
+    accessToken,
     pageId: account.pageId,
     linkedPageId: account.linkedPageId,
   });
 
-  const conversations = await fetchRecentMetaConversations(graphPageId, account.accessToken, {
+  const conversations = await fetchRecentMetaConversations(graphPageId, accessToken, {
     platform: channel === "instagram" ? "instagram" : "MESSENGER",
   });
   const ingested = await ingestRecentMetaMessages({
@@ -122,7 +128,40 @@ export async function syncConnectedMetaInbox(shopId: string, channel: Channel) {
   return { ingested, webhookNote };
 }
 
+async function assertExternalAccountFree(input: SaveOAuthConnectionInput) {
+  if (input.oaId) {
+    const other = await prisma.channelAccount.findFirst({
+      where: {
+        channel: "zalo",
+        oaId: input.oaId,
+        status: "ready",
+        shopId: { not: input.shopId },
+      },
+      select: { shopId: true },
+    });
+    if (other) {
+      throw new Error("OA này đã được kết nối bởi shop khác.");
+    }
+  }
+
+  const pageId = input.pageId ?? input.linkedPageId;
+  if (pageId) {
+    const other = await prisma.channelAccount.findFirst({
+      where: {
+        status: "ready",
+        shopId: { not: input.shopId },
+        OR: [{ pageId }, { linkedPageId: pageId }],
+      },
+      select: { shopId: true },
+    });
+    if (other) {
+      throw new Error("Page này đã được kết nối bởi shop khác.");
+    }
+  }
+}
+
 export async function saveOAuthConnection(input: SaveOAuthConnectionInput) {
+  await assertExternalAccountFree(input);
   const account = await prisma.channelAccount.findUniqueOrThrow({
     where: {
       shopId_channel: {
@@ -140,8 +179,8 @@ export async function saveOAuthConnection(input: SaveOAuthConnectionInput) {
     data: {
       status: "ready",
       displayName: input.displayName,
-      accessToken: input.accessToken,
-      refreshToken: input.refreshToken ?? null,
+      accessToken: sealSecret(input.accessToken),
+      refreshToken: input.refreshToken ? sealSecret(input.refreshToken) : null,
       expiresAt: input.expiresAt ?? null,
       pageId: input.pageId ?? account.pageId,
       linkedPageId: input.linkedPageId ?? account.linkedPageId,
@@ -156,8 +195,15 @@ export async function saveOAuthConnection(input: SaveOAuthConnectionInput) {
   if (input.channel === "facebook" || input.channel === "instagram") {
     try {
       await syncConnectedMetaInbox(input.shopId, input.channel);
-    } catch {
-      // Kết nối OAuth vẫn thành công nếu kéo tin lịch sử thất bại.
+    } catch (err) {
+      // OAuth đã lưu token — ghi note để chủ shop biết bước tiếp (đồng bộ / webhook).
+      const reason = err instanceof Error ? err.message : "không rõ lỗi";
+      await prisma.channelAccount.update({
+        where: { id: account.id },
+        data: {
+          note: `Đã kết nối OAuth — ${input.displayName}. Đồng bộ Inbox lỗi: ${reason}. Bấm «Đồng bộ tin nhắn» hoặc kiểm tra webhook (docs/ket-noi-meta-fb-ig.md).`,
+        },
+      });
     }
   }
 }
@@ -199,6 +245,7 @@ export async function markChannelConnecting(shopId: string, channel: Channel) {
   return created.id;
 }
 
+/** Ngắt OAuth. Hội thoại/tin kênh này được ẩn khỏi Inbox (không xóa). */
 export async function disconnectChannel(shopId: string, channel: Channel) {
   await prisma.channelAccount.update({
     where: {
@@ -215,7 +262,7 @@ export async function disconnectChannel(shopId: string, channel: Channel) {
       expiresAt: null,
       connectedAt: null,
       lastWebhookAt: null,
-      note: "Đã ngắt kết nối. Bấm OAuth để kết nối lại.",
+      note: "Đã ngắt kết nối. Hội thoại kênh này ẩn khỏi Inbox đến khi nối lại.",
     },
   });
 }

@@ -76,6 +76,8 @@ describe("rbac catalog", () => {
     expect(catalogHasPermission(ROLE_CODES.manager, PERMISSION_CODES.auditRead)).toBe(true);
     expect(catalogHasPermission(ROLE_CODES.manager, PERMISSION_CODES.staffManage)).toBe(false);
     expect(catalogHasPermission(ROLE_CODES.staff, PERMISSION_CODES.customersUpdate)).toBe(true);
+    expect(catalogHasPermission(ROLE_CODES.staff, PERMISSION_CODES.productsManage)).toBe(false);
+    expect(catalogHasPermission(ROLE_CODES.manager, PERMISSION_CODES.productsManage)).toBe(true);
   });
 
   it("hasPermissionCodes checks membership", () => {
@@ -111,7 +113,7 @@ describe("hasPermission / requirePermission", () => {
     vi.mocked(getSession).mockResolvedValue(staffSession);
 
     await expect(requirePermission(PERMISSION_CODES.channelsConnect)).rejects.toThrow(
-      "REDIRECT:/inbox",
+      "REDIRECT:/settings/profile",
     );
   });
 

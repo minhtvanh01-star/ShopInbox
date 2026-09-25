@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requirePermissionApi } from "@/backend/rbac";
 import { markChannelConnecting } from "@/backend/channel-connect";
-import { buildZaloOAuthUrl } from "@/backend/zalo-oauth";
+import { buildZaloOAuthUrl, generateZaloPkce } from "@/backend/zalo-oauth";
 import { getZaloOAuthConfig } from "@/backend/oauth-config";
 import {
   OAUTH_STATE_COOKIE,
@@ -25,13 +25,15 @@ export async function GET(request: Request) {
 
   await markChannelConnecting(session.shopId, "zalo");
 
+  const pkce = generateZaloPkce();
   const state = await createOAuthStateToken({
     shopId: session.shopId,
     channel: "zalo",
     nonce: crypto.randomUUID(),
+    codeVerifier: pkce.verifier,
   });
 
-  const response = NextResponse.redirect(buildZaloOAuthUrl(config, state));
+  const response = NextResponse.redirect(buildZaloOAuthUrl(config, state, pkce.challenge));
   response.cookies.set(OAUTH_STATE_COOKIE, state, {
     httpOnly: true,
     sameSite: "lax",

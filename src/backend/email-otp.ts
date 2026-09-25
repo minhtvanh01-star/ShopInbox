@@ -5,13 +5,16 @@ import {
   canSendRegisterOtp,
   isEmailConfigured,
   sendEmail,
+  shouldLogEmailOtpCode,
 } from "@/backend/email";
 import {
+  EMAIL_OTP_LOCKOUT_MS,
   EMAIL_OTP_MAX_ATTEMPTS,
   EMAIL_OTP_PURPOSE_PASSWORD_RESET,
   EMAIL_OTP_PURPOSE_REGISTER,
   EMAIL_OTP_RESEND_COOLDOWN_MS,
   EMAIL_OTP_TTL_MS,
+  emailOtpCodesEqual,
   generateEmailOtpCode,
   hashEmailOtpCode,
   parsePasswordResetOtpPayload,
@@ -35,6 +38,18 @@ export {
   type RegisterOtpPayload,
 } from "@/backend/email-otp-code";
 
+function assertOtpSendAllowed(existing: { attempts: number; lastSentAt: Date } | null) {
+  if (!existing) return;
+  const elapsed = Date.now() - existing.lastSentAt.getTime();
+  if (existing.attempts >= EMAIL_OTP_MAX_ATTEMPTS && elapsed < EMAIL_OTP_LOCKOUT_MS) {
+    throw new Error("Nhập sai quá nhiều lần. Vui lòng đợi rồi thử lại.");
+  }
+  if (elapsed < EMAIL_OTP_RESEND_COOLDOWN_MS) {
+    const waitSec = Math.ceil((EMAIL_OTP_RESEND_COOLDOWN_MS - elapsed) / 1000);
+    throw new Error(`Vui lòng đợi ${waitSec}s trước khi gửi lại mã.`);
+  }
+}
+
 export async function createRegisterEmailOtp(input: {
   email: string;
   name: string;
@@ -52,18 +67,10 @@ export async function createRegisterEmailOtp(input: {
     orderBy: { lastSentAt: "desc" },
   });
 
-  if (
-    existing &&
-    Date.now() - existing.lastSentAt.getTime() < EMAIL_OTP_RESEND_COOLDOWN_MS
-  ) {
-    const waitSec = Math.ceil(
-      (EMAIL_OTP_RESEND_COOLDOWN_MS - (Date.now() - existing.lastSentAt.getTime())) / 1000,
-    );
-    throw new Error(`Vui lòng đợi ${waitSec}s trước khi gửi lại mã.`);
-  }
+  assertOtpSendAllowed(existing);
 
   const code = generateEmailOtpCode();
-  const codeHash = hashEmailOtpCode(code);
+  const codeHash = hashEmailOtpCode(code, { purpose: EMAIL_OTP_PURPOSE_REGISTER, email });
   const payloadJson = JSON.stringify({
     name: input.name,
     passwordHash: input.passwordHash,
@@ -76,7 +83,7 @@ export async function createRegisterEmailOtp(input: {
     await sendEmail({ to: email, ...mail });
   }
 
-  if (process.env.EMAIL_OTP_DEV_LOG === "1" || process.env.NODE_ENV !== "production") {
+  if (shouldLogEmailOtpCode()) {
     console.info(`[email-otp] register code for ${email}: ${code}`);
   }
 
@@ -127,16 +134,19 @@ export async function verifyRegisterEmailOtp(input: {
   }
 
   if (challenge.attempts >= EMAIL_OTP_MAX_ATTEMPTS) {
-    await prisma.emailOtpChallenge.delete({ where: { id: challenge.id } });
-    return { ok: false, error: "Nhập sai quá nhiều lần. Hãy đăng ký lại để nhận mã mới." };
+    return { ok: false, error: "Nhập sai quá nhiều lần. Vui lòng đợi rồi gửi lại mã." };
   }
 
-  const ok = challenge.codeHash === hashEmailOtpCode(code);
+  const expected = hashEmailOtpCode(code, { purpose: EMAIL_OTP_PURPOSE_REGISTER, email });
+  const ok = emailOtpCodesEqual(challenge.codeHash, expected);
   if (!ok) {
-    await prisma.emailOtpChallenge.update({
-      where: { id: challenge.id },
+    const claimed = await prisma.emailOtpChallenge.updateMany({
+      where: { id: challenge.id, attempts: { lt: EMAIL_OTP_MAX_ATTEMPTS } },
       data: { attempts: { increment: 1 } },
     });
+    if (claimed.count === 0) {
+      return { ok: false, error: "Nhập sai quá nhiều lần. Vui lòng đợi rồi gửi lại mã." };
+    }
     return { ok: false, error: "Mã xác thực không đúng." };
   }
 
@@ -176,18 +186,13 @@ export async function createPasswordResetEmailOtp(input: {
     orderBy: { lastSentAt: "desc" },
   });
 
-  if (
-    existing &&
-    Date.now() - existing.lastSentAt.getTime() < EMAIL_OTP_RESEND_COOLDOWN_MS
-  ) {
-    const waitSec = Math.ceil(
-      (EMAIL_OTP_RESEND_COOLDOWN_MS - (Date.now() - existing.lastSentAt.getTime())) / 1000,
-    );
-    throw new Error(`Vui lòng đợi ${waitSec}s trước khi gửi lại mã.`);
-  }
+  assertOtpSendAllowed(existing);
 
   const code = generateEmailOtpCode();
-  const codeHash = hashEmailOtpCode(code);
+  const codeHash = hashEmailOtpCode(code, {
+    purpose: EMAIL_OTP_PURPOSE_PASSWORD_RESET,
+    email,
+  });
   const payloadJson = JSON.stringify({
     passwordHash: input.passwordHash,
   } satisfies PasswordResetOtpPayload);
@@ -198,7 +203,7 @@ export async function createPasswordResetEmailOtp(input: {
     await sendEmail({ to: email, ...mail });
   }
 
-  if (process.env.EMAIL_OTP_DEV_LOG === "1" || process.env.NODE_ENV !== "production") {
+  if (shouldLogEmailOtpCode()) {
     console.info(`[email-otp] password_reset code for ${email}: ${code}`);
   }
 
@@ -249,16 +254,22 @@ export async function verifyPasswordResetEmailOtp(input: {
   }
 
   if (challenge.attempts >= EMAIL_OTP_MAX_ATTEMPTS) {
-    await prisma.emailOtpChallenge.delete({ where: { id: challenge.id } });
-    return { ok: false, error: "Nhập sai quá nhiều lần. Hãy yêu cầu mã mới." };
+    return { ok: false, error: "Nhập sai quá nhiều lần. Vui lòng đợi rồi gửi lại mã." };
   }
 
-  const ok = challenge.codeHash === hashEmailOtpCode(code);
+  const expected = hashEmailOtpCode(code, {
+    purpose: EMAIL_OTP_PURPOSE_PASSWORD_RESET,
+    email,
+  });
+  const ok = emailOtpCodesEqual(challenge.codeHash, expected);
   if (!ok) {
-    await prisma.emailOtpChallenge.update({
-      where: { id: challenge.id },
+    const claimed = await prisma.emailOtpChallenge.updateMany({
+      where: { id: challenge.id, attempts: { lt: EMAIL_OTP_MAX_ATTEMPTS } },
       data: { attempts: { increment: 1 } },
     });
+    if (claimed.count === 0) {
+      return { ok: false, error: "Nhập sai quá nhiều lần. Vui lòng đợi rồi gửi lại mã." };
+    }
     return { ok: false, error: "Mã xác minh không đúng." };
   }
 

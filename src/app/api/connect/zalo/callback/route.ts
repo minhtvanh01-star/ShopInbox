@@ -9,6 +9,7 @@ import { OAUTH_STATE_COOKIE, verifyOAuthStateToken } from "@/backend/oauth-state
 import { absoluteAppUrl } from "@/backend/public-url";
 import { exchangeZaloCode, fetchZaloOaInfo } from "@/backend/zalo-oauth";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { sanitizeOAuthFlashMessage } from "@/lib/meta-webhook-security";
 
 function settingsUrl(request: Request, params: Record<string, string>) {
   const url = absoluteAppUrl(request, "/settings");
@@ -39,7 +40,6 @@ export async function GET(request: Request) {
 
   const code = searchParams.get("code");
   const state = searchParams.get("state");
-  const oaIdHint = searchParams.get("oa_id");
 
   if (!code || !state) {
     return NextResponse.redirect(settingsUrl(request, { oauth_error: "zalo_invalid" }));
@@ -57,8 +57,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const token = await exchangeZaloCode(config, code);
-    const oa = await fetchZaloOaInfo(token.accessToken, oaIdHint);
+    const token = await exchangeZaloCode(config, code, statePayload.codeVerifier);
+    const oa = await fetchZaloOaInfo(token.accessToken);
 
     await saveOAuthConnection({
       shopId: session.shopId,
@@ -83,9 +83,13 @@ export async function GET(request: Request) {
     response.cookies.delete(OAUTH_STATE_COOKIE);
     return response;
   } catch (err) {
-    const message = err instanceof Error ? err.message : "zalo_failed";
-    return NextResponse.redirect(
+    const message = sanitizeOAuthFlashMessage(
+      err instanceof Error ? err.message : "zalo_failed",
+    );
+    const response = NextResponse.redirect(
       settingsUrl(request, { oauth_error: "zalo_failed", oauth_message: message }),
     );
+    response.cookies.delete(OAUTH_STATE_COOKIE);
+    return response;
   }
 }

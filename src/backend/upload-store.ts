@@ -1,15 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, readFile } from "node:fs/promises";
 import path from "node:path";
+import { ALLOWED_IMAGE_MIME, sniffImageMime, validateUploadSize } from "@/lib/inbox-media";
 
-export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-export const ALLOWED_IMAGE_MIME = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-]);
-
+export { ALLOWED_IMAGE_MIME, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from "@/lib/inbox-media";
 const EXT_BY_MIME: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
@@ -35,26 +29,47 @@ export type SavedUpload = {
   publicPath: string;
 };
 
+function isSafeUploadSegment(value: string) {
+  return /^[a-zA-Z0-9._-]+$/.test(value) && !value.includes("..");
+}
+
+export function resolveShopUploadPath(shopId: string, fileName: string) {
+  if (!isSafeUploadSegment(shopId) || !isSafeUploadSegment(fileName)) {
+    return null;
+  }
+  const root = uploadsRootDir();
+  const absolutePath = path.resolve(root, shopId, fileName);
+  const relative = path.relative(root, absolutePath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    return null;
+  }
+  return absolutePath;
+}
+
 export async function saveShopImageUpload(input: {
   shopId: string;
   bytes: Buffer;
   mimeType: string;
   originalName?: string;
 }): Promise<SavedUpload> {
-  if (!ALLOWED_IMAGE_MIME.has(input.mimeType)) {
+  const sizeCheck = validateUploadSize(input.bytes.byteLength, "Ảnh");
+  if (!sizeCheck.ok) {
+    throw new Error(sizeCheck.error);
+  }
+
+  const sniffed = sniffImageMime(input.bytes);
+  if (!sniffed || !ALLOWED_IMAGE_MIME.has(sniffed)) {
     throw new Error("Chỉ hỗ trợ ảnh JPEG, PNG, WebP hoặc GIF.");
-  }
-  if (input.bytes.byteLength === 0) {
-    throw new Error("File ảnh trống.");
-  }
-  if (input.bytes.byteLength > MAX_UPLOAD_BYTES) {
-    throw new Error("Ảnh tối đa 5MB.");
   }
 
   const id = randomUUID();
-  const ext = EXT_BY_MIME[input.mimeType] ?? "bin";
-  const relativePath = path.join(input.shopId, `${id}.${ext}`);
-  const absolutePath = path.join(uploadsRootDir(), relativePath);
+  const ext = EXT_BY_MIME[sniffed] ?? "bin";
+  const fileName = `${id}.${ext}`;
+  const absolutePath = resolveShopUploadPath(input.shopId, fileName);
+  if (!absolutePath) {
+    throw new Error("Shop không hợp lệ để lưu ảnh.");
+  }
+  const relativePath = path.join(input.shopId, fileName);
   await mkdir(path.dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, input.bytes);
 
@@ -64,7 +79,7 @@ export async function saveShopImageUpload(input: {
     id,
     shopId: input.shopId,
     fileName: safeName,
-    mimeType: input.mimeType,
+    mimeType: sniffed,
     relativePath: relativePath.replace(/\\/g, "/"),
     absolutePath,
     publicPath: `/api/uploads/${input.shopId}/${id}.${ext}`,
@@ -72,10 +87,10 @@ export async function saveShopImageUpload(input: {
 }
 
 export async function readShopUpload(shopId: string, fileName: string) {
-  if (!/^[a-zA-Z0-9._-]+$/.test(fileName) || fileName.includes("..")) {
+  const absolutePath = resolveShopUploadPath(shopId, fileName);
+  if (!absolutePath) {
     return null;
   }
-  const absolutePath = path.join(uploadsRootDir(), shopId, fileName);
   try {
     const bytes = await readFile(absolutePath);
     const ext = path.extname(fileName).slice(1).toLowerCase();

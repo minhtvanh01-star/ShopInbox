@@ -20,9 +20,8 @@ import { getSession, setSessionCookie } from "@/backend/session";
 import { auditMetaFromRequest, writeAudit } from "@/backend/audit";
 import { absoluteAppUrl } from "@/backend/public-url";
 import { safeInternalPath } from "@/backend/safe-path";
-import { AUDIT_ACTIONS, normalizeRoleCode } from "@/lib/rbac-catalog";
-import { assertShopHasActiveSeat, countActiveShopUsers } from "@/backend/shop-seats";
-import { getShopPolicy } from "@/backend/shop-policy";
+import { createOpenRegistrationStaff } from "@/backend/open-registration";
+import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
 
 function authPageUrl(
   request: Request,
@@ -257,46 +256,23 @@ export async function GET(request: Request) {
       return clearGoogleAuthCookies(NextResponse.redirect(absoluteAppUrl(request, nextPath)));
     }
 
-    if (resolved.createShop) {
-      await prisma.shop.create({
-        data: {
-          id: resolved.createShop.id,
-          name: resolved.createShop.name,
-        },
-      });
-    }
-
-    if (resolved.isActive) {
-      const seatError = await assertShopHasActiveSeat(resolved.shopId);
-      if (seatError) {
-        return clearGoogleAuthCookies(
-          redirectWithError(request, "shop_seat_full", mode, nextPath),
-        );
-      }
-    } else {
-      const [active, policy] = await Promise.all([
-        countActiveShopUsers(resolved.shopId),
-        getShopPolicy(resolved.shopId),
-      ]);
-      if (active >= policy.maxUsersPerShop) {
-        return clearGoogleAuthCookies(
-          redirectWithError(request, "shop_seat_full", mode, nextPath),
-        );
-      }
-    }
-
-    const staff = await prisma.staff.create({
-      data: {
-        id: `staff-${crypto.randomUUID()}`,
-        shopId: resolved.shopId,
-        name: resolved.name,
-        email: resolved.email,
-        googleId: resolved.googleId,
-        avatarUrl: resolved.avatarUrl,
-        roleCode: normalizeRoleCode(resolved.role),
-        isActive: resolved.isActive,
-      },
+    const created = await createOpenRegistrationStaff({
+      email: resolved.email,
+      name: resolved.name,
+      googleId: resolved.googleId,
+      avatarUrl: resolved.avatarUrl,
     });
+    if (!created.ok) {
+      return clearGoogleAuthCookies(
+        redirectWithError(
+          request,
+          created.error.includes("đủ") ? "shop_seat_full" : "google_already_registered",
+          mode,
+          nextPath,
+        ),
+      );
+    }
+    const staff = created.staff;
 
     const registerActor = {
       id: staff.id,
@@ -320,7 +296,7 @@ export async function GET(request: Request) {
       },
     });
 
-    if (!resolved.isActive) {
+    if (!staff.isActive) {
       return clearGoogleAuthCookies(
         NextResponse.redirect(
           authPageUrl(request, "/login", { auth_success: "pending_approval" }),
@@ -346,14 +322,13 @@ export async function GET(request: Request) {
       ...auditMetaFromRequest(request),
       action: AUDIT_ACTIONS.authLoginFail,
       entityType: "Session",
-      metadata: { reason: "google_failed", method: "google" },
+      metadata: { reason: "google_failed", method: "google", detail: message.slice(0, 200) },
     });
     const failedMode = statePayload.mode === "register" ? "register" : "login";
     const codeName =
       message.includes("id_token") || message.includes("nonce") ? "google_id_token" : "google_failed";
     const url = authPageUrl(request, failedMode === "register" ? "/register" : "/login", {
       auth_error: codeName,
-      auth_message: message.slice(0, 200),
     });
     return clearGoogleAuthCookies(NextResponse.redirect(url));
   }

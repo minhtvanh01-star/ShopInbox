@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { writeAudit } from "@/backend/audit";
+import { bumpStaffSessionVersion } from "@/backend/auth";
 import { requirePermission, invalidatePermissionCache } from "@/backend/rbac";
 import { hashPassword } from "@/backend/password";
 import { prisma } from "@/backend/prisma";
@@ -12,7 +13,11 @@ import {
   PERMISSION_CODES,
   normalizeRoleCode,
 } from "@/lib/rbac-catalog";
-import { REGISTER_MIN_PASSWORD_LENGTH } from "@/lib/auth-password";
+import {
+  EMAIL_RE,
+  REGISTER_MIN_PASSWORD_LENGTH,
+  REGISTER_NAME_MAX,
+} from "@/lib/auth-password";
 import { assertShopHasActiveSeat } from "@/backend/shop-seats";
 
 export type StaffActionState = {
@@ -47,10 +52,13 @@ export async function createStaffAction(
   if (!name || !email || !password) {
     return { error: "Điền đủ tên, email và mật khẩu." };
   }
-  if (password.length < 8) {
-    return { error: "Mật khẩu tối thiểu 8 ký tự." };
+  if (name.length > REGISTER_NAME_MAX) {
+    return { error: `Họ tên tối đa ${REGISTER_NAME_MAX} ký tự.` };
   }
-  if (!email.includes("@")) {
+  if (password.length < REGISTER_MIN_PASSWORD_LENGTH) {
+    return { error: `Mật khẩu tối thiểu ${REGISTER_MIN_PASSWORD_LENGTH} ký tự.` };
+  }
+  if (!EMAIL_RE.test(email)) {
     return { error: "Email không hợp lệ." };
   }
 
@@ -112,6 +120,9 @@ export async function updateStaffAction(
   if (!staffId || !name) {
     return { error: "Thiếu thông tin nhân viên." };
   }
+  if (name.length > REGISTER_NAME_MAX) {
+    return { error: `Họ tên tối đa ${REGISTER_NAME_MAX} ký tự.` };
+  }
 
   const target = await prisma.staff.findFirst({
     where: { id: staffId, shopId: session.shopId },
@@ -150,6 +161,7 @@ export async function updateStaffAction(
     }
   }
 
+  const revokeSession = target.roleCode !== role.code || target.isActive !== isActive;
   const updated = await prisma.staff.update({
     where: { id: target.id },
     data: {
@@ -159,6 +171,9 @@ export async function updateStaffAction(
     },
   });
 
+  if (revokeSession) {
+    await bumpStaffSessionVersion(updated.id);
+  }
   invalidatePermissionCache(updated.id);
 
   const changed =
@@ -227,6 +242,7 @@ export async function resetStaffPasswordAction(
     where: { id: target.id },
     data: { passwordHash: await hashPassword(password) },
   });
+  await bumpStaffSessionVersion(target.id);
 
   await writeAudit({
     actor: session,

@@ -67,8 +67,8 @@ describe("getInboxChannelFilters", () => {
     ]);
   });
 
-  it("falls back to full catalog when active set is empty", () => {
-    expect(getInboxChannelFilters([])).toHaveLength(5);
+  it("chỉ pill Tất cả khi chưa nối kênh nào", () => {
+    expect(getInboxChannelFilters([])).toEqual([{ id: "all", label: "Tất cả" }]);
   });
 });
 

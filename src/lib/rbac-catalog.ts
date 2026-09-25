@@ -19,6 +19,7 @@ export const PERMISSION_CODES = {
   ordersRead: "orders.read",
   ordersUpdate: "orders.update",
   ordersCreate: "orders.create",
+  productsManage: "products.manage",
   customersRead: "customers.read",
   customersUpdate: "customers.update",
   channelsConnect: "channels.connect",
@@ -68,6 +69,12 @@ export const PERMISSIONS: CatalogPermission[] = [
     name: "Tạo đơn",
     description: "Tạo đơn từ hội thoại.",
     group: "orders",
+  },
+  {
+    code: PERMISSION_CODES.productsManage,
+    name: "Quản lý sản phẩm",
+    description: "Thêm, sửa, xóa sản phẩm, nhóm và biến thể.",
+    group: "products",
   },
   {
     code: PERMISSION_CODES.customersRead,
@@ -168,6 +175,7 @@ const STAFF_PERMISSIONS: PermissionCode[] = [
 
 const MANAGER_PERMISSIONS: PermissionCode[] = [
   ...STAFF_PERMISSIONS,
+  PERMISSION_CODES.productsManage,
   PERMISSION_CODES.auditRead,
   PERMISSION_CODES.staffRead,
 ];
@@ -270,6 +278,10 @@ export const AUDIT_ACTIONS = {
   authLogout: "auth.logout",
   authSessionTimeout: "auth.session_timeout",
   settingsUpdate: "settings.update",
+  productCreate: "product.create",
+  productUpdate: "product.update",
+  productDelete: "product.delete",
+  orderChecklistToggle: "order.checklist_toggle",
 } as const;
 
 export type AuditActionCode = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
@@ -299,6 +311,10 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   [AUDIT_ACTIONS.authLogout]: "Đăng xuất",
   [AUDIT_ACTIONS.authSessionTimeout]: "Hết phiên (không hoạt động)",
   [AUDIT_ACTIONS.settingsUpdate]: "Cập nhật cấu hình vận hành",
+  [AUDIT_ACTIONS.productCreate]: "Thêm sản phẩm",
+  [AUDIT_ACTIONS.productUpdate]: "Cập nhật sản phẩm",
+  [AUDIT_ACTIONS.productDelete]: "Xóa sản phẩm",
+  [AUDIT_ACTIONS.orderChecklistToggle]: "Tick checklist đơn",
 };
 
 export const AUDIT_ENTITY_LABEL: Record<string, string> = {
@@ -311,6 +327,9 @@ export const AUDIT_ENTITY_LABEL: Record<string, string> = {
   ChannelAccount: "Kênh",
   Profile: "Hồ sơ",
   Session: "Phiên đăng nhập",
+  Product: "Sản phẩm",
+  OrderChecklistTemplate: "Checklist đơn",
+  OrderChecklistCheck: "Tick checklist",
 };
 
 export function auditActionLabel(action: string): string {

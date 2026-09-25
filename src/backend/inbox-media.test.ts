@@ -11,8 +11,8 @@ describe("metaReactionAction", () => {
 });
 
 describe("upload limits", () => {
-  it("allows common image mime types under 5MB", () => {
+  it("allows common image mime types under 100MB", () => {
     expect(ALLOWED_IMAGE_MIME.has("image/png")).toBe(true);
-    expect(MAX_UPLOAD_BYTES).toBe(5 * 1024 * 1024);
+    expect(MAX_UPLOAD_BYTES).toBe(100 * 1024 * 1024);
   });
 });

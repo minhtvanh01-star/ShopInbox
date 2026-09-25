@@ -12,6 +12,8 @@ import {
   canSendRegisterOtp,
   getSmtpConfig,
   normalizeSmtpSecret,
+  publicOtpSendError,
+  shouldLogEmailOtpCode,
 } from "@/backend/email";
 import { validatePasswordResetInput } from "@/backend/register";
 
@@ -25,6 +27,9 @@ describe("email OTP helpers", () => {
   it("hashes codes deterministically", () => {
     expect(hashEmailOtpCode("123456")).toBe(hashEmailOtpCode("123456"));
     expect(hashEmailOtpCode("123456")).not.toBe(hashEmailOtpCode("654321"));
+    expect(
+      hashEmailOtpCode("123456", { purpose: "register", email: "a@b.c" }),
+    ).not.toBe(hashEmailOtpCode("123456", { purpose: "password_reset", email: "a@b.c" }));
   });
 
   it("parses register payload", () => {
@@ -118,7 +123,7 @@ describe("getSmtpConfig password normalization", () => {
     expect(config?.user).toBe("shop@gmail.com");
   });
 
-  it("canSendRegisterOtp allows DEV_LOG without SMTP", () => {
+  it("canSendRegisterOtp allows DEV_LOG without SMTP outside production", () => {
     delete process.env.SMTP_USER;
     delete process.env.SMTP_PASS;
     delete process.env.GMAIL_USER;
@@ -126,5 +131,34 @@ describe("getSmtpConfig password normalization", () => {
     process.env.EMAIL_OTP_DEV_LOG = "1";
     expect(getSmtpConfig()).toBeNull();
     expect(canSendRegisterOtp()).toBe(true);
+    expect(shouldLogEmailOtpCode()).toBe(process.env.NODE_ENV !== "production");
+  });
+
+  it("never treats DEV_LOG as enough in production", () => {
+    const env = process.env as { NODE_ENV?: string };
+    const previous = env.NODE_ENV;
+    delete process.env.SMTP_USER;
+    delete process.env.SMTP_PASS;
+    delete process.env.GMAIL_USER;
+    delete process.env.GMAIL_APP_PASSWORD;
+    process.env.EMAIL_OTP_DEV_LOG = "1";
+    env.NODE_ENV = "production";
+    try {
+      expect(canSendRegisterOtp()).toBe(false);
+      expect(shouldLogEmailOtpCode()).toBe(false);
+    } finally {
+      env.NODE_ENV = previous;
+    }
+  });
+});
+
+describe("publicOtpSendError", () => {
+  it("keeps cooldown text and hides SMTP details", () => {
+    expect(publicOtpSendError(new Error("Vui lòng đợi 12s trước khi gửi lại mã."), "fallback")).toMatch(
+      /Vui lòng đợi 12s/,
+    );
+    expect(publicOtpSendError(new Error("Invalid login: 535-5.7.8"), "Không gửi được mã.")).toBe(
+      "Không gửi được mã.",
+    );
   });
 });

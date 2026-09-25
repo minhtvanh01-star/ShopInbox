@@ -11,10 +11,10 @@ Hiện tại: đăng nhập + Inbox đọc/ghi DB + tạo đơn từ chat + **OA
 
 ## 1. Database local
 
-Tạo database nếu chưa có (PowerShell, `psql` trong `C:\Program Files\PostgreSQL\<version>\bin`):
+Tạo database nếu chưa có (ví dụ `psql`):
 
 ```powershell
-& "C:\Program Files\PostgreSQL\18\bin\psql.exe" -h 127.0.0.1 -U postgres -d postgres -c "CREATE DATABASE shopinbox;"
+psql -h 127.0.0.1 -U postgres -d postgres -c "CREATE DATABASE shopinbox;"
 ```
 
 Copy `.env.example` → `.env` rồi chỉnh `DATABASE_URL` cho khớp user/password máy bạn:
@@ -28,7 +28,6 @@ DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5432/shopinbox"
 ## 2. Cài package + migrate + seed
 
 ```powershell
-cd E:\project_job\ShopInbox
 npm install
 npx prisma migrate deploy
 npx prisma generate
@@ -101,7 +100,9 @@ Rồi đổi `.env` sang `postgresql://shopinbox:shopinbox@127.0.0.1:5433/shopin
 2. Trên Meta Developers dán **OAuth Redirect** = `{APP_URL}/api/connect/meta/callback` và **Webhook** = `{APP_URL}/api/webhooks/meta`.
 3. Trong app: menu **Cài đặt** → **Thêm kết nối** → **Kết nối với Facebook/Instagram** (OAuth). Settings cũng hiện URL + verify token để copy.
 
-Chi tiết từng ô trên Meta / Zalo: [docs/ket-noi-kenh.md](docs/ket-noi-kenh.md), checklist env: [docs/env-checklist.md](docs/env-checklist.md).
+Yêu cầu & lộ trình: [docs/yeu-cau-he-thong.md](docs/yeu-cau-he-thong.md).  
+Kết nối FB/IG (checklist + lỗi hay gặp): [docs/ket-noi-meta-fb-ig.md](docs/ket-noi-meta-fb-ig.md).  
+Tổng quan kênh Meta/Zalo: [docs/ket-noi-kenh.md](docs/ket-noi-kenh.md), env: [docs/env-checklist.md](docs/env-checklist.md).
 
 ## Cấu trúc src
 

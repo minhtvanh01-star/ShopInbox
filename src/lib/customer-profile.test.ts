@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { customerMatchesQuery, parseCustomerProfileInput } from "./customer-profile";
+import {
+  CUSTOMER_ADDRESS_MAX,
+  customerMatchesQuery,
+  parseCustomerProfileInput,
+  parseOrderDeliveryInput,
+} from "./customer-profile";
 
 describe("parseCustomerProfileInput", () => {
   it("accepts empty contact fields", () => {
@@ -24,6 +29,24 @@ describe("parseCustomerProfileInput", () => {
 
   it("rejects invalid phone", () => {
     expect(parseCustomerProfileInput({ phone: "abc" }).ok).toBe(false);
+  });
+});
+
+describe("parseOrderDeliveryInput", () => {
+  it("requires address and validates phone", () => {
+    expect(parseOrderDeliveryInput({ address: "  ", phone: "" }).ok).toBe(false);
+    expect(parseOrderDeliveryInput({ address: "Cầu Giấy", phone: "abc" }).ok).toBe(false);
+    expect(parseOrderDeliveryInput({ address: "Cầu Giấy", phone: "0901234567" })).toEqual({
+      ok: true,
+      address: "Cầu Giấy",
+      phone: "0901234567",
+    });
+  });
+
+  it("rejects overly long address", () => {
+    expect(parseOrderDeliveryInput({ address: "a".repeat(CUSTOMER_ADDRESS_MAX + 1) }).ok).toBe(
+      false,
+    );
   });
 });
 

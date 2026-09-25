@@ -76,7 +76,7 @@ export async function hasPermission(session: SessionPayload, code: string): Prom
 
 async function enforcePermission(session: SessionPayload, code: string): Promise<SessionPayload> {
   if (!(await hasPermission(session, code))) {
-    redirect("/inbox");
+    redirect("/settings/profile");
   }
   return session;
 }

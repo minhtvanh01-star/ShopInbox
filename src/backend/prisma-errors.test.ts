@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { isMissingDbColumnError } from "./prisma-errors";
+import { isMissingDbColumnError, isUniqueConstraintError } from "./prisma-errors";
+
+describe("isUniqueConstraintError", () => {
+  it("detects P2002", () => {
+    expect(isUniqueConstraintError(new Error("Unique constraint failed on the fields: (`code`)"))).toBe(
+      true,
+    );
+    expect(isUniqueConstraintError(new Error("P2002"))).toBe(true);
+    expect(isUniqueConstraintError(new Error("P2022 column missing"))).toBe(false);
+  });
+});
 
 describe("isMissingDbColumnError", () => {
   it("detects Prisma P2022 / missing column messages", () => {

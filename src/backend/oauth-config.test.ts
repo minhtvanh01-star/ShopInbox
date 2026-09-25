@@ -72,13 +72,13 @@ describe("oauth-config", () => {
     process.env.META_APP_ID = "meta-app";
     process.env.META_APP_SECRET = "meta-secret";
     delete process.env.META_REDIRECT_URI;
-    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox-production.up.railway.app";
+    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox.example.com";
 
     expect(getMetaOAuthRedirectUri()).toBe(
-      "https://shopinbox-production.up.railway.app/api/connect/meta/callback",
+      "https://shopinbox.example.com/api/connect/meta/callback",
     );
     expect(getMetaOAuthConfig()?.redirectUri).toBe(
-      "https://shopinbox-production.up.railway.app/api/connect/meta/callback",
+      "https://shopinbox.example.com/api/connect/meta/callback",
     );
   });
 
@@ -87,10 +87,10 @@ describe("oauth-config", () => {
     process.env.META_APP_ID = "meta-app";
     process.env.META_APP_SECRET = "meta-secret";
     process.env.META_REDIRECT_URI = "http://localhost:3000/api/connect/meta/callback";
-    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox-production.up.railway.app";
+    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox.example.com";
 
     expect(getMetaOAuthConfig()?.redirectUri).toBe(
-      "https://shopinbox-production.up.railway.app/api/connect/meta/callback",
+      "https://shopinbox.example.com/api/connect/meta/callback",
     );
   });
 
@@ -112,18 +112,18 @@ describe("resolveOAuthRedirectUri", () => {
 
   it("prefers production app URL over localhost redirect env", () => {
     stashEnv(["NEXT_PUBLIC_APP_URL", "APP_URL"]);
-    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox-production.up.railway.app";
+    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox.example.com";
     expect(
       resolveOAuthRedirectUri(
         "http://localhost:3000/api/auth/google/callback",
         "/api/auth/google/callback",
       ),
-    ).toBe("https://shopinbox-production.up.railway.app/api/auth/google/callback");
+    ).toBe("https://shopinbox.example.com/api/auth/google/callback");
   });
 
   it("keeps explicit production redirect", () => {
     stashEnv(["NEXT_PUBLIC_APP_URL", "APP_URL"]);
-    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox-production.up.railway.app";
+    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox.example.com";
     expect(
       resolveOAuthRedirectUri(
         "https://custom.example/api/auth/google/callback",

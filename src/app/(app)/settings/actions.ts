@@ -13,6 +13,7 @@ import {
 import { pickMetaPageForChannel } from "@/backend/meta-oauth";
 import {
   OAUTH_PAGES_COOKIE,
+  consumeOAuthPagesToken,
   verifyOAuthPagesToken,
 } from "@/backend/oauth-state";
 import type { PendingMetaPages } from "@/lib/oauth-types";
@@ -107,6 +108,7 @@ export async function completeMetaPageAction(
       pageId: picked.externalId,
       linkedPageId: picked.linkedPageId,
     });
+    await consumeOAuthPagesToken(token);
     jar.delete(OAUTH_PAGES_COOKIE);
     revalidatePath("/settings");
     await writeAudit({
@@ -221,7 +223,7 @@ export async function disconnectChannelAction(
       entityType: "ChannelAccount",
       metadata: { channel },
     });
-    return { success: "Đã ngắt kết nối kênh." };
+    return { success: "Đã ngắt kết nối kênh. Hội thoại kênh này đã ẩn khỏi Inbox." };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Không ngắt được kết nối." };
   }
@@ -325,4 +327,273 @@ export async function updateShopPolicyAction(
     replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
     maxUsersPerShop: parsed.policy.maxUsersPerShop,
   };
+}
+
+export type QuickReplyFormState = {
+  error?: string;
+  success?: string;
+};
+
+export async function createQuickReplyAction(
+  _prev: QuickReplyFormState,
+  formData: FormData,
+): Promise<QuickReplyFormState> {
+  try {
+    const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
+    const { createQuickReply } = await import("@/backend/quick-reply");
+    const created = await createQuickReply(session.shopId, {
+      title: pickField(formData, "title"),
+      text: pickField(formData, "text"),
+    });
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.settingsUpdate,
+      entityType: "QuickReply",
+      entityId: created.id,
+      metadata: { op: "create", title: created.title, actorName: session.name },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/inbox");
+    return { success: "Đã thêm mẫu tin." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không thêm được mẫu tin." };
+  }
+}
+
+export async function updateQuickReplyAction(
+  _prev: QuickReplyFormState,
+  formData: FormData,
+): Promise<QuickReplyFormState> {
+  try {
+    const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
+    const id = pickField(formData, "id");
+    if (!id) {
+      return { error: "Thiếu mã mẫu tin." };
+    }
+    const { updateQuickReply } = await import("@/backend/quick-reply");
+    const updated = await updateQuickReply(session.shopId, id, {
+      title: pickField(formData, "title"),
+      text: pickField(formData, "text"),
+    });
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.settingsUpdate,
+      entityType: "QuickReply",
+      entityId: updated.id,
+      metadata: { op: "update", title: updated.title, actorName: session.name },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/inbox");
+    return { success: "Đã cập nhật mẫu tin." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không cập nhật được mẫu tin." };
+  }
+}
+
+export async function deleteQuickReplyAction(
+  _prev: QuickReplyFormState,
+  formData: FormData,
+): Promise<QuickReplyFormState> {
+  try {
+    const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
+    const id = pickField(formData, "id");
+    if (!id) {
+      return { error: "Thiếu mã mẫu tin." };
+    }
+    const { deleteQuickReply } = await import("@/backend/quick-reply");
+    const removed = await deleteQuickReply(session.shopId, id);
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.settingsUpdate,
+      entityType: "QuickReply",
+      entityId: removed.id,
+      metadata: { op: "delete", title: removed.title, actorName: session.name },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/inbox");
+    return { success: "Đã xóa mẫu tin." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không xóa được mẫu tin." };
+  }
+}
+
+export type AutoReplyFormState = {
+  error?: string;
+  success?: string;
+};
+
+export async function createAutoReplyRuleAction(
+  _prev: AutoReplyFormState,
+  formData: FormData,
+): Promise<AutoReplyFormState> {
+  try {
+    const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
+    const { createAutoReplyRule } = await import("@/backend/auto-reply");
+    const created = await createAutoReplyRule(session.shopId, {
+      kind: pickField(formData, "kind"),
+      keywords: pickField(formData, "keywords"),
+      replyText: pickField(formData, "replyText"),
+      openTime: pickField(formData, "openTime"),
+      closeTime: pickField(formData, "closeTime"),
+      cooldownMinutes: formData.get("cooldownMinutes"),
+      enabled: formData.has("enabled"),
+    });
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.settingsUpdate,
+      entityType: "AutoReplyRule",
+      entityId: created.id,
+      metadata: { op: "create", kind: created.kind, actorName: session.name },
+    });
+    revalidatePath("/settings");
+    return { success: "Đã thêm rule auto-reply." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không thêm được rule." };
+  }
+}
+
+export async function updateAutoReplyRuleAction(
+  _prev: AutoReplyFormState,
+  formData: FormData,
+): Promise<AutoReplyFormState> {
+  try {
+    const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
+    const id = pickField(formData, "id");
+    if (!id) return { error: "Thiếu mã rule." };
+    const { updateAutoReplyRule } = await import("@/backend/auto-reply");
+    const updated = await updateAutoReplyRule(session.shopId, id, {
+      kind: pickField(formData, "kind"),
+      keywords: pickField(formData, "keywords"),
+      replyText: pickField(formData, "replyText"),
+      openTime: pickField(formData, "openTime"),
+      closeTime: pickField(formData, "closeTime"),
+      cooldownMinutes: formData.get("cooldownMinutes"),
+      enabled: formData.has("enabled"),
+    });
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.settingsUpdate,
+      entityType: "AutoReplyRule",
+      entityId: updated.id,
+      metadata: { op: "update", kind: updated.kind, actorName: session.name },
+    });
+    revalidatePath("/settings");
+    return { success: "Đã cập nhật rule auto-reply." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không cập nhật được rule." };
+  }
+}
+
+export async function deleteAutoReplyRuleAction(
+  _prev: AutoReplyFormState,
+  formData: FormData,
+): Promise<AutoReplyFormState> {
+  try {
+    const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
+    const id = pickField(formData, "id");
+    if (!id) return { error: "Thiếu mã rule." };
+    const { deleteAutoReplyRule } = await import("@/backend/auto-reply");
+    const removed = await deleteAutoReplyRule(session.shopId, id);
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.settingsUpdate,
+      entityType: "AutoReplyRule",
+      entityId: removed.id,
+      metadata: { op: "delete", kind: removed.kind, actorName: session.name },
+    });
+    revalidatePath("/settings");
+    return { success: "Đã xóa rule auto-reply." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không xóa được rule." };
+  }
+}
+
+export type ChecklistFormState = {
+  error?: string;
+  success?: string;
+};
+
+export async function createChecklistTemplateAction(
+  _prev: ChecklistFormState,
+  formData: FormData,
+): Promise<ChecklistFormState> {
+  try {
+    const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
+    const { createChecklistTemplate } = await import("@/backend/order-checklist");
+    const created = await createChecklistTemplate(session.shopId, {
+      label: pickField(formData, "label"),
+      enabled: formData.get("enabled") != null,
+    });
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.settingsUpdate,
+      entityType: "OrderChecklistTemplate",
+      entityId: created.id,
+      metadata: { op: "create", label: created.label, actorName: session.name },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/orders");
+    return { success: "Đã thêm mục checklist." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không thêm được mục." };
+  }
+}
+
+export async function updateChecklistTemplateAction(
+  _prev: ChecklistFormState,
+  formData: FormData,
+): Promise<ChecklistFormState> {
+  try {
+    const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
+    const id = pickField(formData, "id");
+    if (!id) return { error: "Thiếu mã mục." };
+    const { updateChecklistTemplate } = await import("@/backend/order-checklist");
+    const updated = await updateChecklistTemplate(session.shopId, id, {
+      label: pickField(formData, "label"),
+      enabled: formData.get("enabled") != null,
+      sortOrder: pickField(formData, "sortOrder"),
+    });
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.settingsUpdate,
+      entityType: "OrderChecklistTemplate",
+      entityId: updated.id,
+      metadata: {
+        op: "update",
+        label: updated.label,
+        enabled: updated.enabled,
+        actorName: session.name,
+      },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/orders");
+    return { success: "Đã cập nhật mục checklist." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không cập nhật được mục." };
+  }
+}
+
+export async function deleteChecklistTemplateAction(
+  _prev: ChecklistFormState,
+  formData: FormData,
+): Promise<ChecklistFormState> {
+  try {
+    const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
+    const id = pickField(formData, "id");
+    if (!id) return { error: "Thiếu mã mục." };
+    const { deleteChecklistTemplate } = await import("@/backend/order-checklist");
+    const removed = await deleteChecklistTemplate(session.shopId, id);
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.settingsUpdate,
+      entityType: "OrderChecklistTemplate",
+      entityId: removed.id,
+      metadata: { op: "delete", label: removed.label, actorName: session.name },
+    });
+    revalidatePath("/settings");
+    revalidatePath("/orders");
+    return { success: "Đã xóa mục checklist." };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Không xóa được mục." };
+  }
 }

@@ -34,12 +34,47 @@ export type Customer = {
   avatarUrl?: string;
 };
 
-export type Product = {
+export type VatPolicy = "exempt" | "taxable" | "zero";
+
+export type ProductGroup = {
   id: string;
   name: string;
+  sortOrder: number;
+};
+
+export type ProductVariant = {
+  id: string;
   sku?: string;
+  name: string;
   price: number;
-  inStock: boolean;
+  costPrice: number;
+  selling: boolean;
+  sortOrder: number;
+};
+
+/** Sản phẩm cha (catalog). Giá bán nằm ở biến thể. */
+export type Product = {
+  id: string;
+  code: string;
+  name: string;
+  groupId?: string | null;
+  groupName?: string | null;
+  vatPolicy: VatPolicy;
+  taxRate?: number | null;
+  selling: boolean;
+  variants: ProductVariant[];
+};
+
+/** Dòng chọn khi tạo đơn — một biến thể đang bán. */
+export type SellableVariant = {
+  id: string;
+  productId: string;
+  productName: string;
+  productCode: string;
+  name: string;
+  sku?: string | null;
+  price: number;
+  label: string;
 };
 
 export type MessageReactionSummary = {

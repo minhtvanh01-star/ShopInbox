@@ -92,12 +92,15 @@ async function main() {
   if (mode === "replace") {
     await prisma.auditLog.deleteMany();
     await prisma.orderItem.deleteMany();
+    await prisma.orderChecklistCheck.deleteMany();
     await prisma.order.deleteMany();
+    await prisma.orderChecklistTemplate.deleteMany();
     await prisma.message.deleteMany();
     await prisma.conversation.deleteMany();
     await prisma.customerIdentity.deleteMany();
     await prisma.quickReply.deleteMany();
     await prisma.product.deleteMany();
+    await prisma.productGroup.deleteMany();
     await prisma.customer.deleteMany();
     await prisma.channelAccount.deleteMany();
     await prisma.staff.deleteMany();
@@ -158,14 +161,39 @@ async function main() {
     })),
   });
 
-  await prisma.product.createMany({
-    data: products.map((product) => ({
-      id: product.id,
+  for (const product of products) {
+    await prisma.product.create({
+      data: {
+        id: product.id,
+        shopId: SHOP.id,
+        code: product.code,
+        name: product.name,
+        vatPolicy: product.vatPolicy,
+        taxRate: product.taxRate ?? null,
+        selling: product.selling,
+        variants: {
+          create: product.variants.map((variant) => ({
+            id: variant.id,
+            sku: variant.sku ?? null,
+            name: variant.name,
+            price: variant.price,
+            costPrice: variant.costPrice,
+            selling: variant.selling,
+            sortOrder: variant.sortOrder,
+          })),
+        },
+      },
+    });
+  }
+
+  const { DEFAULT_ORDER_CHECKLIST_LABELS } = await import("@/lib/order-checklist");
+  await prisma.orderChecklistTemplate.createMany({
+    data: DEFAULT_ORDER_CHECKLIST_LABELS.map((label, index) => ({
+      id: `oct-seed-${index + 1}`,
       shopId: SHOP.id,
-      name: product.name,
-      sku: product.sku,
-      price: product.price,
-      inStock: product.inStock,
+      label,
+      sortOrder: index,
+      enabled: true,
     })),
   });
 
@@ -232,6 +260,7 @@ async function main() {
           create: order.items.map((item, index) => ({
             id: `${order.id}-i${index + 1}`,
             productId: item.productId,
+            variantId: item.productId ? `pv-${item.productId}` : null,
             name: item.name,
             qty: item.qty,
             price: item.price,
