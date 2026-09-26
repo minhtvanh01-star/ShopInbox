@@ -6,8 +6,11 @@ export function isUniqueConstraintError(error: unknown) {
 
 /** Nhận diện lỗi Prisma khi DB chưa migrate cột mới (P2022 / column does not exist). */
 export function isMissingDbColumnError(error: unknown, columnHint?: string) {
+  const code =
+    typeof error === "object" && error && "code" in error ? String((error as { code: unknown }).code) : "";
   const message = error instanceof Error ? error.message : String(error);
   if (
+    code !== "P2022" &&
     !/P2022|does not exist|Unknown column|column .* does not exist|Unknown (?:arg|field|argument)/i.test(
       message,
     )

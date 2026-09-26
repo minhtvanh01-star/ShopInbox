@@ -5,6 +5,7 @@ import { isMissingDbColumnError } from "@/backend/prisma-errors";
 import { getPermissionCodes, hasPermission, requirePermission } from "@/backend/rbac";
 import { resolveReplyClaim } from "@/backend/reply-claim";
 import { getShopPolicy } from "@/backend/shop-policy";
+import { DEFAULT_SHOP_POLICY } from "@/lib/shop-policy";
 import { roleLabel, parseVnDayEnd, parseVnDayStart } from "@/lib/labels";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 import { replyClaimTtlMs } from "@/lib/shop-policy";
@@ -182,25 +183,44 @@ async function loadStaffForShopContext(staffId: string) {
 
 export async function getShopContext(): Promise<ShopContext> {
   const session = await requireSession();
-  const [staff, policy] = await Promise.all([
-    loadStaffForShopContext(session.staffId),
-    getShopPolicy(session.shopId),
-  ]);
+  try {
+    const [staff, policy] = await Promise.all([
+      loadStaffForShopContext(session.staffId),
+      getShopPolicy(session.shopId),
+    ]);
 
-  return {
-    shopId: staff.shopId,
-    shopName: staff.shop.name,
-    staffId: staff.id,
-    staffName: staff.name,
-    staffEmail: staff.email,
-    staffAvatarUrl: staff.avatarUrl ?? null,
-    role: staff.roleCode,
-    roleLabel: session.isSuperAdmin ? "Super admin" : staff.role?.name ?? roleLabel(staff.roleCode),
-    permissions: await getPermissionCodes(session),
-    replyClaimTtlMinutes: policy.replyClaimTtlMinutes,
-    maxUsersPerShop: policy.maxUsersPerShop,
-    isSuperAdmin: Boolean(session.isSuperAdmin),
-  };
+    return {
+      shopId: staff.shopId,
+      shopName: staff.shop.name,
+      staffId: staff.id,
+      staffName: staff.name,
+      staffEmail: staff.email,
+      staffAvatarUrl: staff.avatarUrl ?? null,
+      role: staff.roleCode,
+      roleLabel: session.isSuperAdmin ? "Super admin" : staff.role?.name ?? roleLabel(staff.roleCode),
+      permissions: await getPermissionCodes(session),
+      replyClaimTtlMinutes: policy.replyClaimTtlMinutes,
+      maxUsersPerShop: policy.maxUsersPerShop,
+      isSuperAdmin: Boolean(session.isSuperAdmin),
+    };
+  } catch (error) {
+    console.error("[getShopContext] falling back to session so Super admin can still load", error);
+    const permissions = await getPermissionCodes(session).catch(() => [] as string[]);
+    return {
+      shopId: session.shopId,
+      shopName: session.name,
+      staffId: session.staffId,
+      staffName: session.name,
+      staffEmail: session.email,
+      staffAvatarUrl: null,
+      role: session.role,
+      roleLabel: session.isSuperAdmin ? "Super admin" : roleLabel(session.role),
+      permissions,
+      replyClaimTtlMinutes: DEFAULT_SHOP_POLICY.replyClaimTtlMinutes,
+      maxUsersPerShop: DEFAULT_SHOP_POLICY.maxUsersPerShop,
+      isSuperAdmin: Boolean(session.isSuperAdmin),
+    };
+  }
 }
 
 export async function getInboxData() {

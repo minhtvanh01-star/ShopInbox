@@ -25,6 +25,7 @@ export type GoogleAuthResolveResult =
   | {
       action: "login";
       staffId: string;
+      linkGoogleId?: string;
       updateProfile?: { name?: string; avatarUrl?: string };
     }
   | {
@@ -77,11 +78,23 @@ export function resolveGoogleAuthUser(input: GoogleAuthResolveInput): GoogleAuth
       };
     }
 
+    if (intent === "register") {
+      return {
+        action: "error",
+        code: "google_account_exists",
+        message:
+          "Email này đã đăng ký bằng mật khẩu. Đăng nhập bằng mật khẩu, hoặc bấm Tiếp tục với Google ở trang đăng nhập.",
+      };
+    }
+
     return {
-      action: "error",
-      code: "google_account_exists",
-      message:
-        "Email này đã đăng ký bằng mật khẩu. Đăng nhập bằng mật khẩu, rồi liên kết Google trong Hồ sơ.",
+      action: "login",
+      staffId: existingByEmail.id,
+      linkGoogleId: existingByEmail.googleId ? undefined : googleUser.sub,
+      updateProfile: {
+        name: googleUser.name,
+        avatarUrl: googleUser.picture,
+      },
     };
   }
 
