@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   getMetaOAuthConfig,
   getMetaOAuthRedirectUri,
+  getPublicAppUrl,
   getZaloOAuthConfig,
   listMissingMetaOAuthEnvVars,
   listMissingZaloOAuthEnvVars,
+  normalizeAppOrigin,
   resolveOAuthRedirectUri,
 } from "@/backend/oauth-config";
 
@@ -130,5 +132,15 @@ describe("resolveOAuthRedirectUri", () => {
         "/api/auth/google/callback",
       ),
     ).toBe("https://custom.example/api/auth/google/callback");
+  });
+
+  it("normalizes a bare production host into an https origin", () => {
+    expect(normalizeAppOrigin("shopinboxn2.linhgunxy.xyz")).toBe(
+      "https://shopinboxn2.linhgunxy.xyz",
+    );
+    stashEnv(["NEXT_PUBLIC_APP_URL", "APP_URL"]);
+    process.env.NEXT_PUBLIC_APP_URL = "shopinbox.n2.tingon.xyz";
+    delete process.env.APP_URL;
+    expect(getPublicAppUrl()).toBe("https://shopinbox.n2.tingon.xyz");
   });
 });
