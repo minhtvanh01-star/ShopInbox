@@ -268,6 +268,7 @@ export async function clearOAuthPagesCookie() {
 export type UpdateShopPolicyState = {
   error?: string;
   success?: string;
+  shopName?: string;
   replyClaimTtlMinutes?: number;
   maxUsersPerShop?: number;
 };
@@ -278,6 +279,11 @@ export async function updateShopPolicyAction(
 ): Promise<UpdateShopPolicyState> {
   const session = await requirePermission(PERMISSION_CODES.settingsUpdate);
   const { parseShopPolicyInput } = await import("@/lib/shop-policy");
+  const { validateShopName } = await import("@/lib/shop-name");
+  const shopName = validateShopName(formData.get("shopName"));
+  if (!shopName.ok) {
+    return { error: shopName.error };
+  }
   const parsed = parseShopPolicyInput({
     replyClaimTtlMinutes: formData.get("replyClaimTtlMinutes"),
     maxUsersPerShop: formData.get("maxUsersPerShop"),
@@ -290,6 +296,7 @@ export async function updateShopPolicyAction(
     await prisma.shop.update({
       where: { id: session.shopId },
       data: {
+        name: shopName.name,
         replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
         maxUsersPerShop: parsed.policy.maxUsersPerShop,
       },
@@ -313,6 +320,7 @@ export async function updateShopPolicyAction(
     entityId: session.shopId,
     metadata: {
       actorName: session.name,
+      shopName: shopName.name,
       replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
       maxUsersPerShop: parsed.policy.maxUsersPerShop,
     },
@@ -323,7 +331,8 @@ export async function updateShopPolicyAction(
   revalidatePath("/staff");
 
   return {
-    success: "Đã lưu cấu hình vận hành.",
+    success: "Đã lưu cấu hình cửa hàng.",
+    shopName: shopName.name,
     replyClaimTtlMinutes: parsed.policy.replyClaimTtlMinutes,
     maxUsersPerShop: parsed.policy.maxUsersPerShop,
   };

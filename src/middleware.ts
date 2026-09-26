@@ -19,8 +19,9 @@ import {
   isCloudflareProxiedRequest,
   shouldRequireCloudflare,
 } from "@/lib/cloudflare";
+import { isShopSetupExemptPath, isShopSetupPending, postAuthPath } from "@/lib/shop-setup";
 
-const PUBLIC_PATHS = ["/login", "/register", "/forgot-password"];
+const PUBLIC_PATHS = ["/login", "/register", "/forgot-password", "/invite"];
 const PUBLIC_PREFIXES = [
   "/api/webhooks/",
   "/api/auth/google/",
@@ -126,8 +127,20 @@ export async function middleware(request: NextRequest) {
     (pathname === "/login" ||
       pathname === "/register" ||
       pathname === "/forgot-password" ||
-      pathname === "/")
+      pathname === "/" ||
+      pathname.startsWith("/invite"))
   ) {
+    return withSecurityHeaders(
+      NextResponse.redirect(absoluteAppUrl(request, postAuthPath(session))),
+      https,
+    );
+  }
+
+  if (session && isShopSetupPending(session) && !isShopSetupExemptPath(pathname, session)) {
+    return withSecurityHeaders(NextResponse.redirect(absoluteAppUrl(request, "/setup")), https);
+  }
+
+  if (session && !isShopSetupPending(session) && isShopSetupExemptPath(pathname)) {
     return withSecurityHeaders(NextResponse.redirect(absoluteAppUrl(request, "/inbox")), https);
   }
 
@@ -141,6 +154,8 @@ export async function middleware(request: NextRequest) {
       role: session.role,
       lastActiveAt: Date.now(),
       sessionVersion: session.sessionVersion,
+      shopSetupComplete: session.shopSetupComplete,
+      isSuperAdmin: session.isSuperAdmin,
     });
     response.cookies.set(SESSION_COOKIE, refreshed, sessionCookieOptions());
     return withSecurityHeaders(response, https);

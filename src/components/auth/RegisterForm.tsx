@@ -16,7 +16,6 @@ const initialState: RegisterActionState = { step: "form" };
 const RESEND_COOLDOWN_SEC = 60;
 
 type RegisterFormProps = {
-  shopName: string;
   nextPath: string;
   googleOAuthConfigured: boolean;
   /** SMTP/Gmail đã cấu hình. */
@@ -27,7 +26,6 @@ type RegisterFormProps = {
 };
 
 export function RegisterForm({
-  shopName,
   nextPath,
   googleOAuthConfigured,
   emailConfigured,
@@ -355,7 +353,7 @@ export function RegisterForm({
           aria-busy={registerPending}
           className="btn-primary w-full"
         >
-          {registerPending ? "Đang gửi mã…" : `Gửi mã xác thực · ${shopName}`}
+            {registerPending ? "Đang gửi mã…" : "Gửi mã xác thực"}
         </button>
       </form>
 

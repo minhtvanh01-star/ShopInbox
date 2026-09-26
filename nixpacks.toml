@@ -1,0 +1,9 @@
+# Archive mặc định Nixpacks (ffeebf0) chỉ có nodejs_22 = 22.11 (Prisma 7 từ chối)
+# và không có nodejs_24. Pin commit có Node 22.13.1.
+# Không đặt NIXPACKS_NODE_VERSION=24 — VibeHost sẽ tìm nodejs_24 và gãy.
+
+[phases.setup]
+nixpkgsArchive = "51ad838b03a05b1de6f9f2a0fffecee64a9788ee"
+
+[variables]
+NIXPACKS_NODE_VERSION = "22"

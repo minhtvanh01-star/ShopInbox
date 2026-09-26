@@ -43,7 +43,9 @@ async function hydrateLiveSession(payload: SessionPayload): Promise<SessionPaylo
       name: true,
       roleCode: true,
       isActive: true,
+      isSuperAdmin: true,
       sessionVersion: true,
+      shop: { select: { setupCompletedAt: true, suspendedAt: true } },
     },
   });
 
@@ -51,8 +53,17 @@ async function hydrateLiveSession(payload: SessionPayload): Promise<SessionPaylo
     return null;
   }
 
+  const isSuperAdmin = staff.isSuperAdmin;
+  if (staff.shop.suspendedAt && !isSuperAdmin) {
+    return null;
+  }
+
   return {
-    ...toSessionPayload(staff),
+    ...toSessionPayload({
+      ...staff,
+      shopSetupComplete: Boolean(staff.shop.setupCompletedAt),
+      isSuperAdmin,
+    }),
     lastActiveAt: payload.lastActiveAt,
   };
 }

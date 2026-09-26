@@ -10,6 +10,7 @@ describe("db backup plan", () => {
   it("restores parent tables before children", () => {
     const order = [...BACKUP_TABLES];
     expect(order.indexOf("shops")).toBeLessThan(order.indexOf("staff"));
+    expect(order.indexOf("staff")).toBeLessThan(order.indexOf("shopInvites"));
     expect(order.indexOf("staff")).toBeLessThan(order.indexOf("conversations"));
     expect(order.indexOf("customers")).toBeLessThan(order.indexOf("orders"));
     expect(order.indexOf("orders")).toBeLessThan(order.indexOf("orderItems"));

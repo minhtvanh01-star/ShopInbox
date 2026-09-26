@@ -2,10 +2,14 @@
   "name": "shopinbox",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "start:prod": "prisma migrate deploy && next start",
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -14,6 +18,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "prisma db seed",
     "db:seed-staff": "tsx prisma/seed.ts --staff",
+    "db:lock-accounts": "tsx prisma/seed.ts --lock",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset --force",
     "db:backup": "tsx prisma/backup.ts",

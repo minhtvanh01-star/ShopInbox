@@ -40,6 +40,29 @@ enum MessageSender {
   shop
 }
 
+enum ShopPlan {
+  trial
+  starter
+  pro
+  business
+}
+
+enum ShopSupportStatus {
+  ok
+  watching
+  needs_help
+  in_progress
+}
+
+enum ShopSupportTopic {
+  none
+  onboarding
+  channel
+  billing
+  bug
+  other
+}
+
 model Shop {
   id                    String             @id
   name                  String
@@ -48,7 +71,17 @@ model Shop {
   replyClaimTtlMinutes  Int                @default(15)
   /** Số thành viên active tối đa trên shop. */
   maxUsersPerShop       Int                @default(3)
+  /** Null = chủ shop chưa xong màn cấu hình — chặn Inbox/kênh/nhân viên. */
+  setupCompletedAt      DateTime?
+  /** Super admin tạm khóa shop — nhân viên shop không đăng nhập được. */
+  suspendedAt           DateTime?
+  planCode              ShopPlan           @default(trial)
+  planExpiresAt         DateTime?
+  supportStatus         ShopSupportStatus  @default(ok)
+  supportTopic          ShopSupportTopic   @default(none)
+  supportNote           String             @default("")
   staff                 Staff[]
+  invites               ShopInvite[]
   channelAccounts       ChannelAccount[]
   customers             Customer[]
   conversations         Conversation[]
@@ -113,6 +146,8 @@ model Staff {
   roleCode      String
   role          Role           @relation(fields: [roleCode], references: [code], onDelete: Restrict)
   isActive      Boolean        @default(true)
+  /** Quyền nền tảng: xem/khóa mọi shop. Không gắn với role trong shop. */
+  isSuperAdmin  Boolean        @default(false)
   sessionVersion Int           @default(0)
   createdAt     DateTime       @default(now())
   assignedChats Conversation[]
@@ -120,11 +155,31 @@ model Staff {
   messageReactions MessageReaction[]
   auditLogs     AuditLog[]
   checklistMarks OrderChecklistCheck[]
+  createdInvites ShopInvite[]
 
   @@index([shopId])
   @@index([roleCode])
   @@index([shopId, isActive])
   @@map("staff")
+}
+
+/** Link mời nhân viên vào đúng shop (token lưu hash). */
+model ShopInvite {
+  id               String    @id
+  shopId           String
+  shop             Shop      @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  tokenHash        String    @unique
+  email            String?
+  roleCode         String
+  expiresAt        DateTime
+  usedAt           DateTime?
+  revokedAt        DateTime?
+  createdByStaffId String
+  createdBy        Staff     @relation(fields: [createdByStaffId], references: [id], onDelete: Restrict)
+  createdAt        DateTime  @default(now())
+
+  @@index([shopId])
+  @@map("shop_invites")
 }
 
 /** Đếm lần đăng nhập sai theo email — cửa sổ trượt, tự hết sau LOGIN_FAIL_WINDOW_MS. */

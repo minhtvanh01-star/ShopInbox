@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   planOpenRegistration,
   validateRegisterInput,
-  REGISTER_DEFAULT_SHOP_ID,
   REGISTER_MIN_PASSWORD_LENGTH,
 } from "@/backend/register";
 
@@ -74,8 +73,6 @@ describe("validateRegisterInput", () => {
 describe("planOpenRegistration", () => {
   it("rejects duplicate email", () => {
     const result = planOpenRegistration({
-      staffCount: 0,
-      shopExists: false,
       emailTaken: true,
     });
     expect(result).toEqual({
@@ -84,33 +81,11 @@ describe("planOpenRegistration", () => {
     });
   });
 
-  it("makes first user admin and creates default shop", () => {
-    const result = planOpenRegistration({
-      staffCount: 0,
-      shopExists: false,
-      emailTaken: false,
-    });
-    expect(result).toEqual({
+  it("makes every open registration a shop owner", () => {
+    expect(planOpenRegistration({ emailTaken: false })).toEqual({
       ok: true,
       role: "admin",
-      shopId: REGISTER_DEFAULT_SHOP_ID,
       isActive: true,
-      createShop: { id: REGISTER_DEFAULT_SHOP_ID, name: "ShopInbox" },
-    });
-  });
-
-  it("assigns inactive staff for later users pending admin approval", () => {
-    const result = planOpenRegistration({
-      staffCount: 2,
-      shopExists: true,
-      emailTaken: false,
-    });
-    expect(result).toEqual({
-      ok: true,
-      role: "staff",
-      shopId: REGISTER_DEFAULT_SHOP_ID,
-      isActive: false,
-      createShop: undefined,
     });
   });
 });

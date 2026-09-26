@@ -25,14 +25,25 @@ export async function loadStaffSession(staffId: string): Promise<SessionPayload>
       name: true,
       roleCode: true,
       isActive: true,
+      isSuperAdmin: true,
       sessionVersion: true,
+      shop: { select: { setupCompletedAt: true, suspendedAt: true } },
     },
   });
   if (!staff.isActive) {
     throw new Error("Tài khoản đã bị vô hiệu hóa.");
   }
+  const { resolveIsSuperAdmin } = await import("@/backend/super-admin");
+  const isSuperAdmin = await resolveIsSuperAdmin(staff);
+  if (staff.shop.suspendedAt && !isSuperAdmin) {
+    throw new Error("Shop đã bị tạm khóa.");
+  }
   return {
-    ...toSessionPayload(staff),
+    ...toSessionPayload({
+      ...staff,
+      shopSetupComplete: Boolean(staff.shop.setupCompletedAt),
+      isSuperAdmin,
+    }),
     lastActiveAt: Date.now(),
   };
 }

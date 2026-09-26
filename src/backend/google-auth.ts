@@ -1,8 +1,5 @@
 import type { GoogleUserInfo } from "@/backend/google-oauth";
-import { isActiveForOpenRegistration, roleCodeForNewStaff } from "@/lib/rbac-catalog";
-
-/** Shop mặc định — khớp DEMO_SHOP_ID trong lib/queries.ts */
-const DEFAULT_SHOP_ID = "shop1";
+import { BOOTSTRAP_ROLE_CODE } from "@/lib/rbac-catalog";
 
 type StaffRecord = {
   id: string;
@@ -18,8 +15,8 @@ export type GoogleAuthResolveInput = {
   googleUser: GoogleUserInfo;
   existingByGoogleId: StaffRecord | null;
   existingByEmail: StaffRecord | null;
-  staffCount: number;
-  shopExists: boolean;
+  staffCount?: number;
+  shopExists?: boolean;
   intent: GoogleAuthIntent;
 };
 
@@ -36,15 +33,12 @@ export type GoogleAuthResolveResult =
       googleId: string;
       avatarUrl?: string;
       role: string;
-      shopId: string;
-      /** false = chờ admin phê duyệt / phân quyền trước khi đăng nhập. */
       isActive: boolean;
-      createShop?: { id: string; name: string };
     }
   | { action: "error"; code: string; message: string };
 
 export function resolveGoogleAuthUser(input: GoogleAuthResolveInput): GoogleAuthResolveResult {
-  const { googleUser, existingByGoogleId, existingByEmail, staffCount, shopExists, intent } = input;
+  const { googleUser, existingByGoogleId, existingByEmail, intent } = input;
 
   if (!googleUser.emailVerified) {
     return {
@@ -98,23 +92,14 @@ export function resolveGoogleAuthUser(input: GoogleAuthResolveInput): GoogleAuth
     };
   }
 
-  const role = roleCodeForNewStaff(staffCount);
-
   return {
     action: "create",
     email: googleUser.email,
     name: googleUser.name,
     googleId: googleUser.sub,
     avatarUrl: googleUser.picture,
-    role,
-    shopId: DEFAULT_SHOP_ID,
-    isActive: isActiveForOpenRegistration(staffCount),
-    createShop: shopExists
-      ? undefined
-      : {
-          id: DEFAULT_SHOP_ID,
-          name: "ShopInbox",
-        },
+    role: BOOTSTRAP_ROLE_CODE,
+    isActive: true,
   };
 }
 

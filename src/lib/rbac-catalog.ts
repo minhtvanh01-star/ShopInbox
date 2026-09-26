@@ -278,10 +278,19 @@ export const AUDIT_ACTIONS = {
   authLogout: "auth.logout",
   authSessionTimeout: "auth.session_timeout",
   settingsUpdate: "settings.update",
+  shopSetup: "shop.setup",
+  staffInviteCreate: "staff.invite_create",
+  staffInviteAccept: "staff.invite_accept",
+  staffInviteRevoke: "staff.invite_revoke",
   productCreate: "product.create",
   productUpdate: "product.update",
   productDelete: "product.delete",
   orderChecklistToggle: "order.checklist_toggle",
+  shopSuspend: "shop.suspend",
+  shopResume: "shop.resume",
+  superAdminGrant: "staff.super_admin_grant",
+  superAdminRevoke: "staff.super_admin_revoke",
+  shopOpsUpdate: "shop.ops_update",
 } as const;
 
 export type AuditActionCode = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
@@ -311,10 +320,19 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   [AUDIT_ACTIONS.authLogout]: "Đăng xuất",
   [AUDIT_ACTIONS.authSessionTimeout]: "Hết phiên (không hoạt động)",
   [AUDIT_ACTIONS.settingsUpdate]: "Cập nhật cấu hình vận hành",
+  [AUDIT_ACTIONS.shopSetup]: "Hoàn tất cấu hình shop",
+  [AUDIT_ACTIONS.staffInviteCreate]: "Tạo lời mời nhân viên",
+  [AUDIT_ACTIONS.staffInviteAccept]: "Nhận lời mời vào shop",
+  [AUDIT_ACTIONS.staffInviteRevoke]: "Thu hồi lời mời nhân viên",
   [AUDIT_ACTIONS.productCreate]: "Thêm sản phẩm",
   [AUDIT_ACTIONS.productUpdate]: "Cập nhật sản phẩm",
   [AUDIT_ACTIONS.productDelete]: "Xóa sản phẩm",
   [AUDIT_ACTIONS.orderChecklistToggle]: "Tick checklist đơn",
+  [AUDIT_ACTIONS.shopSuspend]: "Tạm khóa shop",
+  [AUDIT_ACTIONS.shopResume]: "Mở lại shop",
+  [AUDIT_ACTIONS.superAdminGrant]: "Gán Super admin",
+  [AUDIT_ACTIONS.superAdminRevoke]: "Gỡ Super admin",
+  [AUDIT_ACTIONS.shopOpsUpdate]: "Cập nhật gói / hỗ trợ shop",
 };
 
 export const AUDIT_ENTITY_LABEL: Record<string, string> = {
@@ -327,6 +345,7 @@ export const AUDIT_ENTITY_LABEL: Record<string, string> = {
   ChannelAccount: "Kênh",
   Profile: "Hồ sơ",
   Session: "Phiên đăng nhập",
+  ShopInvite: "Lời mời nhân viên",
   Product: "Sản phẩm",
   OrderChecklistTemplate: "Checklist đơn",
   OrderChecklistCheck: "Tick checklist",

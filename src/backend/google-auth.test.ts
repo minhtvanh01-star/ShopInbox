@@ -116,25 +116,7 @@ describe("resolveGoogleAuthUser", () => {
     }
   });
 
-  it("creates owner when registering and no staff exists", () => {
-    const result = resolveGoogleAuthUser({
-      googleUser,
-      existingByGoogleId: null,
-      existingByEmail: null,
-      staffCount: 0,
-      shopExists: false,
-      intent: "register",
-    });
-
-    expect(result.action).toBe("create");
-    if (result.action === "create") {
-      expect(result.role).toBe("admin");
-      expect(result.isActive).toBe(true);
-      expect(result.createShop).toEqual({ id: "shop1", name: "ShopInbox" });
-    }
-  });
-
-  it("creates inactive staff when registering into an existing shop", () => {
+  it("creates a shop owner when registering a new Google user", () => {
     const result = resolveGoogleAuthUser({
       googleUser,
       existingByGoogleId: null,
@@ -146,9 +128,8 @@ describe("resolveGoogleAuthUser", () => {
 
     expect(result.action).toBe("create");
     if (result.action === "create") {
-      expect(result.role).toBe("staff");
-      expect(result.isActive).toBe(false);
-      expect(result.createShop).toBeUndefined();
+      expect(result.role).toBe("admin");
+      expect(result.isActive).toBe(true);
     }
   });
 

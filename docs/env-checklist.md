@@ -87,6 +87,16 @@ Chi tiết: [dang-nhap-google.md](./dang-nhap-google.md).
 | Đăng nhập Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 | Backup production | Tự chạy khi `NODE_ENV=production`. Volume: `BACKUP_DIR`. Cron: `CRON_SECRET` |
 | Cloudflare | DNS cam + SSL Full (strict) + Bot Fight Mode. `CLOUDFLARE_ONLY=1` khi đã proxy |
+| Super admin | `SUPER_ADMIN_EMAIL` = email login của bạn. Chỉ bootstrap khi chưa có Super admin. Vào `/admin/shops` |
+
+## VPS / VibeHost
+
+1. **Tạo cơ sở dữ liệu** trên panel → copy `DATABASE_URL` (Postgres).
+2. **Gắn tên miền** (ảnh đang *Chưa gắn*).
+3. **Biến môi trường** — dán khối production, **không** chạy `db:seed`.
+4. Build: `npm ci && npm run build`. Start: `npm run start:prod` (`migrate deploy` rồi `next start`).
+5. Node **≥ 22.12**. RAM 1GB rất chật cho Next + Prisma — theo dõi OOM khi build.
+6. Push nhánh `main` đủ code mới; host đang trỏ `github.com/minhtvanh01-star/Shopinbox`.
 
 ## Cloudflare + backup (production)
 

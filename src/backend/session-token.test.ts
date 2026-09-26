@@ -73,6 +73,22 @@ describe("session-token", () => {
     expect(await verifySessionToken(token, started + SESSION_IDLE_MS + 1)).toBeNull();
   });
 
+  it("round-trips shopSetupComplete when present", async () => {
+    const now = Date.parse("2026-08-15T10:00:00.000Z");
+    const token = await createSessionToken({
+      staffId: "staff1",
+      shopId: "shop1",
+      email: "admin@lily.vn",
+      name: "Minh",
+      role: "admin",
+      lastActiveAt: now,
+      sessionVersion: 0,
+      shopSetupComplete: false,
+    });
+
+    expect(await verifySessionToken(token, now)).toMatchObject({ shopSetupComplete: false });
+  });
+
   it("computes idle and refresh windows", () => {
     const now = 1_000_000;
     expect(isSessionIdleExpired(now - SESSION_IDLE_MS - 1, now)).toBe(true);

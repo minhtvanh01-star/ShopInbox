@@ -5,7 +5,7 @@ function isHosted(env: Record<string, string | undefined>) {
   return env.NODE_ENV === "production" || Boolean(env.RAILWAY_ENVIRONMENT);
 }
 
-/** Local `db:seed` ghi đè. Trên Railway/production chỉ seed khi DB trống. */
+/** Local `db:seed` ghi đè. Production / host chỉ seed khi DB trống. */
 export function resolveSeedMode(
   env: Record<string, string | undefined>,
   shopCount: number,
@@ -21,7 +21,7 @@ export function resolveSeedMode(
   return "replace";
 }
 
-/** Railway mặc định chỉ shop + 2 nhân viên. Local seed đủ demo inbox. */
+/** Production mặc định chỉ shop + 2 nhân viên. Local seed đủ demo inbox. */
 export function resolveSeedScope(
   env: Record<string, string | undefined>,
   argv: string[] = [],

@@ -1,7 +1,9 @@
+import { StaffInvitePanel } from "@/components/staff/StaffInvitePanel";
 import { StaffManager } from "@/components/staff/StaffManager";
 import { hasPermission, requirePermission } from "@/backend/rbac";
 import { getShopPolicy } from "@/backend/shop-policy";
-import { formatTime } from "@/lib/labels";
+import { listOpenShopInvites } from "@/backend/shop-invite";
+import { formatDateTime, formatTime } from "@/lib/labels";
 import { prisma } from "@/backend/prisma";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 
@@ -9,7 +11,7 @@ export default async function StaffPage() {
   const session = await requirePermission(PERMISSION_CODES.staffRead);
   const canManage = await hasPermission(session, PERMISSION_CODES.staffManage);
 
-  const [members, roles, policy] = await Promise.all([
+  const [members, roles, policy, invites] = await Promise.all([
     prisma.staff.findMany({
       where: { shopId: session.shopId },
       include: { role: true },
@@ -20,6 +22,7 @@ export default async function StaffPage() {
       orderBy: { sortOrder: "asc" },
     }),
     getShopPolicy(session.shopId),
+    canManage ? listOpenShopInvites(session.shopId) : Promise.resolve([]),
   ]);
 
   return (
@@ -27,10 +30,23 @@ export default async function StaffPage() {
       <header className="page-header bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
         <h1 className="page-title">Nhân viên</h1>
         <p className="page-subtitle">
-          Phê duyệt tài khoản đăng ký mới / Google, gán vai trò và bật/tắt đăng nhập. Mật khẩu lưu
-          dạng hash.
+          Mời nhân viên vào đúng shop này, hoặc tạo tài khoản trực tiếp. Gán vai trò và bật/tắt
+          đăng nhập.
         </p>
       </header>
+      {canManage ? (
+        <div className="px-6 pt-6">
+          <StaffInvitePanel
+            roles={roles.map((role) => ({ code: role.code, name: role.name }))}
+            invites={invites.map((invite) => ({
+              id: invite.id,
+              email: invite.email,
+              roleCode: invite.roleCode,
+              expiresAt: formatDateTime(invite.expiresAt.toISOString()),
+            }))}
+          />
+        </div>
+      ) : null}
       <StaffManager
         canManage={canManage}
         maxUsersPerShop={policy.maxUsersPerShop}

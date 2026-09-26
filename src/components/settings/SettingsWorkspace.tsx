@@ -26,6 +26,7 @@ type SettingsWorkspaceProps = {
   channels: ChannelAccountView[];
   canConnect: boolean;
   canUpdateSettings: boolean;
+  shopName: string;
   replyClaimTtlMinutes: number;
   maxUsersPerShop: number;
   quickReplies: QuickReply[];
@@ -121,6 +122,7 @@ export function SettingsWorkspace({
   channels,
   canConnect,
   canUpdateSettings,
+  shopName,
   replyClaimTtlMinutes,
   maxUsersPerShop,
   quickReplies,
@@ -359,6 +361,7 @@ export function SettingsWorkspace({
         {canUpdateSettings ? (
           <div className="mx-6 mt-6 space-y-6">
             <ShopPolicyForm
+              shopName={shopName}
               replyClaimTtlMinutes={replyClaimTtlMinutes}
               maxUsersPerShop={maxUsersPerShop}
             />

@@ -5,6 +5,7 @@ export const BACKUP_TABLES = [
   "permissions",
   "rolePermissions",
   "staff",
+  "shopInvites",
   "channelAccounts",
   "customers",
   "customerIdentities",

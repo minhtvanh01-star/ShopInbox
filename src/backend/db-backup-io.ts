@@ -37,6 +37,7 @@ function tableDelegates(prisma: PrismaClient): Record<BackupTable, TableDelegate
     permissions: asDelegate(prisma.permission),
     rolePermissions: asDelegate(prisma.rolePermission),
     staff: asDelegate(prisma.staff),
+    shopInvites: asDelegate(prisma.shopInvite),
     channelAccounts: asDelegate(prisma.channelAccount),
     customers: asDelegate(prisma.customer),
     customerIdentities: asDelegate(prisma.customerIdentity),

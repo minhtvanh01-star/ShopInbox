@@ -18,6 +18,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         staffName={shop.staffName}
         roleLabel={shop.roleLabel}
         permissions={shop.permissions}
+        isSuperAdmin={shop.isSuperAdmin}
         inboxNotices={inboxNotices}
       />
       <main id="main-content" className="flex min-h-0 min-w-0 flex-1 flex-col pt-14 md:pt-0">
