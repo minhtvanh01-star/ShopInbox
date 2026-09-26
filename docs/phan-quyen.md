@@ -6,7 +6,8 @@ ShopInbox không hardcode `if (role === "owner")` trong action/UI. Quyền lấy
 
 | Code | Tên | Ghi chú |
 |------|-----|---------|
-| `admin` | Admin / Chủ shop | Toàn quyền. Tài khoản demo `admin@lily.vn`. JWT cũ `owner` được map thành `admin`. |
+| Super admin | Cột `staff.isSuperAdmin` | Console nền tảng `/admin/shops`. Demo `super@shopinbox.vn`. Không phải chủ shop. |
+| `admin` | Admin / Chủ shop | Toàn quyền **trong shop**. Tài khoản demo `admin@lily.vn`. JWT cũ `owner` được map thành `admin`. |
 | `staff` | Nhân viên | Inbox, đơn, khách, hồ sơ. Demo `nhanvien@lily.vn`. |
 | `manager` | Quản lý | Giống nhân viên, **thêm** `audit.read` và `staff.read`. Đã seed, `isActive: true`, chưa gán user. |
 

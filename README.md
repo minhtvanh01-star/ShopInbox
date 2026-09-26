@@ -46,9 +46,12 @@ Mở [http://localhost:3000](http://localhost:3000) → trang đăng nhập.
 
 | Vai trò | Email | Mật khẩu |
 |---------|-------|----------|
+| Super admin (nền tảng) | `super@shopinbox.vn` | `Super@123` |
 | Admin (chủ shop) | `admin@lily.vn` | `Admin@123` |
 | Nhân viên | `nhanvien@lily.vn` | `Staff@123` |
 
+- `super@shopinbox.vn` vào **Quản lý nền tảng** (`/admin/shops`) — không vào Inbox shop. `admin@lily.vn` là chủ shop Lily.
+- Production: không seed. Gán Super admin cho email đã đăng nhập: `npx tsx prisma/grant-super-admin.ts ban@email.com` rồi đăng xuất / đăng nhập lại.
 - Mật khẩu lưu **bcrypt hash** trong bảng `staff` (không lưu plain text).
 - Admin vào menu **Nhân viên** để thêm tài khoản mới.
 - **Đăng ký mở** tại `/register` (link **Đăng ký** trên `/login`): user đầu tiên → `admin`; user sau → `staff` vào shop mặc định `shop1` (chưa hỗ trợ chọn shop). Chi tiết: [docs/dang-nhap-google.md](docs/dang-nhap-google.md) mục đăng ký.

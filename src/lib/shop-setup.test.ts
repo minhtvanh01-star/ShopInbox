@@ -30,4 +30,8 @@ describe("shop setup gate", () => {
       "/admin/shops/abc",
     );
   });
+
+  it("does not send super admin through shop onboarding", () => {
+    expect(isShopSetupPending({ shopSetupComplete: false, isSuperAdmin: true })).toBe(false);
+  });
 });

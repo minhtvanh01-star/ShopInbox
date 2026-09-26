@@ -4,6 +4,7 @@ import { hash } from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import {
   EXTRA_STAFF,
+  PLATFORM_SUPER_ADMIN,
   SHOP,
   channelAccounts,
   conversations,
@@ -77,6 +78,37 @@ async function syncRbacCatalog() {
   });
 }
 
+async function upsertPlatformSuperAdmin() {
+  const admin = PLATFORM_SUPER_ADMIN;
+  await prisma.shop.upsert({
+    where: { id: admin.shopId },
+    create: { id: admin.shopId, name: admin.shopName, setupCompletedAt: new Date() },
+    update: { name: admin.shopName, setupCompletedAt: new Date() },
+  });
+  const passwordHash = await hash(admin.password, 12);
+  await prisma.staff.upsert({
+    where: { email: admin.email },
+    create: {
+      id: admin.staffId,
+      shopId: admin.shopId,
+      name: admin.name,
+      email: admin.email,
+      passwordHash,
+      roleCode: "admin",
+      isActive: true,
+      isSuperAdmin: true,
+    },
+    update: {
+      name: admin.name,
+      shopId: admin.shopId,
+      passwordHash,
+      roleCode: "admin",
+      isActive: true,
+      isSuperAdmin: true,
+    },
+  });
+}
+
 async function lockDemoAccounts() {
   await prisma.shop.upsert({
     where: { id: SHOP.id },
@@ -128,7 +160,10 @@ async function lockDemoAccounts() {
     });
   }
 
+  await upsertPlatformSuperAdmin();
+
   console.log("Đã khóa tài khoản demo vào DB (không xóa dữ liệu khác):");
+  console.log(`  Super admin ${PLATFORM_SUPER_ADMIN.email} / ${PLATFORM_SUPER_ADMIN.password}`);
   console.log(`  Admin   ${SHOP.staffEmail} / ${SHOP.staffPassword}`);
   console.log(`  Nhân viên ${EXTRA_STAFF[0]?.email} / ${EXTRA_STAFF[0]?.password}`);
 }
@@ -213,6 +248,8 @@ async function main() {
       },
     });
   }
+
+  await upsertPlatformSuperAdmin();
 
   if (scope === "staff") {
     return;
