@@ -14,6 +14,9 @@ export default function RootError({
         Máy chủ gặp lỗi sau khi đăng nhập. Bấm tải lại. Nếu vẫn vậy, trên VPS chạy{" "}
         <span className="font-medium">npx prisma migrate deploy</span> rồi restart app.
       </p>
+      {error.message ? (
+        <p className="max-w-lg break-words text-xs text-slate-500">{error.message.slice(0, 280)}</p>
+      ) : null}
       {error.digest ? <p className="text-xs text-slate-400">Mã lỗi: {error.digest}</p> : null}
       <button type="button" onClick={reset} className="btn-primary min-w-36">
         Tải lại

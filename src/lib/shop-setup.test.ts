@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isShopSetupPending, postAuthPath } from "@/lib/shop-setup";
+import { isShopSetupExemptPath, isShopSetupPending, postAuthPath } from "@/lib/shop-setup";
 
 describe("shop setup gate", () => {
   it("treats missing flag as already configured (legacy sessions)", () => {
@@ -8,9 +8,15 @@ describe("shop setup gate", () => {
     expect(isShopSetupPending({ shopSetupComplete: false })).toBe(true);
   });
 
-  it("sends pending owners to /setup instead of next", () => {
-    expect(postAuthPath({ shopSetupComplete: false }, "/inbox")).toBe("/setup");
+  it("sends pending owners to personal-info first, then they continue to shop setup", () => {
+    expect(postAuthPath({ shopSetupComplete: false }, "/inbox")).toBe("/register/profile");
     expect(postAuthPath({ shopSetupComplete: true }, "/orders")).toBe("/orders");
+  });
+
+  it("keeps profile onboarding and shop setup reachable while setup is pending", () => {
+    expect(isShopSetupExemptPath("/register/profile")).toBe(true);
+    expect(isShopSetupExemptPath("/setup")).toBe(true);
+    expect(isShopSetupExemptPath("/inbox")).toBe(false);
   });
 
   it("sends super admin to the shop directory", () => {

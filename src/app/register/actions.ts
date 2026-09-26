@@ -17,7 +17,7 @@ import { planOpenRegistration, validateRegisterInput } from "@/backend/register"
 import { setSessionCookie } from "@/backend/session";
 import { toSessionPayload } from "@/backend/session-token";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
-import { SHOP_SETUP_PATH } from "@/lib/shop-setup";
+import { PROFILE_ONBOARD_PATH } from "@/lib/shop-setup";
 
 export type RegisterActionState = {
   error?: string;
@@ -111,7 +111,7 @@ export async function verifyRegisterOtpAction(
   });
 
   await setSessionCookie(await loadStaffSession(staff.id));
-  redirect(SHOP_SETUP_PATH);
+  redirect(PROFILE_ONBOARD_PATH);
 }
 
 export async function resendRegisterOtpAction(

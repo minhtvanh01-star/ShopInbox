@@ -26,7 +26,7 @@ import { absoluteAppUrl } from "@/backend/public-url";
 import { safeInternalPath } from "@/backend/safe-path";
 import { createOpenRegistrationStaff } from "@/backend/open-registration";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
-import { postAuthPath, SHOP_SETUP_PATH } from "@/lib/shop-setup";
+import { postAuthPath, PROFILE_ONBOARD_PATH } from "@/lib/shop-setup";
 
 function authPageUrl(
   request: Request,
@@ -387,7 +387,7 @@ export async function GET(request: Request) {
       metadata: { method: "google", shopCreated: true },
     });
 
-    return clearGoogleAuthCookies(NextResponse.redirect(absoluteAppUrl(request, SHOP_SETUP_PATH)));
+    return clearGoogleAuthCookies(NextResponse.redirect(absoluteAppUrl(request, PROFILE_ONBOARD_PATH)));
   } catch (err) {
     const message = err instanceof Error ? err.message : "google_failed";
     const codeName = classifyGoogleOAuthFailure(message);
