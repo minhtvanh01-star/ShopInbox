@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { isMissingDbColumnError, isUniqueConstraintError } from "./prisma-errors";
+import {
+  isMissingDbColumnError,
+  isPrismaSchemaDriftError,
+  isUniqueConstraintError,
+} from "./prisma-errors";
 
 describe("isUniqueConstraintError", () => {
   it("detects P2002", () => {
@@ -28,6 +32,19 @@ describe("isMissingDbColumnError", () => {
       ),
     ).toBe(true);
     expect(isMissingDbColumnError(new Error("P2022\nColumn not found"))).toBe(true);
+    expect(
+      isMissingDbColumnError(
+        new Error("Unknown field `planCode` for select statement on model `Shop`."),
+        "planCode",
+      ),
+    ).toBe(true);
     expect(isMissingDbColumnError(new Error("Unique constraint failed"), "avatarUrl")).toBe(false);
+  });
+});
+
+describe("isPrismaSchemaDriftError", () => {
+  it("detects missing enum types from shop-ops migrate", () => {
+    expect(isPrismaSchemaDriftError(new Error('type "ShopPlan" does not exist'))).toBe(true);
+    expect(isPrismaSchemaDriftError(new Error("Unique constraint failed"))).toBe(false);
   });
 });

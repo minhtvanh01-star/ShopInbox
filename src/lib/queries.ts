@@ -152,16 +152,38 @@ async function loadShopMessages(shopId: string, channels: Channel[]): Promise<Me
   }
 }
 
+async function loadStaffForShopContext(staffId: string) {
+  const select = {
+    id: true,
+    shopId: true,
+    name: true,
+    email: true,
+    roleCode: true,
+    shop: { select: { id: true, name: true } },
+    role: true,
+  } as const;
+
+  try {
+    return await prisma.staff.findUniqueOrThrow({
+      where: { id: staffId },
+      select: { ...select, avatarUrl: true },
+    });
+  } catch (error) {
+    if (!isMissingDbColumnError(error, "avatarUrl")) {
+      throw error;
+    }
+    const staff = await prisma.staff.findUniqueOrThrow({
+      where: { id: staffId },
+      select,
+    });
+    return { ...staff, avatarUrl: null as string | null };
+  }
+}
+
 export async function getShopContext(): Promise<ShopContext> {
   const session = await requireSession();
   const [staff, policy] = await Promise.all([
-    prisma.staff.findUniqueOrThrow({
-      where: { id: session.staffId },
-      include: {
-        shop: { select: { id: true, name: true } },
-        role: true,
-      },
-    }),
+    loadStaffForShopContext(session.staffId),
     getShopPolicy(session.shopId),
   ]);
 
