@@ -1,8 +1,14 @@
 export type SeedMode = "replace" | "insert" | "skip";
 export type SeedScope = "staff" | "full";
 
-function isHosted(env: Record<string, string | undefined>) {
-  return env.NODE_ENV === "production" || Boolean(env.RAILWAY_ENVIRONMENT);
+export function isHosted(env: Record<string, string | undefined>) {
+  return (
+    env.NODE_ENV === "production" ||
+    Boolean(env.RAILWAY_ENVIRONMENT) ||
+    Boolean(env.RAILWAY_ENVIRONMENT_ID) ||
+    Boolean(env.NIXPACKS_METADATA) ||
+    env.SEED_HOSTED === "1"
+  );
 }
 
 /** Local `db:seed` ghi đè. Production / host chỉ seed khi DB trống. */

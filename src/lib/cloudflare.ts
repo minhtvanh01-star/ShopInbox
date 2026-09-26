@@ -1,6 +1,6 @@
 /** Chặn origin bypass khi web đã cam Cloudflare (orange cloud). */
 
-const EXEMPT_PREFIXES = ["/api/health", "/api/cron/"];
+const EXEMPT_PREFIXES = ["/api/health", "/api/cron/", "/api/webhooks/"];
 
 export function shouldRequireCloudflare(env: {
   NODE_ENV?: string;

@@ -18,7 +18,10 @@ describe("shop setup gate", () => {
       "/admin/shops",
     );
     expect(postAuthPath({ shopSetupComplete: true, isSuperAdmin: true }, "/orders")).toBe(
-      "/orders",
+      "/admin/shops",
+    );
+    expect(postAuthPath({ shopSetupComplete: true, isSuperAdmin: true }, "/admin/shops/abc")).toBe(
+      "/admin/shops/abc",
     );
   });
 });

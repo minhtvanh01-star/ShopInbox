@@ -29,6 +29,7 @@ export type ShopContext = {
   staffId: string;
   staffName: string;
   staffEmail: string;
+  staffAvatarUrl: string | null;
   role: string;
   roleLabel: string;
   permissions: string[];
@@ -168,6 +169,7 @@ export async function getShopContext(): Promise<ShopContext> {
     staffId: staff.id,
     staffName: staff.name,
     staffEmail: staff.email,
+    staffAvatarUrl: staff.avatarUrl ?? null,
     role: staff.roleCode,
     roleLabel: session.isSuperAdmin ? "Super admin" : staff.role?.name ?? roleLabel(staff.roleCode),
     permissions: await getPermissionCodes(session),

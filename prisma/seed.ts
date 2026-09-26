@@ -13,7 +13,7 @@ import {
   products,
   quickReplies,
 } from "../src/lib/mock";
-import { resolveSeedMode, resolveSeedScope } from "../src/backend/db-seed-policy";
+import { isHosted, resolveSeedMode, resolveSeedScope } from "../src/backend/db-seed-policy";
 import {
   PERMISSIONS,
   ROLE_PERMISSIONS,
@@ -142,6 +142,11 @@ async function main() {
   await syncRbacCatalog();
 
   if (lockAccounts) {
+    if (isHosted(process.env) && process.env.SEED_FORCE !== "1") {
+      throw new Error(
+        "Từ chối --lock / SEED_LOCK trên môi trường hosted (sẽ ghi đè mật khẩu demo). Đặt SEED_FORCE=1 nếu cố ý.",
+      );
+    }
     await lockDemoAccounts();
     return;
   }

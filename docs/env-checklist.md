@@ -94,7 +94,7 @@ Chi tiết: [dang-nhap-google.md](./dang-nhap-google.md).
 1. **Tạo cơ sở dữ liệu** trên panel → copy `DATABASE_URL` (Postgres).
 2. **Gắn tên miền** (ảnh đang *Chưa gắn*).
 3. **Biến môi trường** — dán khối production, **không** chạy `db:seed`.
-4. Build: `npm ci && npm run build`. Start: `npm run start:prod` (`migrate deploy` rồi `next start`).
+4. Build: `npm ci && npm run build`. Start: `npm start` (đã gồm `prisma migrate deploy`).
 5. Node **≥ 22.12**. RAM 1GB rất chật cho Next + Prisma — theo dõi OOM khi build.
 6. Push nhánh `main` đủ code mới; host đang trỏ `github.com/minhtvanh01-star/Shopinbox`.
 
@@ -102,5 +102,5 @@ Chi tiết: [dang-nhap-google.md](./dang-nhap-google.md).
 
 1. Trỏ domain vào Cloudflare, bật **Proxied** (cam). SSL/TLS = **Full (strict)**.
 2. **Security → Bots → Bot Fight Mode** (chống bot cơ bản). Error monitoring bạn tự bật trên Cloudflare / host.
-3. Đặt `NEXT_PUBLIC_APP_URL=https://<domain-thật>` rồi `CLOUDFLARE_ONLY=1` trên host — request không có `cf-ray` bị 403 (trừ `/api/health` và `/api/cron/`).
+3. Đặt `NEXT_PUBLIC_APP_URL=https://<domain-thật>` rồi `CLOUDFLARE_ONLY=1` trên host — request không có `cf-ray` bị 403 (trừ `/api/health`, `/api/cron/`, `/api/webhooks/`).
 4. Backup: app ghi `./backups` (hoặc `BACKUP_DIR`) mỗi 24 giờ. Gắn volume nếu host xóa disk khi redeploy. Gọi thủ công: `npm run db:backup` hoặc `Authorization: Bearer $CRON_SECRET` tới `/api/cron/backup`.

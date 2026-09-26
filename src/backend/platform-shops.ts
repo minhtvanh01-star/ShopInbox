@@ -55,6 +55,7 @@ export async function getPlatformShopDetail(shopId: string) {
           id: true,
           name: true,
           email: true,
+          avatarUrl: true,
           roleCode: true,
           isActive: true,
           isSuperAdmin: true,
@@ -77,25 +78,35 @@ export async function setShopSuspended(shopId: string, suspended: boolean) {
     where: { id: shopId },
     data: { suspendedAt: suspended ? new Date() : null },
   });
+  if (suspended) {
+    await prisma.staff.updateMany({
+      where: { shopId },
+      data: { sessionVersion: { increment: 1 } },
+    });
+  }
   return { ok: true as const };
 }
 
 export async function setStaffSuperAdmin(staffId: string, next: boolean, actorStaffId: string) {
   const target = await prisma.staff.findUnique({
     where: { id: staffId },
-    select: { id: true, isSuperAdmin: true, email: true },
+    select: { id: true, isSuperAdmin: true, email: true, isActive: true },
   });
   if (!target) return { ok: false as const, error: "Không tìm thấy tài khoản." };
+
+  if (next && !target.isActive) {
+    return { ok: false as const, error: "Chỉ gán Super admin cho tài khoản đang hoạt động." };
+  }
 
   if (!next) {
     if (target.id === actorStaffId) {
       return { ok: false as const, error: "Không thể tự bỏ quyền Super admin." };
     }
     const others = await prisma.staff.count({
-      where: { isSuperAdmin: true, id: { not: target.id } },
+      where: { isSuperAdmin: true, isActive: true, id: { not: target.id } },
     });
     if (others === 0) {
-      return { ok: false as const, error: "Phải còn ít nhất một Super admin." };
+      return { ok: false as const, error: "Phải còn ít nhất một Super admin đang hoạt động." };
     }
   }
 

@@ -1,5 +1,6 @@
 import type { GoogleUserInfo } from "@/backend/google-oauth";
 import { BOOTSTRAP_ROLE_CODE } from "@/lib/rbac-catalog";
+import { isAllowedStaffAvatarUrl } from "@/lib/staff-avatar";
 
 type StaffRecord = {
   id: string;
@@ -131,8 +132,8 @@ export function validateProfileInput(raw: {
   if (phone && !/^[\d\s+\-().]{6,20}$/.test(phone)) {
     return { ok: false, error: "Số điện thoại không hợp lệ." };
   }
-  if (avatarUrl && !/^https?:\/\/.+/i.test(avatarUrl)) {
-    return { ok: false, error: "URL ảnh đại diện phải bắt đầu bằng http:// hoặc https://." };
+  if (avatarUrl && !isAllowedStaffAvatarUrl(avatarUrl)) {
+    return { ok: false, error: "Ảnh đại diện không hợp lệ." };
   }
 
   return {

@@ -116,7 +116,6 @@ export async function loginAction(
     select: { suspendedAt: true },
   });
   if (shop?.suspendedAt && !(await resolveIsSuperAdmin(staff))) {
-    await recordLoginFailure(email);
     await writeAudit({
       actor: {
         id: staff.id,

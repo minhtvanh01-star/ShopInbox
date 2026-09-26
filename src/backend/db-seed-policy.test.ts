@@ -9,6 +9,8 @@ describe("resolveSeedMode", () => {
   it("inserts demo data on empty Railway/production DB", () => {
     expect(resolveSeedMode({ NODE_ENV: "production" }, 0)).toBe("insert");
     expect(resolveSeedMode({ RAILWAY_ENVIRONMENT: "production" }, 0)).toBe("insert");
+    expect(resolveSeedMode({ NIXPACKS_METADATA: "1" }, 0)).toBe("insert");
+    expect(resolveSeedMode({ SEED_HOSTED: "1" }, 0)).toBe("insert");
   });
 
   it("skips demo data when hosted DB already has shops", () => {
