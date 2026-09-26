@@ -13,7 +13,7 @@ export async function GET(_request: Request, context: RouteContext) {
   }
 
   const { shopId, fileName } = await context.params;
-  if (shopId !== session.shopId) {
+  if (shopId !== session.shopId && !session.isSuperAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

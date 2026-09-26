@@ -53,7 +53,8 @@ async function hydrateLiveSession(payload: SessionPayload): Promise<SessionPaylo
     return null;
   }
 
-  const isSuperAdmin = staff.isSuperAdmin;
+  const { resolveIsSuperAdmin } = await import("@/backend/super-admin");
+  const isSuperAdmin = await resolveIsSuperAdmin(staff);
   if (staff.shop.suspendedAt && !isSuperAdmin) {
     return null;
   }

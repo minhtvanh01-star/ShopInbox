@@ -1,0 +1,10 @@
+# Railway UAT / production. Start đã gồm migrate (xem package.json "start").
+# Không seed ở pre-deploy — seed nhầm sẽ trồng tài khoản demo.
+
+[build]
+builder = "RAILPACK"
+
+[deploy]
+startCommand = "npm start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

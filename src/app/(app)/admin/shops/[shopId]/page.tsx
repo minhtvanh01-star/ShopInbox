@@ -19,7 +19,7 @@ export default async function AdminShopDetailPage({ params }: ShopDetailPageProp
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="page-header bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
         <h1 className="page-title">{shop.name}</h1>
-        <p className="page-subtitle">Chi tiết shop · Super admin</p>
+        <p className="page-subtitle">Người dùng, gói và hỗ trợ · không vào hội thoại</p>
       </header>
       <ShopDetailPanel
         shopId={shop.id}

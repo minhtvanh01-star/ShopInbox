@@ -19,6 +19,13 @@ import {
   REGISTER_NAME_MAX,
 } from "@/lib/auth-password";
 import { assertShopHasActiveSeat } from "@/backend/shop-seats";
+import {
+  LAST_SUPER_ADMIN_DISABLE_BLOCKED,
+  SUPER_ADMIN_SHOP_MUTATION_BLOCKED,
+  canShopStaffMutateMember,
+  isSuperAdminSession,
+  shouldBlockLastActiveSuperAdmin,
+} from "@/lib/super-admin";
 
 export type StaffActionState = {
   error?: string;
@@ -131,6 +138,30 @@ export async function updateStaffAction(
     return { error: "Không tìm thấy nhân viên." };
   }
 
+  if (
+    !canShopStaffMutateMember({
+      actorIsSuperAdmin: isSuperAdminSession(session),
+      targetIsSuperAdmin: target.isSuperAdmin,
+    })
+  ) {
+    return { error: SUPER_ADMIN_SHOP_MUTATION_BLOCKED };
+  }
+
+  if (target.isSuperAdmin && !isActive) {
+    const otherActiveSuperAdmins = await prisma.staff.count({
+      where: { isSuperAdmin: true, isActive: true, id: { not: target.id } },
+    });
+    if (
+      shouldBlockLastActiveSuperAdmin({
+        targetIsSuperAdmin: true,
+        nextIsActive: false,
+        otherActiveSuperAdminCount: otherActiveSuperAdmins,
+      })
+    ) {
+      return { error: LAST_SUPER_ADMIN_DISABLE_BLOCKED };
+    }
+  }
+
   const role = await prisma.role.findFirst({
     where: { code: roleRaw, isActive: true },
   });
@@ -236,6 +267,15 @@ export async function resetStaffPasswordAction(
   });
   if (!target) {
     return { error: "Không tìm thấy nhân viên." };
+  }
+
+  if (
+    !canShopStaffMutateMember({
+      actorIsSuperAdmin: isSuperAdminSession(session),
+      targetIsSuperAdmin: target.isSuperAdmin,
+    })
+  ) {
+    return { error: SUPER_ADMIN_SHOP_MUTATION_BLOCKED };
   }
 
   await prisma.staff.update({

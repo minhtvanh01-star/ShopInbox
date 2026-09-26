@@ -16,6 +16,7 @@ import {
 
 } from "@/app/(app)/staff/actions";
 
+import { StaffAvatar } from "@/components/staff/StaffAvatar";
 import { DEFAULT_ROLE_CODE, roleBadgeClass, roleLabel } from "@/lib/rbac-catalog";
 import { DEFAULT_MAX_USERS_PER_SHOP } from "@/lib/shop-policy";
 
@@ -37,6 +38,8 @@ type StaffMember = {
 
   email: string;
 
+  avatarUrl: string | null;
+
   role: string;
 
   roleName: string;
@@ -56,20 +59,6 @@ type RoleOption = {
   name: string;
 
 };
-
-
-
-function initials(name: string) {
-
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-
-  if (parts.length === 0) return "?";
-
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-
-  return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
-
-}
 
 
 
@@ -209,17 +198,7 @@ export function StaffManager({
 
               <div className="flex min-w-0 items-start gap-3">
 
-                <span
-
-                  className="brand-mark mt-0.5 h-10 w-10 text-xs"
-
-                  aria-hidden="true"
-
-                >
-
-                  {initials(member.name)}
-
-                </span>
+                <StaffAvatar name={member.name} avatarUrl={member.avatarUrl} />
 
                 <div className="min-w-0">
 

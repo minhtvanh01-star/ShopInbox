@@ -55,6 +55,7 @@ export default async function StaffPage() {
           id: member.id,
           name: member.name,
           email: member.email,
+          avatarUrl: member.avatarUrl,
           role: member.roleCode,
           roleName: member.role.name,
           isActive: member.isActive,

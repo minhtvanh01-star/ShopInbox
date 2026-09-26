@@ -157,6 +157,9 @@ describe("publicOtpSendError", () => {
     expect(publicOtpSendError(new Error("Vui lòng đợi 12s trước khi gửi lại mã."), "fallback")).toMatch(
       /Vui lòng đợi 12s/,
     );
+    expect(
+      publicOtpSendError(new Error("Nhập sai quá nhiều lần. Vui lòng đợi rồi thử lại."), "fallback"),
+    ).toMatch(/Nhập sai quá nhiều lần/);
     expect(publicOtpSendError(new Error("Invalid login: 535-5.7.8"), "Không gửi được mã.")).toBe(
       "Không gửi được mã.",
     );

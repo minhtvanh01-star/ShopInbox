@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  canShopStaffMutateMember,
   isPlatformAdminPath,
+  isSuperAdminAllowedPath,
   isSuperAdminEmail,
   parseSuperAdminEmails,
+  shouldBlockLastActiveSuperAdmin,
   shouldBootstrapSuperAdmin,
 } from "@/lib/super-admin";
 
@@ -19,6 +22,13 @@ describe("super admin emails", () => {
   it("recognizes the admin console path", () => {
     expect(isPlatformAdminPath("/admin/shops")).toBe(true);
     expect(isPlatformAdminPath("/staff")).toBe(false);
+  });
+
+  it("keeps super admin off inbox and channel pages", () => {
+    expect(isSuperAdminAllowedPath("/admin/shops")).toBe(true);
+    expect(isSuperAdminAllowedPath("/settings/profile")).toBe(true);
+    expect(isSuperAdminAllowedPath("/inbox")).toBe(false);
+    expect(isSuperAdminAllowedPath("/settings")).toBe(false);
   });
 
   it("bootstraps SUPER_ADMIN_EMAIL only when no super admin exists", () => {
@@ -47,6 +57,35 @@ describe("super admin emails", () => {
         email: "owner@shop.vn",
         existingSuperAdminCount: 1,
         allowlist: "owner@shop.vn",
+      }),
+    ).toBe(false);
+  });
+
+  it("blocks shop staff from mutating a Super admin", () => {
+    expect(
+      canShopStaffMutateMember({ actorIsSuperAdmin: false, targetIsSuperAdmin: true }),
+    ).toBe(false);
+    expect(
+      canShopStaffMutateMember({ actorIsSuperAdmin: true, targetIsSuperAdmin: true }),
+    ).toBe(true);
+    expect(
+      canShopStaffMutateMember({ actorIsSuperAdmin: false, targetIsSuperAdmin: false }),
+    ).toBe(true);
+  });
+
+  it("blocks disabling the last active Super admin", () => {
+    expect(
+      shouldBlockLastActiveSuperAdmin({
+        targetIsSuperAdmin: true,
+        nextIsActive: false,
+        otherActiveSuperAdminCount: 0,
+      }),
+    ).toBe(true);
+    expect(
+      shouldBlockLastActiveSuperAdmin({
+        targetIsSuperAdmin: true,
+        nextIsActive: false,
+        otherActiveSuperAdminCount: 1,
       }),
     ).toBe(false);
   });

@@ -170,4 +170,12 @@ describe("validateProfileInput", () => {
     });
     expect(result.ok).toBe(false);
   });
+
+  it("accepts a saved local upload path", () => {
+    const result = validateProfileInput({
+      name: "Minh",
+      avatarUrl: "/api/uploads/shop1/abc.jpg",
+    });
+    expect(result.ok).toBe(true);
+  });
 });

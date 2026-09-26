@@ -20,6 +20,7 @@ import {
   shouldRequireCloudflare,
 } from "@/lib/cloudflare";
 import { isShopSetupExemptPath, isShopSetupPending, postAuthPath } from "@/lib/shop-setup";
+import { isSuperAdminAllowedPath, isSuperAdminSession, SUPER_ADMIN_HOME } from "@/lib/super-admin";
 
 const PUBLIC_PATHS = ["/login", "/register", "/forgot-password", "/invite"];
 const PUBLIC_PREFIXES = [
@@ -42,6 +43,7 @@ function withSecurityHeaders(response: NextResponse, https: boolean) {
 
 function enforceHttps(request: NextRequest): NextResponse | null {
   if (!shouldEnforceHttps()) return null;
+  if (isCloudflareExemptPath(request.nextUrl.pathname)) return null;
 
   const host =
     request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() || request.nextUrl.host;
@@ -141,7 +143,19 @@ export async function middleware(request: NextRequest) {
   }
 
   if (session && !isShopSetupPending(session) && isShopSetupExemptPath(pathname)) {
-    return withSecurityHeaders(NextResponse.redirect(absoluteAppUrl(request, "/inbox")), https);
+    return withSecurityHeaders(
+      NextResponse.redirect(absoluteAppUrl(request, postAuthPath(session))),
+      https,
+    );
+  }
+
+  if (
+    session &&
+    isSuperAdminSession(session) &&
+    !isPublic &&
+    !isSuperAdminAllowedPath(pathname)
+  ) {
+    return withSecurityHeaders(NextResponse.redirect(absoluteAppUrl(request, SUPER_ADMIN_HOME)), https);
   }
 
   if (session && shouldRefreshSession(session.lastActiveAt)) {

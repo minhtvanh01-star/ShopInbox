@@ -6,9 +6,10 @@ import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
   const shop = await getShopContext();
-  const inboxNotices = shop.permissions.includes(PERMISSION_CODES.inboxRead)
-    ? await getInboxNotificationSummary()
-    : { unreadTotal: 0, unreadConversations: 0, notices: [] };
+  const inboxNotices =
+    !shop.isSuperAdmin && shop.permissions.includes(PERMISSION_CODES.inboxRead)
+      ? await getInboxNotificationSummary()
+      : { unreadTotal: 0, unreadConversations: 0, notices: [] };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -16,6 +17,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <Sidebar
         shopName={shop.shopName}
         staffName={shop.staffName}
+        staffAvatarUrl={shop.staffAvatarUrl}
         roleLabel={shop.roleLabel}
         permissions={shop.permissions}
         isSuperAdmin={shop.isSuperAdmin}

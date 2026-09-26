@@ -1,12 +1,15 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   changePasswordAction,
+  updateAvatarAction,
   updateProfileAction,
   type ProfileActionState,
 } from "@/app/(app)/settings/profile/actions";
+import { StaffAvatar } from "@/components/staff/StaffAvatar";
 import { GOOGLE_AUTH_ERROR_MESSAGES } from "@/lib/google-auth-errors";
+import { STAFF_AVATAR_MAX_MB } from "@/lib/staff-avatar";
 
 const initialState: ProfileActionState = {};
 
@@ -40,10 +43,22 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
     updateProfileAction,
     initialState,
   );
+  const [avatarState, avatarAction, avatarPending] = useActionState(
+    updateAvatarAction,
+    initialState,
+  );
   const [passwordState, passwordAction, passwordPending] = useActionState(
     changePasswordAction,
     initialState,
   );
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
 
   const flashMessage = flash?.success
     ? { type: "success" as const, text: AUTH_ERROR_MESSAGES[flash.success] ?? flash.success }
@@ -79,6 +94,59 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
                 {authBadgeLabel(profile.authMethod)}
               </span>
             </div>
+
+          <form action={avatarAction} className="mb-5">
+            <input
+              ref={avatarInputRef}
+              id="avatar"
+              name="avatar"
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                if (previewUrl) URL.revokeObjectURL(previewUrl);
+                setPreviewUrl(URL.createObjectURL(file));
+                event.currentTarget.form?.requestSubmit();
+              }}
+            />
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={() => avatarInputRef.current?.click()}
+                disabled={avatarPending}
+                aria-label={profile.avatarUrl ? "Đổi ảnh đại diện" : "Thêm ảnh đại diện"}
+                className="group relative cursor-pointer rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40 focus-visible:ring-offset-2 active:scale-95 disabled:cursor-not-allowed"
+              >
+                <StaffAvatar
+                  name={profile.name}
+                  avatarUrl={previewUrl ?? profile.avatarUrl}
+                  size="lg"
+                />
+                <span className="absolute inset-0 flex items-center justify-center rounded-full bg-slate-900/55 text-[11px] font-semibold text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
+                  {avatarPending ? "Đang lưu…" : profile.avatarUrl || previewUrl ? "Đổi ảnh" : "Thêm ảnh"}
+                </span>
+              </button>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-800">Ảnh đại diện</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Bấm vào ảnh để thêm hoặc đổi. JPEG, PNG, WebP, GIF · tối đa {STAFF_AVATAR_MAX_MB}MB.
+                  Ảnh lưu xong sẽ hiện cho đồng nghiệp.
+                </p>
+              </div>
+            </div>
+            {avatarState.error ? (
+              <p role="alert" className="alert-error mt-3">
+                {avatarState.error}
+              </p>
+            ) : null}
+            {avatarState.success ? (
+              <p role="status" className="alert-success mt-3">
+                {avatarState.success}
+              </p>
+            ) : null}
+          </form>
 
           <form action={profileAction} className="space-y-4">
             <div className="field-group">
@@ -122,20 +190,6 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
                 type="tel"
                 defaultValue={profile.phone}
                 placeholder="0901 234 567"
-                className="input-field"
-              />
-            </div>
-
-            <div className="field-group">
-              <label htmlFor="avatarUrl" className="label mb-0">
-                URL ảnh đại diện
-              </label>
-              <input
-                id="avatarUrl"
-                name="avatarUrl"
-                type="url"
-                defaultValue={profile.avatarUrl}
-                placeholder="https://..."
                 className="input-field"
               />
             </div>

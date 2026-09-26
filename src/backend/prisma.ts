@@ -7,8 +7,8 @@ const globalForPrisma = globalThis as unknown as {
   prismaSchemaEpoch: number | undefined;
 };
 
-/** Tăng khi schema Prisma có model mới mà code runtime phụ thuộc. */
-const PRISMA_SCHEMA_EPOCH = 3;
+/** Tăng khi schema Prisma thêm model/field mà next dev còn giữ client cũ. */
+const PRISMA_SCHEMA_EPOCH = 4;
 
 function createPrismaClient() {
   const connectionString = process.env.DATABASE_URL;
@@ -21,12 +21,17 @@ function createPrismaClient() {
   });
 }
 
+function hasDelegate(client: PrismaClient, name: "productGroup" | "authLoginThrottle") {
+  const delegate = (client as PrismaClient & Record<string, { findMany?: unknown; findUnique?: unknown }>)[
+    name
+  ];
+  return typeof delegate?.findMany === "function" || typeof delegate?.findUnique === "function";
+}
+
 function isStaleClient(client: PrismaClient | undefined) {
   if (!client) return true;
   if (globalForPrisma.prismaSchemaEpoch !== PRISMA_SCHEMA_EPOCH) return true;
-  const delegate = (client as PrismaClient & { productGroup?: { findMany?: unknown } })
-    .productGroup;
-  return typeof delegate?.findMany !== "function";
+  return !hasDelegate(client, "productGroup") || !hasDelegate(client, "authLoginThrottle");
 }
 
 function getPrisma() {
@@ -42,7 +47,7 @@ function getPrisma() {
  * Tránh next dev giữ PrismaClient cũ trên globalThis sau `prisma generate`.
  */
 export const prisma = new Proxy({} as PrismaClient, {
-  get(_target, prop, _receiver) {
+  get(_target, prop) {
     const client = getPrisma();
     const value = Reflect.get(client, prop, client);
     return typeof value === "function" ? value.bind(client) : value;

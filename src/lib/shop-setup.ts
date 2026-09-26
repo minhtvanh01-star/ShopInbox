@@ -11,7 +11,7 @@ export function postAuthPath(
   nextPath = "/inbox",
 ) {
   if (isSuperAdminSession(session)) {
-    if (nextPath && nextPath !== "/inbox" && !isShopSetupPending(session)) {
+    if (nextPath && isPlatformAdminPath(nextPath)) {
       return nextPath;
     }
     return SUPER_ADMIN_HOME;

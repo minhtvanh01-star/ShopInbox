@@ -53,7 +53,9 @@ export function canSendEmailOtp() {
 /** Lỗi gửi OTP cho UI — giữ cooldown, ẩn chi tiết SMTP/server. */
 export function publicOtpSendError(err: unknown, fallback: string) {
   const message = err instanceof Error ? err.message : "";
-  if (message.startsWith("Vui lòng đợi")) return message;
+  if (message.startsWith("Vui lòng đợi") || message.startsWith("Nhập sai quá nhiều lần")) {
+    return message;
+  }
   return fallback;
 }
 

@@ -17,6 +17,7 @@ describe("cloudflare gate", () => {
     expect(isCloudflareProxiedRequest(() => null)).toBe(false);
     expect(isCloudflareExemptPath("/api/health")).toBe(true);
     expect(isCloudflareExemptPath("/api/cron/backup")).toBe(true);
+    expect(isCloudflareExemptPath("/api/webhooks/meta")).toBe(true);
     expect(isCloudflareExemptPath("/login")).toBe(false);
   });
 });

@@ -11,6 +11,7 @@ import { INBOX_NOTICES_REFRESH_EVENT } from "@/lib/inbox-notices";
 import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { StaffAvatar } from "@/components/staff/StaffAvatar";
 
 type NavItem = {
   href: string;
@@ -43,6 +44,7 @@ const NOTICE_POLL_MS = 20_000;
 type SidebarProps = {
   shopName: string;
   staffName: string;
+  staffAvatarUrl?: string | null;
   roleLabel: string;
   permissions: string[];
   isSuperAdmin?: boolean;
@@ -52,6 +54,7 @@ type SidebarProps = {
 export function Sidebar({
   shopName,
   staffName,
+  staffAvatarUrl,
   roleLabel,
   permissions,
   isSuperAdmin = false,
@@ -59,7 +62,10 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const items = NAV.filter((item) => {
-    if (item.superAdminOnly) return isSuperAdmin;
+    if (isSuperAdmin) {
+      return item.superAdminOnly || item.href === "/settings/profile";
+    }
+    if (item.superAdminOnly) return false;
     if (item.anyPermission?.length) {
       return item.anyPermission.some((code) => permissions.includes(code));
     }
@@ -102,7 +108,7 @@ export function Sidebar({
   }, [noticesOpen]);
 
   useEffect(() => {
-    if (!permissions.includes(PERMISSION_CODES.inboxRead)) {
+    if (isSuperAdmin || !permissions.includes(PERMISSION_CODES.inboxRead)) {
       return;
     }
     const refresh = () => {
@@ -128,7 +134,7 @@ export function Sidebar({
       window.removeEventListener(INBOX_NOTICES_REFRESH_EVENT, refresh);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [permissions, startTransition]);
+  }, [isSuperAdmin, permissions, startTransition]);
 
   const iconOnly = collapsed;
   const unreadBadge =
@@ -175,11 +181,13 @@ export function Sidebar({
           {!iconOnly ? (
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-semibold tracking-tight text-teal-950">ShopInbox</p>
-              <p className="truncate text-xs text-slate-500">{shopName}</p>
+              <p className="truncate text-xs text-slate-500">
+                {isSuperAdmin ? "Nền tảng · Super admin" : shopName}
+              </p>
             </div>
           ) : null}
 
-          {permissions.includes(PERMISSION_CODES.inboxRead) ? (
+          {!isSuperAdmin && permissions.includes(PERMISSION_CODES.inboxRead) ? (
             <div className="relative" ref={panelRef}>
               <button
                 type="button"
@@ -351,9 +359,12 @@ export function Sidebar({
 
         <div className={`border-t border-border py-4 ${iconOnly ? "px-2" : "px-4"}`}>
           {!iconOnly ? (
-            <div className="rounded-xl border border-border bg-accent-muted/60 px-3 py-2.5">
-              <p className="truncate text-sm font-medium text-teal-950">{staffName}</p>
-              <p className="text-xs text-slate-500">{roleLabel}</p>
+            <div className="flex items-center gap-3 rounded-xl border border-border bg-accent-muted/60 px-3 py-2.5">
+              <StaffAvatar name={staffName} avatarUrl={staffAvatarUrl} size="sm" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-teal-950">{staffName}</p>
+                <p className="text-xs text-slate-500">{roleLabel}</p>
+              </div>
             </div>
           ) : null}
           <form action={logoutAction}>
