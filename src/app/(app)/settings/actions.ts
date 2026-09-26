@@ -6,6 +6,7 @@ import { writeAudit } from "@/backend/audit";
 import { hasPermission, requirePermission } from "@/backend/rbac";
 import { getSession } from "@/backend/session";
 import {
+  assertExternalAccountFree,
   disconnectChannel,
   saveOAuthConnection,
   syncConnectedMetaInbox,
@@ -165,6 +166,17 @@ export async function saveChannelCredentialsAction(
   };
 
   const ready = channelHasCredentials(channel as Channel, next);
+  if (ready) {
+    try {
+      await assertExternalAccountFree({
+        shopId: session.shopId,
+        pageId: next.pageId,
+        oaId: next.oaId,
+      });
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Không lưu được thông tin kênh." };
+    }
+  }
 
   await prisma.channelAccount.update({
     where: { id: account.id },

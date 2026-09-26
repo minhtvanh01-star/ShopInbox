@@ -67,7 +67,10 @@ describe("configuredPublicHost", () => {
     expect(configuredPublicHost({ NEXT_PUBLIC_APP_URL: "https://app.shopinbox.vn" })).toBe(
       "app.shopinbox.vn",
     );
-    expect(configuredPublicHost({ APP_URL: "not-a-url" })).toBeNull();
+    expect(configuredPublicHost({ NEXT_PUBLIC_APP_URL: "shopinboxn2.linhgunxy.xyz" })).toBe(
+      "shopinboxn2.linhgunxy.xyz",
+    );
+    expect(configuredPublicHost({ APP_URL: "://bad" })).toBeNull();
   });
 });
 

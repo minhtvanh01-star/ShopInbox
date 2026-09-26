@@ -100,8 +100,9 @@ export function requestUsesHttps(input: {
 export function configuredPublicHost(env: Record<string, string | undefined> = process.env) {
   const raw = env.NEXT_PUBLIC_APP_URL?.trim() || env.APP_URL?.trim();
   if (!raw) return null;
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw) ? raw : `https://${raw}`;
   try {
-    const origin = new URL(raw);
+    const origin = new URL(withScheme);
     if (!origin.hostname || isLoopbackHost(origin.host)) return null;
     return origin.host;
   } catch {

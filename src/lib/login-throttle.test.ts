@@ -5,6 +5,7 @@ import {
   LOGIN_GENERIC_ERROR,
   LOGIN_THROTTLE_ERROR,
   isLoginThrottled,
+  loginThrottleOnStoreError,
   nextLoginFailureState,
   normalizeLoginEmail,
   resetLoginThrottleIfExpired,
@@ -15,6 +16,10 @@ describe("login throttle", () => {
 
   it("normalizes email", () => {
     expect(normalizeLoginEmail("  Admin@Lily.VN ")).toBe("admin@lily.vn");
+  });
+
+  it("does not lock a first login when the throttle store is down", () => {
+    expect(loginThrottleOnStoreError()).toBe(false);
   });
 
   it("keeps throttle copy distinct from a generic credential error", () => {

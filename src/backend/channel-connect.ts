@@ -128,7 +128,12 @@ export async function syncConnectedMetaInbox(shopId: string, channel: Channel) {
   return { ingested, webhookNote };
 }
 
-async function assertExternalAccountFree(input: SaveOAuthConnectionInput) {
+export async function assertExternalAccountFree(input: {
+  shopId: string;
+  pageId?: string | null;
+  oaId?: string | null;
+  linkedPageId?: string | null;
+}) {
   if (input.oaId) {
     const other = await prisma.channelAccount.findFirst({
       where: {
@@ -222,13 +227,15 @@ export async function markChannelConnecting(shopId: string, channel: Channel) {
   });
 
   if (existing) {
-    await prisma.channelAccount.update({
-      where: { id: existing.id },
-      data: {
-        status: "connecting",
-        note: "Đang chờ hoàn tất OAuth...",
-      },
-    });
+    if (existing.status !== "ready") {
+      await prisma.channelAccount.update({
+        where: { id: existing.id },
+        data: {
+          status: "connecting",
+          note: "Đang chờ hoàn tất OAuth...",
+        },
+      });
+    }
     return existing.id;
   }
 

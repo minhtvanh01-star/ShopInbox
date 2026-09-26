@@ -112,9 +112,12 @@ function metaAccessToken(account: ChannelAccountRow & { accessToken: string }) {
 }
 
 async function loadReadyAccount(shopId: string, channel: Channel) {
-  return prisma.channelAccount.findUnique({
+  const account = await prisma.channelAccount.findUnique({
     where: { shopId_channel: { shopId, channel } },
+    include: { shop: { select: { suspendedAt: true } } },
   });
+  if (!account || account.shop?.suspendedAt) return null;
+  return account;
 }
 
 async function loadRecipientId(customerId: string, channel: Channel) {

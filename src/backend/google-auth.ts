@@ -85,14 +85,6 @@ export function resolveGoogleAuthUser(input: GoogleAuthResolveInput): GoogleAuth
     };
   }
 
-  if (intent === "login") {
-    return {
-      action: "error",
-      code: "google_no_account",
-      message: "Chưa có tài khoản với Google này. Hãy đăng ký trước.",
-    };
-  }
-
   return {
     action: "create",
     email: googleUser.email,

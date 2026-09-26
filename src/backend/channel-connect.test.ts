@@ -48,6 +48,16 @@ describe("markChannelConnecting", () => {
     vi.clearAllMocks();
   });
 
+  it("leaves a ready channel ready so a CSRF GET cannot drop inbound", async () => {
+    vi.mocked(prisma.channelAccount.findUnique).mockResolvedValue({
+      id: "ch-facebook",
+      status: "ready",
+    } as never);
+
+    await expect(markChannelConnecting("shop1", "facebook")).resolves.toBe("ch-facebook");
+    expect(prisma.channelAccount.update).not.toHaveBeenCalled();
+  });
+
   it("updates existing channel account to connecting", async () => {
     vi.mocked(prisma.channelAccount.findUnique).mockResolvedValue({
       id: "ch-facebook",

@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
+
+process.env.SESSION_SECRET ??= "shopinbox-test-session-secret";
 import {
   generateEmailOtpCode,
   hashEmailOtpCode,

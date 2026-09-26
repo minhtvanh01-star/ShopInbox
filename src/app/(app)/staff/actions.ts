@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { writeAudit } from "@/backend/audit";
 import { bumpStaffSessionVersion } from "@/backend/auth";
-import { requirePermission, invalidatePermissionCache } from "@/backend/rbac";
+import { requireActionPermission, invalidatePermissionCache } from "@/backend/rbac";
 import { hashPassword } from "@/backend/password";
 import { prisma } from "@/backend/prisma";
 import {
@@ -47,7 +47,7 @@ export async function createStaffAction(
   _prev: StaffActionState,
   formData: FormData,
 ): Promise<StaffActionState> {
-  const session = await requirePermission(PERMISSION_CODES.staffManage);
+  const session = await requireActionPermission(PERMISSION_CODES.staffManage);
 
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "")
@@ -116,7 +116,7 @@ export async function updateStaffAction(
   _prev: StaffActionState,
   formData: FormData,
 ): Promise<StaffActionState> {
-  const session = await requirePermission(PERMISSION_CODES.staffManage);
+  const session = await requireActionPermission(PERMISSION_CODES.staffManage);
 
   const staffId = String(formData.get("staffId") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
@@ -247,7 +247,7 @@ export async function resetStaffPasswordAction(
   _prev: StaffActionState,
   formData: FormData,
 ): Promise<StaffActionState> {
-  const session = await requirePermission(PERMISSION_CODES.staffManage);
+  const session = await requireActionPermission(PERMISSION_CODES.staffManage);
   const staffId = String(formData.get("staffId") ?? "").trim();
   const password = String(formData.get("password") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
@@ -306,7 +306,7 @@ export async function createStaffInviteAction(
   _prev: InviteActionState,
   formData: FormData,
 ): Promise<InviteActionState> {
-  const session = await requirePermission(PERMISSION_CODES.staffManage);
+  const session = await requireActionPermission(PERMISSION_CODES.staffManage);
   const { createShopInvite } = await import("@/backend/shop-invite");
   const result = await createShopInvite({
     shopId: session.shopId,
@@ -339,7 +339,7 @@ export async function revokeStaffInviteAction(
   _prev: InviteActionState,
   formData: FormData,
 ): Promise<InviteActionState> {
-  const session = await requirePermission(PERMISSION_CODES.staffManage);
+  const session = await requireActionPermission(PERMISSION_CODES.staffManage);
   const inviteId = String(formData.get("inviteId") ?? "").trim();
   const { revokeShopInvite } = await import("@/backend/shop-invite");
   const result = await revokeShopInvite(session.shopId, inviteId);

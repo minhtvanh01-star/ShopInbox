@@ -29,6 +29,11 @@ export function isLoginThrottled(state: LoginThrottleState | null, now = Date.no
   return Boolean(current && current.failCount >= LOGIN_FAIL_LIMIT);
 }
 
+/** Lỗi đọc/ghi bảng throttle (chưa migrate, DB down) không được coi như user đã bị khóa. */
+export function loginThrottleOnStoreError() {
+  return false;
+}
+
 export function nextLoginFailureState(
   state: LoginThrottleState | null,
   now = Date.now(),

@@ -113,14 +113,14 @@ export async function middleware(request: NextRequest) {
     }
     const response = NextResponse.redirect(loginUrl);
     if (token) {
-      response.cookies.delete(SESSION_COOKIE);
+      response.cookies.set(SESSION_COOKIE, "", { ...sessionCookieOptions(), maxAge: 0 });
     }
     return withSecurityHeaders(response, https);
   }
 
   if (session && pathname === "/login" && request.nextUrl.searchParams.get("reason") === "revoked") {
     const response = NextResponse.next();
-    response.cookies.delete(SESSION_COOKIE);
+    response.cookies.set(SESSION_COOKIE, "", { ...sessionCookieOptions(), maxAge: 0 });
     return withSecurityHeaders(response, https);
   }
 

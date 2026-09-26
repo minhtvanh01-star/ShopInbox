@@ -99,8 +99,9 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         metaWebhookUrl={getMetaWebhookUrl()}
         zaloWebhookUrl={getZaloWebhookUrl()}
         metaWebhookVerifyToken={
-          shop.permissions.includes(PERMISSION_CODES.channelsConnect)
-            ? (metaConfig?.webhookVerifyToken ?? process.env.META_WEBHOOK_VERIFY_TOKEN?.trim() ?? "")
+          shop.permissions.includes(PERMISSION_CODES.channelsConnect) &&
+          Boolean(metaConfig?.webhookVerifyToken ?? process.env.META_WEBHOOK_VERIFY_TOKEN?.trim())
+            ? "Đã cấu hình trên server — dán META_WEBHOOK_VERIFY_TOKEN vào Meta Developers (không hiện secret)."
             : ""
         }
         pendingMetaPages={pendingMetaPages}

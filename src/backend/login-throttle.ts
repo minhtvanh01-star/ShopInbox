@@ -1,5 +1,9 @@
 import { prisma } from "@/backend/prisma";
-import { isLoginThrottled, normalizeLoginEmail } from "@/lib/login-throttle";
+import {
+  isLoginThrottled,
+  loginThrottleOnStoreError,
+  normalizeLoginEmail,
+} from "@/lib/login-throttle";
 
 export {
   LOGIN_FAIL_LIMIT,
@@ -23,7 +27,7 @@ export async function isLoginEmailThrottled(email: string) {
     return isLoginThrottled(toState(row));
   } catch (error) {
     console.error("[login-throttle] read failed", error);
-    return true;
+    return loginThrottleOnStoreError();
   }
 }
 
