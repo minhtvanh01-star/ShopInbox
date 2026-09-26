@@ -142,7 +142,11 @@ export async function middleware(request: NextRequest) {
   }
 
   if (session && isShopSetupPending(session) && !isShopSetupExemptPath(pathname, session)) {
-    return withSecurityHeaders(NextResponse.redirect(absoluteAppUrl(request, "/setup")), https, pathname);
+    return withSecurityHeaders(
+      NextResponse.redirect(absoluteAppUrl(request, "/register/profile")),
+      https,
+      pathname,
+    );
   }
 
   if (session && !isShopSetupPending(session) && isShopSetupExemptPath(pathname)) {

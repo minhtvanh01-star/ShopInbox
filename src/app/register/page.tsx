@@ -18,9 +18,8 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
       subtitle="Tạo cửa hàng của bạn"
       intro={
         <>
-          Đăng ký bằng email (mã 6 số) hoặc Google. Bạn trở thành <strong>chủ shop</strong> — hệ
-          thống tạo cửa hàng riêng, rồi bắt bạn cấu hình tên shop trước khi kết nối kênh hay mời
-          nhân viên.
+          Đăng ký bằng Google hoặc email. Bạn trở thành <strong>chủ shop</strong>: nhập thông tin
+          cá nhân, rồi cấu hình tên cửa hàng trước khi kết nối kênh hay dùng Inbox.
         </>
       }
     >

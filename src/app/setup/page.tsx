@@ -37,7 +37,7 @@ export default async function SetupShopPage() {
   return (
     <AuthShell
       title="Cấu hình cửa hàng"
-      subtitle="Bước 1 — đặt tên shop"
+      subtitle="Bước 2 — đặt tên shop"
       intro={
         <>
           Đây là cửa hàng của bạn, tách biệt với shop khác trên hệ thống. Đặt tên và giới hạn nhân

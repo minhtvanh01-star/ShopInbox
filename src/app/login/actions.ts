@@ -10,6 +10,7 @@ import {
   recordLoginFailure,
 } from "@/backend/login-throttle";
 import { prisma } from "@/backend/prisma";
+import { isPrismaSchemaDriftError } from "@/backend/prisma-errors";
 import { verifyPassword } from "@/backend/password";
 import { loadStaffSession } from "@/backend/auth";
 import { clearSessionCookie, getSession, setSessionCookie } from "@/backend/session";
@@ -47,7 +48,48 @@ export async function loginAction(
     return { error: LOGIN_THROTTLE_ERROR };
   }
 
-  const staff = await prisma.staff.findUnique({ where: { email } });
+  let staff: {
+    id: string;
+    shopId: string;
+    email: string;
+    name: string;
+    roleCode: string;
+    isActive: boolean;
+    isSuperAdmin: boolean;
+    passwordHash: string | null;
+  } | null;
+  try {
+    staff = await prisma.staff.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        shopId: true,
+        email: true,
+        name: true,
+        roleCode: true,
+        isActive: true,
+        isSuperAdmin: true,
+        passwordHash: true,
+      },
+    });
+  } catch (error) {
+    if (!isPrismaSchemaDriftError(error)) {
+      throw error;
+    }
+    const basic = await prisma.staff.findUnique({
+      where: { email },
+      select: {
+        id: true,
+        shopId: true,
+        email: true,
+        name: true,
+        roleCode: true,
+        isActive: true,
+        passwordHash: true,
+      },
+    });
+    staff = basic ? { ...basic, isSuperAdmin: false } : null;
+  }
   if (!staff) {
     await recordLoginFailure(email);
     await writeAudit({
@@ -111,11 +153,20 @@ export async function loginAction(
     return { error: LOGIN_GENERIC_ERROR };
   }
 
-  const shop = await prisma.shop.findUnique({
-    where: { id: staff.shopId },
-    select: { suspendedAt: true },
-  });
-  if (shop?.suspendedAt && !(await resolveIsSuperAdmin(staff))) {
+  let shopSuspended = false;
+  try {
+    const shop = await prisma.shop.findUnique({
+      where: { id: staff.shopId },
+      select: { suspendedAt: true },
+    });
+    shopSuspended = Boolean(shop?.suspendedAt);
+  } catch (error) {
+    if (!isPrismaSchemaDriftError(error)) {
+      throw error;
+    }
+    console.error("[loginAction] shop.suspendedAt missing — skipping suspend check", error);
+  }
+  if (shopSuspended && !(await resolveIsSuperAdmin(staff))) {
     await writeAudit({
       actor: {
         id: staff.id,

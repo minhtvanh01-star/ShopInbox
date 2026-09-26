@@ -109,7 +109,12 @@ export async function getSession(): Promise<SessionPayload | null> {
   if (!token) return null;
   const payload = await verifySessionToken(token);
   if (!payload) return null;
-  return hydrateLiveSession(payload);
+  try {
+    return await hydrateLiveSession(payload);
+  } catch (error) {
+    console.error("[getSession] hydrate failed — using verified JWT so the app can still load", error);
+    return payload;
+  }
 }
 
 /** JWT còn hạn nhưng staff đã tắt / đổi mật khẩu. */

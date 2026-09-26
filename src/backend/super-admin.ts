@@ -14,14 +14,19 @@ export async function resolveIsSuperAdmin(staff: {
   if (!shouldBootstrapSuperAdmin({ ...staff, existingSuperAdminCount: 0 })) {
     return false;
   }
-  const granted = await prisma.$executeRaw`
-    UPDATE "staff"
-    SET "isSuperAdmin" = true
-    WHERE id = ${staff.id}
-      AND "isSuperAdmin" = false
-      AND NOT EXISTS (SELECT 1 FROM "staff" WHERE "isSuperAdmin" = true)
-  `;
-  return Number(granted) === 1;
+  try {
+    const granted = await prisma.$executeRaw`
+      UPDATE "staff"
+      SET "isSuperAdmin" = true
+      WHERE id = ${staff.id}
+        AND "isSuperAdmin" = false
+        AND NOT EXISTS (SELECT 1 FROM "staff" WHERE "isSuperAdmin" = true)
+    `;
+    return Number(granted) === 1;
+  } catch (error) {
+    console.error("[resolveIsSuperAdmin] could not write flag — using email allowlist", error);
+    return shouldBootstrapSuperAdmin({ ...staff, existingSuperAdminCount: 0 });
+  }
 }
 
 export async function requireSuperAdmin(): Promise<SessionPayload> {

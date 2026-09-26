@@ -228,8 +228,8 @@ export function RegisterForm({
             label="Đăng ký với Google"
           />
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            Google xác minh email trước khi tạo tài khoản. Không tự liên kết với tài khoản mật khẩu
-            sẵn có.
+            Chọn Google để tạo shop. Sau đó bạn nhập họ tên và số điện thoại, rồi mới cấu hình cửa
+            hàng.
           </p>
         </div>
       ) : (
