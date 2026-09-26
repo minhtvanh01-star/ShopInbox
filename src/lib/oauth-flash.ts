@@ -21,7 +21,7 @@ export const OAUTH_ERROR_MESSAGES: Record<string, string> = {
 
 const OAUTH_ERROR_HINTS: Record<string, string> = {
   meta_not_configured:
-    "Điền biến vào .env (hoặc Railway), restart app. Checklist: docs/env-checklist.md.",
+    "Điền biến vào .env (hoặc biến trên host), restart app. Checklist: docs/env-checklist.md.",
   zalo_not_configured: "Điền ZALO_APP_ID / ZALO_APP_SECRET, restart app. Xem docs/ket-noi-kenh.md.",
   meta_denied: "Bấm kết nối lại và chọn Cho phép khi Facebook hỏi quyền.",
   meta_state: "Tắt chặn cookie bên thứ ba cho domain app, rồi kết nối lại ngay (trong ~15 phút).",

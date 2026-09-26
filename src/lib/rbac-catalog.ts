@@ -290,6 +290,7 @@ export const AUDIT_ACTIONS = {
   shopResume: "shop.resume",
   superAdminGrant: "staff.super_admin_grant",
   superAdminRevoke: "staff.super_admin_revoke",
+  shopOpsUpdate: "shop.ops_update",
 } as const;
 
 export type AuditActionCode = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
@@ -331,6 +332,7 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   [AUDIT_ACTIONS.shopResume]: "Mở lại shop",
   [AUDIT_ACTIONS.superAdminGrant]: "Gán Super admin",
   [AUDIT_ACTIONS.superAdminRevoke]: "Gỡ Super admin",
+  [AUDIT_ACTIONS.shopOpsUpdate]: "Cập nhật gói / hỗ trợ shop",
 };
 
 export const AUDIT_ENTITY_LABEL: Record<string, string> = {

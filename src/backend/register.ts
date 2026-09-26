@@ -5,9 +5,6 @@ import {
   REGISTER_NAME_MAX,
 } from "@/lib/auth-password";
 
-/** Shop demo / seed — không còn là shop mặc định khi đăng ký mở. */
-export const REGISTER_DEFAULT_SHOP_ID = "shop1";
-export const REGISTER_DEFAULT_SHOP_NAME = "ShopInbox";
 export { REGISTER_MIN_PASSWORD_LENGTH, REGISTER_NAME_MAX };
 
 export type RegisterInput = {

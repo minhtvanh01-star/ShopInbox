@@ -9,7 +9,6 @@ import {
   verifySessionToken,
   type SessionPayload,
 } from "@/backend/session-token";
-import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export { SESSION_COOKIE, type SessionPayload };
 export {
@@ -54,7 +53,7 @@ async function hydrateLiveSession(payload: SessionPayload): Promise<SessionPaylo
     return null;
   }
 
-  const isSuperAdmin = staff.isSuperAdmin || isSuperAdminEmail(staff.email);
+  const isSuperAdmin = staff.isSuperAdmin;
   if (staff.shop.suspendedAt && !isSuperAdmin) {
     return null;
   }

@@ -20,6 +20,8 @@ export type ShopDirectoryRow = {
   orderCount: number;
   ownerName: string | null;
   ownerEmail: string | null;
+  planLabel: string;
+  supportLabel: string;
 };
 
 export function ShopDirectory({ shops }: { shops: ShopDirectoryRow[] }) {
@@ -39,11 +41,13 @@ export function ShopDirectory({ shops }: { shops: ShopDirectoryRow[] }) {
       ) : null}
 
       <section className="card-padded overflow-hidden p-0">
-        <table className="w-full min-w-[720px] text-left text-sm">
+        <table className="w-full min-w-[880px] text-left text-sm">
           <thead className="bg-surface-muted text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3 font-semibold">Cửa hàng</th>
               <th className="px-4 py-3 font-semibold">Chủ shop</th>
+              <th className="px-4 py-3 font-semibold">Gói</th>
+              <th className="px-4 py-3 font-semibold">Hỗ trợ</th>
               <th className="px-4 py-3 font-semibold">Nhân viên</th>
               <th className="px-4 py-3 font-semibold">Kênh / Đơn</th>
               <th className="px-4 py-3 font-semibold">Trạng thái</th>
@@ -53,7 +57,7 @@ export function ShopDirectory({ shops }: { shops: ShopDirectoryRow[] }) {
           <tbody className="divide-y divide-border">
             {shops.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
+                <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
                   Chưa có shop nào.
                 </td>
               </tr>
@@ -73,6 +77,8 @@ export function ShopDirectory({ shops }: { shops: ShopDirectoryRow[] }) {
                     <p className="text-slate-800">{shop.ownerName ?? "—"}</p>
                     <p className="text-xs text-slate-500">{shop.ownerEmail ?? ""}</p>
                   </td>
+                  <td className="px-4 py-3 text-slate-700">{shop.planLabel}</td>
+                  <td className="px-4 py-3 text-slate-700">{shop.supportLabel}</td>
                   <td className="px-4 py-3 text-slate-700">{shop.staffCount}</td>
                   <td className="px-4 py-3 text-slate-700">
                     {shop.channelCount} / {shop.orderCount}

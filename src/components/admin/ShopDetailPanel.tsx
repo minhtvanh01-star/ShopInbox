@@ -5,12 +5,25 @@ import { useActionState } from "react";
 import {
   toggleShopSuspendedAction,
   toggleSuperAdminAction,
+  updateShopOpsAction,
   type PlatformShopActionState,
 } from "@/app/(app)/admin/shops/actions";
 import { roleLabel } from "@/lib/rbac-catalog";
+import {
+  SHOP_PLAN_LABEL,
+  SHOP_PLANS,
+  SHOP_SUPPORT_STATUS_LABEL,
+  SHOP_SUPPORT_STATUSES,
+  SHOP_SUPPORT_TOPIC_LABEL,
+  SHOP_SUPPORT_TOPICS,
+  type ShopPlanCode,
+  type ShopSupportStatusCode,
+  type ShopSupportTopicCode,
+} from "@/lib/shop-ops";
 
 const suspendInitial: PlatformShopActionState = {};
 const grantInitial: PlatformShopActionState = {};
+const opsInitial: PlatformShopActionState = {};
 
 type Member = {
   id: string;
@@ -36,6 +49,11 @@ export function ShopDetailPanel({
   counts,
   members,
   channels,
+  planCode,
+  planExpiresInput,
+  supportStatus,
+  supportTopic,
+  supportNote,
 }: {
   shopId: string;
   name: string;
@@ -45,6 +63,11 @@ export function ShopDetailPanel({
   counts: { staff: number; customers: number; orders: number; conversations: number };
   members: Member[];
   channels: ChannelRow[];
+  planCode: ShopPlanCode;
+  planExpiresInput: string;
+  supportStatus: ShopSupportStatusCode;
+  supportTopic: ShopSupportTopicCode;
+  supportNote: string;
 }) {
   const [suspendState, suspendAction, suspendPending] = useActionState(
     toggleShopSuspendedAction,
@@ -54,6 +77,7 @@ export function ShopDetailPanel({
     toggleSuperAdminAction,
     grantInitial,
   );
+  const [opsState, opsAction, opsPending] = useActionState(updateShopOpsAction, opsInitial);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-auto bg-[linear-gradient(180deg,#f0fdfa_0%,#e8f1f4_100%)] p-6">
@@ -63,14 +87,14 @@ export function ShopDetailPanel({
         </Link>
       </p>
 
-      {suspendState.error || grantState.error ? (
+      {suspendState.error || grantState.error || opsState.error ? (
         <p role="alert" className="alert-error">
-          {suspendState.error || grantState.error}
+          {suspendState.error || grantState.error || opsState.error}
         </p>
       ) : null}
-      {suspendState.success || grantState.success ? (
+      {suspendState.success || grantState.success || opsState.success ? (
         <p role="status" className="alert-success">
-          {suspendState.success || grantState.success}
+          {suspendState.success || grantState.success || opsState.success}
         </p>
       ) : null}
 
@@ -93,6 +117,74 @@ export function ShopDetailPanel({
             </button>
           </form>
         </div>
+      </section>
+
+      <section className="card-padded">
+        <h3 className="text-sm font-semibold text-slate-900">Gói và hỗ trợ</h3>
+        <form action={opsAction} className="mt-4 grid gap-4 sm:grid-cols-2">
+          <input type="hidden" name="shopId" value={shopId} />
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-700">Gói</span>
+            <select name="planCode" defaultValue={planCode} className="input-field-sm min-h-11 w-full">
+              {SHOP_PLANS.map((code) => (
+                <option key={code} value={code}>
+                  {SHOP_PLAN_LABEL[code]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-700">Hết hạn gói</span>
+            <input
+              type="date"
+              name="planExpiresAt"
+              defaultValue={planExpiresInput}
+              className="input-field-sm min-h-11 w-full"
+            />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-700">Trạng thái hỗ trợ</span>
+            <select
+              name="supportStatus"
+              defaultValue={supportStatus}
+              className="input-field-sm min-h-11 w-full"
+            >
+              {SHOP_SUPPORT_STATUSES.map((code) => (
+                <option key={code} value={code}>
+                  {SHOP_SUPPORT_STATUS_LABEL[code]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium text-slate-700">Nhu cầu</span>
+            <select
+              name="supportTopic"
+              defaultValue={supportTopic}
+              className="input-field-sm min-h-11 w-full"
+            >
+              {SHOP_SUPPORT_TOPICS.map((code) => (
+                <option key={code} value={code}>
+                  {SHOP_SUPPORT_TOPIC_LABEL[code]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm sm:col-span-2">
+            <span className="mb-1 block font-medium text-slate-700">Ghi chú</span>
+            <textarea
+              name="supportNote"
+              defaultValue={supportNote}
+              rows={3}
+              className="input-field-sm min-h-20 w-full resize-y"
+            />
+          </label>
+          <div>
+            <button type="submit" disabled={opsPending} className="btn-primary-sm">
+              {opsPending ? "Đang lưu…" : "Lưu gói / hỗ trợ"}
+            </button>
+          </div>
+        </form>
       </section>
 
       <section className="card-padded">

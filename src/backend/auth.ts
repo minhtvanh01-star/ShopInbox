@@ -3,7 +3,6 @@ import { prisma } from "@/backend/prisma";
 import { getSession, hasRevokedSessionCookie, type SessionPayload } from "@/backend/session";
 import { toSessionPayload } from "@/backend/session-token";
 import { normalizeRoleCode } from "@/lib/rbac-catalog";
-import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export async function requireSession(): Promise<SessionPayload> {
   const session = await getSession();
@@ -34,13 +33,8 @@ export async function loadStaffSession(staffId: string): Promise<SessionPayload>
   if (!staff.isActive) {
     throw new Error("Tài khoản đã bị vô hiệu hóa.");
   }
-  const isSuperAdmin = staff.isSuperAdmin || isSuperAdminEmail(staff.email);
-  if (isSuperAdmin && !staff.isSuperAdmin) {
-    await prisma.staff.update({
-      where: { id: staff.id },
-      data: { isSuperAdmin: true },
-    });
-  }
+  const { resolveIsSuperAdmin } = await import("@/backend/super-admin");
+  const isSuperAdmin = await resolveIsSuperAdmin(staff);
   if (staff.shop.suspendedAt && !isSuperAdmin) {
     throw new Error("Shop đã bị tạm khóa.");
   }

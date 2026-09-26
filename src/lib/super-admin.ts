@@ -13,6 +13,18 @@ export function isSuperAdminEmail(email: string, raw = process.env.SUPER_ADMIN_E
   return parseSuperAdminEmails(raw).includes(needle);
 }
 
+/** Chỉ bootstrap khi chưa có Super admin nào — env không ghi đè quyền đã gỡ. */
+export function shouldBootstrapSuperAdmin(input: {
+  isSuperAdmin: boolean;
+  email: string;
+  existingSuperAdminCount: number;
+  allowlist?: string;
+}) {
+  if (input.isSuperAdmin) return false;
+  if (input.existingSuperAdminCount > 0) return false;
+  return isSuperAdminEmail(input.email, input.allowlist);
+}
+
 export function isSuperAdminSession(session: { isSuperAdmin?: boolean } | null | undefined) {
   return session?.isSuperAdmin === true;
 }

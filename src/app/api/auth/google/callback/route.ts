@@ -16,6 +16,7 @@ import {
 } from "@/backend/google-oauth";
 import { prisma } from "@/backend/prisma";
 import { loadStaffSession } from "@/backend/auth";
+import { resolveIsSuperAdmin } from "@/backend/super-admin";
 import { getSession, setSessionCookie } from "@/backend/session";
 import { auditMetaFromRequest, writeAudit } from "@/backend/audit";
 import { absoluteAppUrl } from "@/backend/public-url";
@@ -207,6 +208,7 @@ export async function GET(request: Request) {
       const staffRow = await prisma.staff.findUnique({
         where: { id: resolved.staffId },
         select: {
+          id: true,
           isActive: true,
           isSuperAdmin: true,
           email: true,
@@ -235,12 +237,7 @@ export async function GET(request: Request) {
         return clearGoogleAuthCookies(redirectWithError(request, "inactive", mode, nextPath));
       }
 
-      const { isSuperAdminEmail } = await import("@/lib/super-admin");
-      if (
-        staffRow.shop.suspendedAt &&
-        !staffRow.isSuperAdmin &&
-        !isSuperAdminEmail(staffRow.email)
-      ) {
+      if (staffRow.shop.suspendedAt && !(await resolveIsSuperAdmin(staffRow))) {
         await writeAudit({
           ...auditMetaFromRequest(request),
           actorEmail: googleUser.email,

@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { writeAudit } from "@/backend/audit";
 import { requireSuperAdmin } from "@/backend/super-admin";
-import { setShopSuspended, setStaffSuperAdmin } from "@/backend/platform-shops";
+import { setShopSuspended, setStaffSuperAdmin, updateShopOps } from "@/backend/platform-shops";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
+import { parseShopOpsInput } from "@/lib/shop-ops";
 
 export type PlatformShopActionState = {
   error?: string;
@@ -54,4 +55,36 @@ export async function toggleSuperAdminAction(
 
   revalidatePath("/admin/shops");
   return { success: grant ? `Đã gán Super admin cho ${result.email}.` : `Đã gỡ Super admin của ${result.email}.` };
+}
+
+export async function updateShopOpsAction(
+  _prev: PlatformShopActionState,
+  formData: FormData,
+): Promise<PlatformShopActionState> {
+  const session = await requireSuperAdmin();
+  const shopId = String(formData.get("shopId") ?? "").trim();
+  const parsed = parseShopOpsInput({
+    planCode: formData.get("planCode"),
+    planExpiresAt: formData.get("planExpiresAt"),
+    supportStatus: formData.get("supportStatus"),
+    supportTopic: formData.get("supportTopic"),
+    supportNote: formData.get("supportNote"),
+  });
+  if (!parsed.ok) return { error: parsed.error };
+
+  const result = await updateShopOps(shopId, parsed.data);
+  if (!result.ok) return { error: result.error };
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.shopOpsUpdate,
+    entityType: "Shop",
+    entityId: shopId,
+    shopId,
+    metadata: parsed.data,
+  });
+
+  revalidatePath("/admin/shops");
+  revalidatePath(`/admin/shops/${shopId}`);
+  return { success: "Đã lưu gói và nhu cầu hỗ trợ." };
 }

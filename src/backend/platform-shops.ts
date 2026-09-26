@@ -1,9 +1,19 @@
 import { prisma } from "@/backend/prisma";
 import { BOOTSTRAP_ROLE_CODE } from "@/lib/rbac-catalog";
+import type { ShopOpsInput, ShopPlanCode, ShopSupportStatusCode } from "@/lib/shop-ops";
 
-export async function listPlatformShops() {
+export type PlatformShopFilters = {
+  plan?: ShopPlanCode | null;
+  support?: ShopSupportStatusCode | null;
+};
+
+export async function listPlatformShops(filters: PlatformShopFilters = {}) {
   const shops = await prisma.shop.findMany({
-    orderBy: { createdAt: "desc" },
+    where: {
+      ...(filters.plan ? { planCode: filters.plan } : {}),
+      ...(filters.support ? { supportStatus: filters.support } : {}),
+    },
+    orderBy: [{ supportStatus: "desc" }, { createdAt: "desc" }],
     include: {
       _count: {
         select: { staff: true, channelAccounts: true, orders: true },
@@ -23,6 +33,11 @@ export async function listPlatformShops() {
     createdAt: shop.createdAt,
     setupCompletedAt: shop.setupCompletedAt,
     suspendedAt: shop.suspendedAt,
+    planCode: shop.planCode,
+    planExpiresAt: shop.planExpiresAt,
+    supportStatus: shop.supportStatus,
+    supportTopic: shop.supportTopic,
+    supportNote: shop.supportNote,
     staffCount: shop._count.staff,
     channelCount: shop._count.channelAccounts,
     orderCount: shop._count.orders,
@@ -84,9 +99,29 @@ export async function setStaffSuperAdmin(staffId: string, next: boolean, actorSt
     }
   }
 
+  if (target.isSuperAdmin === next) {
+    return { ok: true as const, email: target.email };
+  }
+
   await prisma.staff.update({
     where: { id: target.id },
-    data: { isSuperAdmin: next },
+    data: { isSuperAdmin: next, sessionVersion: { increment: 1 } },
   });
   return { ok: true as const, email: target.email };
+}
+
+export async function updateShopOps(shopId: string, input: ShopOpsInput) {
+  const shop = await prisma.shop.findUnique({ where: { id: shopId }, select: { id: true } });
+  if (!shop) return { ok: false as const, error: "Không tìm thấy shop." };
+  await prisma.shop.update({
+    where: { id: shopId },
+    data: {
+      planCode: input.planCode,
+      planExpiresAt: input.planExpiresAt,
+      supportStatus: input.supportStatus,
+      supportTopic: input.supportTopic,
+      supportNote: input.supportNote,
+    },
+  });
+  return { ok: true as const };
 }

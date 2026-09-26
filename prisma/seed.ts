@@ -95,7 +95,6 @@ async function lockDemoAccounts() {
       passwordHash: adminHash,
       roleCode: normalizeRoleCode(SHOP.role),
       isActive: true,
-      isSuperAdmin: true,
     },
     update: {
       name: SHOP.staffName,
@@ -103,7 +102,6 @@ async function lockDemoAccounts() {
       passwordHash: adminHash,
       roleCode: normalizeRoleCode(SHOP.role),
       isActive: true,
-      isSuperAdmin: true,
     },
   });
 
@@ -195,7 +193,6 @@ async function main() {
       email: SHOP.staffEmail,
       passwordHash: await hash(SHOP.staffPassword, 12),
       roleCode: normalizeRoleCode(SHOP.role),
-      isSuperAdmin: true,
     },
   });
 

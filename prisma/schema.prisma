@@ -40,6 +40,29 @@ enum MessageSender {
   shop
 }
 
+enum ShopPlan {
+  trial
+  starter
+  pro
+  business
+}
+
+enum ShopSupportStatus {
+  ok
+  watching
+  needs_help
+  in_progress
+}
+
+enum ShopSupportTopic {
+  none
+  onboarding
+  channel
+  billing
+  bug
+  other
+}
+
 model Shop {
   id                    String             @id
   name                  String
@@ -52,6 +75,11 @@ model Shop {
   setupCompletedAt      DateTime?
   /** Super admin tạm khóa shop — nhân viên shop không đăng nhập được. */
   suspendedAt           DateTime?
+  planCode              ShopPlan           @default(trial)
+  planExpiresAt         DateTime?
+  supportStatus         ShopSupportStatus  @default(ok)
+  supportTopic          ShopSupportTopic   @default(none)
+  supportNote           String             @default("")
   staff                 Staff[]
   invites               ShopInvite[]
   channelAccounts       ChannelAccount[]

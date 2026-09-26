@@ -3,6 +3,7 @@ import { ShopDetailPanel } from "@/components/admin/ShopDetailPanel";
 import { requireSuperAdmin } from "@/backend/super-admin";
 import { getPlatformShopDetail } from "@/backend/platform-shops";
 import { CHANNEL_LABEL, CHANNEL_STATUS_LABEL, formatDateTimeVN } from "@/lib/labels";
+import { planExpiryInputValue } from "@/lib/shop-ops";
 
 type ShopDetailPageProps = {
   params: Promise<{ shopId: string }>;
@@ -38,6 +39,11 @@ export default async function AdminShopDetailPage({ params }: ShopDetailPageProp
           label: account.displayName || account.name || CHANNEL_LABEL[account.channel],
           status: CHANNEL_STATUS_LABEL[account.status] ?? account.status,
         }))}
+        planCode={shop.planCode}
+        planExpiresInput={planExpiryInputValue(shop.planExpiresAt)}
+        supportStatus={shop.supportStatus}
+        supportTopic={shop.supportTopic}
+        supportNote={shop.supportNote}
       />
     </div>
   );
