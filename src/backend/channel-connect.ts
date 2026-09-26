@@ -252,6 +252,25 @@ export async function markChannelConnecting(shopId: string, channel: Channel) {
   return created.id;
 }
 
+/** Tạo nháp ChannelAccount nếu shop chưa có hàng cho kênh (web không đi OAuth). */
+export async function ensureChannelAccount(shopId: string, channel: Channel) {
+  const existing = await prisma.channelAccount.findUnique({
+    where: { shopId_channel: { shopId, channel } },
+  });
+  if (existing) return existing;
+
+  return prisma.channelAccount.create({
+    data: {
+      id: `ch-${channel}-${crypto.randomUUID()}`,
+      shopId,
+      channel,
+      name: CHANNEL_DRAFT_NAME[channel],
+      status: "disconnected",
+      note: channel === "web" ? "Điền domain website để gắn widget." : "Chưa kết nối.",
+    },
+  });
+}
+
 /** Ngắt OAuth. Hội thoại/tin kênh này được ẩn khỏi Inbox (không xóa). */
 export async function disconnectChannel(shopId: string, channel: Channel) {
   await prisma.channelAccount.update({
@@ -269,6 +288,7 @@ export async function disconnectChannel(shopId: string, channel: Channel) {
       expiresAt: null,
       connectedAt: null,
       lastWebhookAt: null,
+      ...(channel === "web" ? { webhookSecret: null } : {}),
       note: "Đã ngắt kết nối. Hội thoại kênh này ẩn khỏi Inbox đến khi nối lại.",
     },
   });

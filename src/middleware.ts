@@ -10,6 +10,7 @@ import { absoluteAppUrl } from "@/backend/public-url";
 import {
   applySecurityHeaders,
   httpsRedirectLocation,
+  isCrossOriginPublicPath,
   isLoopbackHost,
   requestUsesHttps,
   shouldEnforceHttps,
@@ -22,7 +23,7 @@ import {
 import { isShopSetupExemptPath, isShopSetupPending, postAuthPath } from "@/lib/shop-setup";
 import { isSuperAdminAllowedPath, isSuperAdminSession, SUPER_ADMIN_HOME } from "@/lib/super-admin";
 
-const PUBLIC_PATHS = ["/login", "/register", "/forgot-password", "/invite"];
+const PUBLIC_PATHS = ["/login", "/register", "/forgot-password", "/invite", "/widget.js"];
 const PUBLIC_PREFIXES = [
   "/api/webhooks/",
   "/api/auth/google/",
@@ -31,12 +32,13 @@ const PUBLIC_PREFIXES = [
   "/api/cron/",
 ];
 
-function withSecurityHeaders(response: NextResponse, https: boolean) {
+function withSecurityHeaders(response: NextResponse, https: boolean, pathname?: string) {
   const production = process.env.NODE_ENV === "production";
   applySecurityHeaders(response.headers, {
     hsts: production && https,
     upgradeInsecureRequests: production,
     unsafeEval: !production,
+    crossOriginResource: pathname ? isCrossOriginPublicPath(pathname) : false,
   });
   return response;
 }
@@ -83,11 +85,11 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const httpsRedirect = enforceHttps(request);
   if (httpsRedirect) {
-    return withSecurityHeaders(httpsRedirect, false);
+    return withSecurityHeaders(httpsRedirect, false, pathname);
   }
   const cloudflareBlock = enforceCloudflare(request);
   if (cloudflareBlock) {
-    return withSecurityHeaders(cloudflareBlock, false);
+    return withSecurityHeaders(cloudflareBlock, false, pathname);
   }
 
   const https = requestUsesHttps({
@@ -96,7 +98,7 @@ export async function middleware(request: NextRequest) {
   });
 
   if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
-    return withSecurityHeaders(NextResponse.next(), https);
+    return withSecurityHeaders(NextResponse.next(), https, pathname);
   }
 
   const isPublic = PUBLIC_PATHS.some(
@@ -115,13 +117,13 @@ export async function middleware(request: NextRequest) {
     if (token) {
       response.cookies.set(SESSION_COOKIE, "", { ...sessionCookieOptions(), maxAge: 0 });
     }
-    return withSecurityHeaders(response, https);
+    return withSecurityHeaders(response, https, pathname);
   }
 
   if (session && pathname === "/login" && request.nextUrl.searchParams.get("reason") === "revoked") {
     const response = NextResponse.next();
     response.cookies.set(SESSION_COOKIE, "", { ...sessionCookieOptions(), maxAge: 0 });
-    return withSecurityHeaders(response, https);
+    return withSecurityHeaders(response, https, pathname);
   }
 
   if (
@@ -135,17 +137,19 @@ export async function middleware(request: NextRequest) {
     return withSecurityHeaders(
       NextResponse.redirect(absoluteAppUrl(request, postAuthPath(session))),
       https,
+      pathname,
     );
   }
 
   if (session && isShopSetupPending(session) && !isShopSetupExemptPath(pathname, session)) {
-    return withSecurityHeaders(NextResponse.redirect(absoluteAppUrl(request, "/setup")), https);
+    return withSecurityHeaders(NextResponse.redirect(absoluteAppUrl(request, "/setup")), https, pathname);
   }
 
   if (session && !isShopSetupPending(session) && isShopSetupExemptPath(pathname)) {
     return withSecurityHeaders(
       NextResponse.redirect(absoluteAppUrl(request, postAuthPath(session))),
       https,
+      pathname,
     );
   }
 
@@ -155,7 +159,11 @@ export async function middleware(request: NextRequest) {
     !isPublic &&
     !isSuperAdminAllowedPath(pathname)
   ) {
-    return withSecurityHeaders(NextResponse.redirect(absoluteAppUrl(request, SUPER_ADMIN_HOME)), https);
+    return withSecurityHeaders(
+      NextResponse.redirect(absoluteAppUrl(request, SUPER_ADMIN_HOME)),
+      https,
+      pathname,
+    );
   }
 
   if (session && shouldRefreshSession(session.lastActiveAt)) {
@@ -172,10 +180,10 @@ export async function middleware(request: NextRequest) {
       isSuperAdmin: session.isSuperAdmin,
     });
     response.cookies.set(SESSION_COOKIE, refreshed, sessionCookieOptions());
-    return withSecurityHeaders(response, https);
+    return withSecurityHeaders(response, https, pathname);
   }
 
-  return withSecurityHeaders(NextResponse.next(), https);
+  return withSecurityHeaders(NextResponse.next(), https, pathname);
 }
 
 export const config = {

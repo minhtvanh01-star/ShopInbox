@@ -4,6 +4,7 @@ import {
   applySecurityHeaders,
   configuredPublicHost,
   httpsRedirectLocation,
+  isCrossOriginPublicPath,
   isLoopbackHost,
   productionSecurityHeaders,
   requestUsesHttps,
@@ -111,5 +112,18 @@ describe("productionSecurityHeaders", () => {
     applySecurityHeaders(headers);
     expect(headers.get("X-Frame-Options")).toBe("DENY");
     expect(headers.get("Strict-Transport-Security")).toBe(HSTS_VALUE);
+    expect(headers.get("Cross-Origin-Resource-Policy")).toBe("same-origin");
+  });
+
+  it("allows CORP cross-origin for the public widget", () => {
+    expect(isCrossOriginPublicPath("/widget.js")).toBe(true);
+    expect(isCrossOriginPublicPath("/api/webhooks/web")).toBe(true);
+    expect(isCrossOriginPublicPath("/api/webhooks/web/poll")).toBe(true);
+    expect(isCrossOriginPublicPath("/api/webhooks/meta")).toBe(false);
+    expect(
+      productionSecurityHeaders({ crossOriginResource: true }).find(
+        (item) => item.key === "Cross-Origin-Resource-Policy",
+      )?.value,
+    ).toBe("cross-origin");
   });
 });

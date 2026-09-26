@@ -11,14 +11,19 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     const production = process.env.NODE_ENV === "production";
-    const headers = productionSecurityHeaders({
+    const common = {
       hsts: production,
       upgradeInsecureRequests: production,
       unsafeEval: !production,
-    });
+    };
+    const headers = productionSecurityHeaders(common);
+    const embedHeaders = productionSecurityHeaders({ ...common, crossOriginResource: true });
     return [
       { source: "/", headers },
       { source: "/:path*", headers },
+      { source: "/widget.js", headers: embedHeaders },
+      { source: "/api/webhooks/web", headers: embedHeaders },
+      { source: "/api/webhooks/web/:path*", headers: embedHeaders },
     ];
   },
 };

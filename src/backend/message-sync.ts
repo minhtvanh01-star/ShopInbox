@@ -48,12 +48,29 @@ function defaultSenderName(channel: Channel, senderExternalId: string) {
   if (channel === "facebook") return `Khách Facebook ${suffix}`;
   if (channel === "instagram") return `Khách Instagram ${suffix}`;
   if (channel === "zalo") return `Khách Zalo ${suffix}`;
+  if (channel === "web") return `Khách web ${suffix}`;
   return `Khách ${suffix}`;
 }
 
 const LIVE_SHOP = { shop: { is: { suspendedAt: null } } };
 
 export async function findChannelAccount(channel: Channel, externalAccountId: string) {
+  if (channel === "web") {
+    const rows = await prisma.channelAccount.findMany({
+      where: {
+        channel: "web",
+        status: "ready",
+        ...LIVE_SHOP,
+        OR: [
+          { pageId: externalAccountId },
+          { webhookSecret: externalAccountId },
+          { id: externalAccountId },
+        ],
+      },
+    });
+    return pickOwnedChannelAccount(rows);
+  }
+
   if (channel === "zalo") {
     const rows = await prisma.channelAccount.findMany({
       where: { channel: "zalo", oaId: externalAccountId, status: "ready", ...LIVE_SHOP },

@@ -20,6 +20,8 @@ import type {
   QuickReply,
 } from "@/lib/types";
 import { listSellableVariants } from "@/backend/product-catalog";
+import { getWebWidgetScriptUrl } from "@/backend/oauth-config";
+import { webWidgetSnippet } from "@/lib/web-widget";
 
 export const DEMO_SHOP_ID = "shop1";
 
@@ -534,5 +536,11 @@ export async function getChannelAccounts() {
     connectedAt: account.connectedAt ? toIso(account.connectedAt) : null,
     lastWebhookAt: account.lastWebhookAt ? toIso(account.lastWebhookAt) : null,
     hasOAuthToken: Boolean(account.accessToken),
+    widgetKey:
+      canConnect && account.channel === "web" ? account.webhookSecret : null,
+    widgetSnippet:
+      canConnect && account.channel === "web" && account.webhookSecret
+        ? webWidgetSnippet(getWebWidgetScriptUrl(), account.webhookSecret)
+        : null,
   }));
 }

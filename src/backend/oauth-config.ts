@@ -125,3 +125,7 @@ export function getMetaWebhookUrl() {
 export function getZaloWebhookUrl() {
   return `${getPublicAppUrl()}/api/webhooks/zalo`;
 }
+
+export function getWebWidgetScriptUrl() {
+  return `${getPublicAppUrl()}/widget.js`;
+}

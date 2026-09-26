@@ -9,7 +9,13 @@ export type SecurityHeaderOptions = {
   upgradeInsecureRequests?: boolean;
   /** React Fast Refresh / Next.js dev cần eval() + websocket. Production tắt. */
   unsafeEval?: boolean;
+  /** Widget / webhook web gọi từ website shop — không dùng CORP same-origin. */
+  crossOriginResource?: boolean;
 };
+
+export function isCrossOriginPublicPath(pathname: string) {
+  return pathname === "/widget.js" || pathname === "/api/webhooks/web" || pathname.startsWith("/api/webhooks/web/");
+}
 
 export function contentSecurityPolicy(options?: {
   upgradeInsecureRequests?: boolean;
@@ -53,7 +59,10 @@ export function productionSecurityHeaders(options?: SecurityHeaderOptions) {
       value: "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
     },
     { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
-    { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+    {
+      key: "Cross-Origin-Resource-Policy",
+      value: options?.crossOriginResource ? "cross-origin" : "same-origin",
+    },
     { key: "X-DNS-Prefetch-Control", value: "off" },
     {
       key: "Content-Security-Policy",

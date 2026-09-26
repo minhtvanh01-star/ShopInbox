@@ -13,7 +13,7 @@ Checklist nhanh (local + biến phải dán thủ công): [env-checklist.md](./e
 | Facebook Messenger | Có (Meta) | Có | Một Meta app cho cả FB + IG |
 | Instagram DM | Có (Meta) | Có | Page phải liên kết IG Business |
 | Zalo OA | Có (Zalo) | Có | OA phải liên kết app Developers |
-| Chat website | Không | Khuyến nghị | Domain + widget key thủ công |
+| Chat website | Không | Widget HTTPS | Domain + snippet `/widget.js` |
 
 ## Luồng OAuth trong app
 
@@ -158,10 +158,38 @@ Tài liệu: [Zalo OA API](https://developers.zalo.me/docs/official-account/bat-
 
 ## 3. Chat website
 
-Không OAuth. Trong modal **Chat website**:
+Không OAuth, không App Review. Trong **Cài đặt → Chat website**:
 
-- **Domain website** — URL site gắn widget
-- **Widget key** (tùy chọn) — khóa nội bộ
+1. Dán **link website** (đúng host gắn widget, ví dụ `https://cuahang.vn`).
+2. Bấm **Kiểm tra website** — server đọc HTML công khai (chặn localhost/IP nội bộ). Báo nếu đã có snippet ShopInbox hoặc chat khác (Tawk, Crisp, …).
+3. **Lưu & kết nối** — hệ thống tạo widget key và snippet.
+4. Dán snippet trước thẻ đóng `</body>`. Có thể **Thử chat tại đây** (`/settings/web-preview`) rồi kiểm tra lại site.
+
+```html
+<script src="https://<APP_URL>/widget.js" data-key="siwk_..." async></script>
+```
+
+Khách nhắn trên widget → Inbox kênh `web`. Shop trả lời trong Inbox; widget poll tin shop (không cần SSE).
+
+- CORS chỉ cho đúng host đã lưu. Key nằm trong HTML (public) — **Đổi widget key** nếu lộ / đổi site.
+- Theme Shopify: dán snippet như website thường (không phải Shopify Inbox API).
+
+### Shopify: hai lớp, không gộp
+
+| Lớp | Kênh Inbox | Trạng thái |
+|-----|------------|------------|
+| Theme nhúng widget | `web` | Đã có — dán snippet vào `theme.liquid` / App embed |
+| Shopify Inbox / Messaging API | `shopify` (chưa thêm enum) | Sắp có — cần Partner app, OAuth riêng, GDPR webhook |
+
+Không có nút «Kết nối Shopify». Inbox native + đơn Shopify cùng thread chỉ làm khi có khách Shopify thật và chấp nhận duyệt app.
+
+### WhatsApp Cloud API (pha 3)
+
+Cùng họ Meta với Facebook/Instagram. **Chưa mở kết nối.** Điều kiện: Business Verification + app Meta Live + App Review `whatsapp_business_messaging` + số Cloud API. Làm sau khi FB/IG Live ổn — không thêm enum/`oauth` giả trước đó.
+
+### TikTok Messaging (pha 4)
+
+Cần đối tác TikTok For Business / Messaging. UI giữ **Sắp có**. Không có `Channel.tiktok` và không có OAuth giả cho đến khi có quyền API.
 
 ---
 
@@ -194,7 +222,7 @@ Modal có mục **Cấu hình nâng cao (dev)** để dán App ID / Secret thủ
 **Giới hạn hiện tại:**
 
 - **Đồng bộ inbound:** Webhook Meta/Zalo ghi tin vào PostgreSQL. Inbox soft-poll ~8s + `revalidatePath` sau webhook (chưa SSE/WS).
-- **Gửi outbound:** Meta chữ + ảnh; Zalo chữ. Kênh web / chưa OAuth không giả lập gửi platform.
+- **Gửi outbound:** Meta chữ + ảnh; Zalo chữ. Kênh web lưu Inbox rồi widget poll tin shop.
 - **Dedup:** `external_message_id`; Meta echo (`is_echo`) bỏ qua inbound.
 - **Zalo media / ký webhook:** chưa.
 
