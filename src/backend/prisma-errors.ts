@@ -7,9 +7,20 @@ export function isUniqueConstraintError(error: unknown) {
 /** Nhận diện lỗi Prisma khi DB chưa migrate cột mới (P2022 / column does not exist). */
 export function isMissingDbColumnError(error: unknown, columnHint?: string) {
   const message = error instanceof Error ? error.message : String(error);
-  if (!/P2022|does not exist|Unknown column|column .* does not exist/i.test(message)) {
+  if (
+    !/P2022|does not exist|Unknown column|column .* does not exist|Unknown (?:arg|field|argument)/i.test(
+      message,
+    )
+  ) {
     return false;
   }
   if (!columnHint) return true;
   return message.toLowerCase().includes(columnHint.toLowerCase());
+}
+
+/** Cột, enum, hoặc field Prisma lệch schema (code mới hơn migrate trên VPS). */
+export function isPrismaSchemaDriftError(error: unknown) {
+  if (isMissingDbColumnError(error)) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /ShopPlan|ShopSupportStatus|ShopSupportTopic/i.test(message);
 }
