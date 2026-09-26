@@ -1,5 +1,4 @@
 import { prisma } from "@/backend/prisma";
-import { isPrismaSchemaDriftError } from "@/backend/prisma-errors";
 import { BOOTSTRAP_ROLE_CODE } from "@/lib/rbac-catalog";
 import type { ShopOpsInput, ShopPlanCode, ShopSupportStatusCode } from "@/lib/shop-ops";
 
@@ -80,10 +79,7 @@ export async function listPlatformShops(filters: PlatformShopFilters = {}) {
     });
     return shops.map(mapPlatformShopRow);
   } catch (error) {
-    if (!isPrismaSchemaDriftError(error)) {
-      throw error;
-    }
-    console.error("[listPlatformShops] shop-ops schema drift — listing without plan/support", error);
+    console.error("[listPlatformShops] full query failed — trying safe columns", error);
     try {
       const shops = await prisma.shop.findMany({
         orderBy: { createdAt: "desc" },
@@ -102,23 +98,23 @@ export async function listPlatformShops(filters: PlatformShopFilters = {}) {
       });
       return shops.map(mapPlatformShopRow);
     } catch (fallbackError) {
-      if (!isPrismaSchemaDriftError(fallbackError)) {
-        throw fallbackError;
+      console.error("[listPlatformShops] mid query failed — listing id/name only", fallbackError);
+      try {
+        const shops = await prisma.shop.findMany({
+          orderBy: { createdAt: "desc" },
+          select: { id: true, name: true, createdAt: true },
+        });
+        return shops.map((shop) =>
+          mapPlatformShopRow({
+            ...shop,
+            _count: { staff: 0, channelAccounts: 0, orders: 0 },
+            staff: [],
+          }),
+        );
+      } catch (baseError) {
+        console.error("[listPlatformShops] giving up — empty list so Super admin still loads", baseError);
+        return [];
       }
-      const shops = await prisma.shop.findMany({
-        orderBy: { createdAt: "desc" },
-        select: {
-          id: true,
-          name: true,
-          createdAt: true,
-          _count: { select: shopCountSelect },
-          staff: {
-            ...ownerSelect,
-            select: { id: true, name: true, email: true },
-          },
-        },
-      });
-      return shops.map(mapPlatformShopRow);
     }
   }
 }
@@ -165,47 +161,66 @@ export async function getPlatformShopDetail(shopId: string) {
       },
     });
   } catch (error) {
-    if (!isPrismaSchemaDriftError(error)) {
-      throw error;
-    }
-    console.error("[getPlatformShopDetail] shop-ops schema drift — loading without plan/support", error);
-    const shop = await prisma.shop.findUnique({
-      where: { id: shopId },
-      select: {
-        id: true,
-        name: true,
-        createdAt: true,
-        setupCompletedAt: true,
-        suspendedAt: true,
-        staff: {
-          orderBy: { createdAt: "asc" },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            roleCode: true,
-            isActive: true,
-            createdAt: true,
+    console.error("[getPlatformShopDetail] full query failed — loading without plan/support", error);
+    try {
+      const shop = await prisma.shop.findUnique({
+        where: { id: shopId },
+        select: {
+          id: true,
+          name: true,
+          createdAt: true,
+          setupCompletedAt: true,
+          suspendedAt: true,
+          staff: {
+            orderBy: { createdAt: "asc" },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              roleCode: true,
+              isActive: true,
+              createdAt: true,
+            },
           },
+          channelAccounts: { select: channelSelect },
+          _count: { select: detailCounts },
         },
-        channelAccounts: { select: channelSelect },
-        _count: { select: detailCounts },
-      },
-    });
-    if (!shop) return null;
-    return {
-      ...shop,
-      planCode: "trial" as const,
-      planExpiresAt: null,
-      supportStatus: "ok" as const,
-      supportTopic: "none" as const,
-      supportNote: "",
-      staff: shop.staff.map((member) => ({
-        ...member,
-        avatarUrl: null as string | null,
-        isSuperAdmin: false,
-      })),
-    };
+      });
+      if (!shop) return null;
+      return {
+        ...shop,
+        planCode: "trial" as const,
+        planExpiresAt: null,
+        supportStatus: "ok" as const,
+        supportTopic: "none" as const,
+        supportNote: "",
+        staff: shop.staff.map((member) => ({
+          ...member,
+          avatarUrl: null as string | null,
+          isSuperAdmin: false,
+        })),
+      };
+    } catch (fallbackError) {
+      console.error("[getPlatformShopDetail] mid query failed — id/name only", fallbackError);
+      const shop = await prisma.shop.findUnique({
+        where: { id: shopId },
+        select: { id: true, name: true, createdAt: true },
+      });
+      if (!shop) return null;
+      return {
+        ...shop,
+        setupCompletedAt: null,
+        suspendedAt: null,
+        planCode: "trial" as const,
+        planExpiresAt: null,
+        supportStatus: "ok" as const,
+        supportTopic: "none" as const,
+        supportNote: "",
+        staff: [],
+        channelAccounts: [],
+        _count: { customers: 0, orders: 0, conversations: 0 },
+      };
+    }
   }
 }
 

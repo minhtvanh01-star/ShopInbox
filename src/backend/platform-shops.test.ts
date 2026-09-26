@@ -43,6 +43,11 @@ describe("listPlatformShops", () => {
     expect(shops[0]?.name).toBe("Lily");
     expect(prisma.shop.findMany).toHaveBeenCalledTimes(2);
   });
+
+  it("returns an empty list instead of throwing when every query fails", async () => {
+    vi.mocked(prisma.shop.findMany).mockRejectedValue(new Error("db down"));
+    await expect(listPlatformShops()).resolves.toEqual([]);
+  });
 });
 
 describe("getPlatformShopDetail", () => {

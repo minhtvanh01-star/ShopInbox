@@ -38,6 +38,9 @@ describe("isMissingDbColumnError", () => {
         "planCode",
       ),
     ).toBe(true);
+    expect(isMissingDbColumnError(Object.assign(new Error("column missing"), { code: "P2022" }))).toBe(
+      true,
+    );
     expect(isMissingDbColumnError(new Error("Unique constraint failed"), "avatarUrl")).toBe(false);
   });
 });

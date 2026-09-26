@@ -5,7 +5,14 @@ import { formatDateTimeVN } from "@/lib/labels";
 
 export default async function AdminShopsPage() {
   await requireSuperAdmin();
-  const shops = await listPlatformShops();
+  let shops: Awaited<ReturnType<typeof listPlatformShops>> = [];
+  let loadError: string | null = null;
+  try {
+    shops = await listPlatformShops();
+  } catch (error) {
+    console.error("[AdminShopsPage] listPlatformShops", error);
+    loadError = "Không tải được danh sách shop. Trên VPS chạy prisma migrate deploy rồi restart.";
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -15,6 +22,11 @@ export default async function AdminShopsPage() {
           Super admin — cửa hàng, người dùng, gói và nhu cầu hỗ trợ. Không vào hội thoại khách.
         </p>
       </header>
+      {loadError ? (
+        <p role="alert" className="alert-error mx-6 mt-4">
+          {loadError}
+        </p>
+      ) : null}
       <ShopDirectory
         shops={shops.map((shop) => ({
           id: shop.id,

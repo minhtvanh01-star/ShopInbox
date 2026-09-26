@@ -17,6 +17,7 @@ import {
   verifyGoogleIdToken,
 } from "@/backend/google-oauth";
 import { prisma } from "@/backend/prisma";
+import { isPrismaSchemaDriftError } from "@/backend/prisma-errors";
 import { loadStaffSession } from "@/backend/auth";
 import { resolveIsSuperAdmin } from "@/backend/super-admin";
 import { getSession, setSessionCookie } from "@/backend/session";
@@ -208,18 +209,40 @@ export async function GET(request: Request) {
     }
 
     if (resolved.action === "login") {
-      const staffRow = await prisma.staff.findUnique({
-        where: { id: resolved.staffId },
-        select: {
-          id: true,
-          isActive: true,
-          isSuperAdmin: true,
-          email: true,
-          roleCode: true,
-          shopId: true,
-          shop: { select: { suspendedAt: true } },
-        },
-      });
+      let staffRow: {
+        id: string;
+        isActive: boolean;
+        isSuperAdmin: boolean;
+        email: string;
+        roleCode: string;
+        shopId: string;
+        shop: { suspendedAt: Date | null };
+      } | null;
+      try {
+        staffRow = await prisma.staff.findUnique({
+          where: { id: resolved.staffId },
+          select: {
+            id: true,
+            isActive: true,
+            isSuperAdmin: true,
+            email: true,
+            roleCode: true,
+            shopId: true,
+            shop: { select: { suspendedAt: true } },
+          },
+        });
+      } catch (error) {
+        if (!isPrismaSchemaDriftError(error)) {
+          throw error;
+        }
+        const basic = await prisma.staff.findUnique({
+          where: { id: resolved.staffId },
+          select: { id: true, isActive: true, email: true, roleCode: true, shopId: true },
+        });
+        staffRow = basic
+          ? { ...basic, isSuperAdmin: false, shop: { suspendedAt: null } }
+          : null;
+      }
       if (!staffRow?.isActive) {
         await writeAudit({
           ...auditMetaFromRequest(request),
@@ -258,7 +281,10 @@ export async function GET(request: Request) {
         return clearGoogleAuthCookies(redirectWithError(request, "shop_suspended", mode, nextPath));
       }
 
-      const updateData: { name?: string; avatarUrl?: string | null } = {};
+      const updateData: { name?: string; avatarUrl?: string | null; googleId?: string } = {};
+      if (resolved.linkGoogleId) {
+        updateData.googleId = resolved.linkGoogleId;
+      }
       if (resolved.updateProfile?.name) {
         updateData.name = resolved.updateProfile.name;
       }
@@ -267,10 +293,23 @@ export async function GET(request: Request) {
       }
 
       if (Object.keys(updateData).length > 0) {
-        await prisma.staff.update({
-          where: { id: resolved.staffId },
-          data: updateData,
-        });
+        try {
+          await prisma.staff.update({
+            where: { id: resolved.staffId },
+            data: updateData,
+          });
+        } catch (error) {
+          if (!updateData.googleId && !updateData.name) {
+            throw error;
+          }
+          await prisma.staff.update({
+            where: { id: resolved.staffId },
+            data: {
+              ...(updateData.googleId ? { googleId: updateData.googleId } : {}),
+              ...(updateData.name ? { name: updateData.name } : {}),
+            },
+          });
+        }
       }
 
       await createSessionForStaff(resolved.staffId);

@@ -32,7 +32,7 @@ describe("resolveGoogleAuthUser", () => {
     }
   });
 
-  it("rejects auto-link when email account exists without google", () => {
+  it("auto-links a verified Google email to the existing password account on login", () => {
     const result = resolveGoogleAuthUser({
       googleUser,
       existingByGoogleId: null,
@@ -49,11 +49,36 @@ describe("resolveGoogleAuthUser", () => {
     });
 
     expect(result).toEqual({
-      action: "error",
-      code: "google_account_exists",
-      message:
-        "Email này đã đăng ký bằng mật khẩu. Đăng nhập bằng mật khẩu, rồi liên kết Google trong Hồ sơ.",
+      action: "login",
+      staffId: "staff-2",
+      linkGoogleId: "google-sub-1",
+      updateProfile: {
+        name: "Nguyen Van A",
+        avatarUrl: "https://example.com/avatar.jpg",
+      },
     });
+  });
+
+  it("still blocks register when the email already has a password account", () => {
+    const result = resolveGoogleAuthUser({
+      googleUser,
+      existingByGoogleId: null,
+      existingByEmail: {
+        id: "staff-2",
+        name: "Lan",
+        email: "user@gmail.com",
+        googleId: null,
+        avatarUrl: null,
+      },
+      staffCount: 2,
+      shopExists: true,
+      intent: "register",
+    });
+
+    expect(result.action).toBe("error");
+    if (result.action === "error") {
+      expect(result.code).toBe("google_account_exists");
+    }
   });
 
   it("rejects register when google account already exists", () => {
