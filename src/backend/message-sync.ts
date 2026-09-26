@@ -48,13 +48,32 @@ function defaultSenderName(channel: Channel, senderExternalId: string) {
   if (channel === "facebook") return `Khách Facebook ${suffix}`;
   if (channel === "instagram") return `Khách Instagram ${suffix}`;
   if (channel === "zalo") return `Khách Zalo ${suffix}`;
+  if (channel === "web") return `Khách web ${suffix}`;
   return `Khách ${suffix}`;
 }
 
+const LIVE_SHOP = { shop: { is: { suspendedAt: null } } };
+
 export async function findChannelAccount(channel: Channel, externalAccountId: string) {
+  if (channel === "web") {
+    const rows = await prisma.channelAccount.findMany({
+      where: {
+        channel: "web",
+        status: "ready",
+        ...LIVE_SHOP,
+        OR: [
+          { pageId: externalAccountId },
+          { webhookSecret: externalAccountId },
+          { id: externalAccountId },
+        ],
+      },
+    });
+    return pickOwnedChannelAccount(rows);
+  }
+
   if (channel === "zalo") {
     const rows = await prisma.channelAccount.findMany({
-      where: { channel: "zalo", oaId: externalAccountId, status: "ready" },
+      where: { channel: "zalo", oaId: externalAccountId, status: "ready", ...LIVE_SHOP },
     });
     return pickOwnedChannelAccount(rows);
   }
@@ -63,6 +82,7 @@ export async function findChannelAccount(channel: Channel, externalAccountId: st
     where: {
       channel,
       status: "ready",
+      ...LIVE_SHOP,
       OR: [{ pageId: externalAccountId }, { linkedPageId: externalAccountId }],
     },
   });
@@ -74,6 +94,7 @@ export async function findChannelAccount(channel: Channel, externalAccountId: st
       where: {
         channel: "instagram",
         status: "ready",
+        ...LIVE_SHOP,
         OR: [{ pageId: externalAccountId }, { linkedPageId: externalAccountId }],
       },
     });
@@ -180,6 +201,11 @@ export async function findOrCreateCustomer(
       },
     });
   } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      const existing = await findCustomerIdentity(shopId, channel, senderExternalId);
+      if (existing) return existing.customer;
+      throw new Error("identity_owned_by_other_shop");
+    }
     if (!isMissingDbColumnError(error, "avatarUrl")) {
       throw error;
     }
@@ -284,13 +310,21 @@ export async function ingestInboundMessage(input: InboundMessageInput) {
 
   const ingestChannel = account.channel;
 
-  const customer = await findOrCreateCustomer(
-    account.shopId,
-    ingestChannel,
-    input.senderExternalId,
-    input.senderName,
-    input.senderAvatarUrl,
-  );
+  let customer;
+  try {
+    customer = await findOrCreateCustomer(
+      account.shopId,
+      ingestChannel,
+      input.senderExternalId,
+      input.senderName,
+      input.senderAvatarUrl,
+    );
+  } catch (error) {
+    if (error instanceof Error && error.message === "identity_owned_by_other_shop") {
+      return { ok: false as const, reason: "identity_owned_by_other_shop" as const };
+    }
+    throw error;
+  }
 
   const customerAvatar =
     "avatarUrl" in customer

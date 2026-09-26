@@ -56,9 +56,15 @@ export function isPlatformAdminPath(pathname: string) {
   return pathname === "/admin" || pathname.startsWith("/admin/");
 }
 
+const SUPER_ADMIN_API_PREFIXES = ["/api/health", "/api/auth/", "/api/uploads/", "/api/cron/"];
+
 /** Super admin chỉ ở console nền tảng — không vào inbox / kênh hội thoại. */
 export function isSuperAdminAllowedPath(pathname: string) {
-  if (pathname.startsWith("/api/")) return true;
+  if (pathname.startsWith("/api/")) {
+    return SUPER_ADMIN_API_PREFIXES.some(
+      (prefix) => pathname === prefix || pathname.startsWith(prefix),
+    );
+  }
   if (pathname === "/setup" || pathname.startsWith("/setup/")) return true;
   if (pathname === "/settings/profile" || pathname.startsWith("/settings/profile/")) {
     return true;

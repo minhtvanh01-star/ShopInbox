@@ -58,19 +58,24 @@ export async function GET(request: Request) {
   const nonce = crypto.randomUUID();
   const codeVerifier = generateCodeVerifier();
   const codeChallenge = await createCodeChallenge(codeVerifier);
-  const state = await createGoogleAuthStateToken({
-    nonce,
-    next: mode === "link" ? "/settings/profile" : nextPath,
-    mode,
-    staffId,
-  });
+  try {
+    const state = await createGoogleAuthStateToken({
+      nonce,
+      next: mode === "link" ? "/settings/profile" : nextPath,
+      mode,
+      staffId,
+    });
 
-  const response = NextResponse.redirect(
-    buildGoogleOAuthUrl(config, { state, nonce, codeChallenge }),
-  );
-  const cookieOptions = googleAuthCookieOptions();
-  response.cookies.set(GOOGLE_AUTH_STATE_COOKIE, state, cookieOptions);
-  response.cookies.set(GOOGLE_PKCE_COOKIE, await createGooglePkceToken(codeVerifier), cookieOptions);
-
-  return response;
+    const response = NextResponse.redirect(
+      buildGoogleOAuthUrl(config, { state, nonce, codeChallenge }),
+    );
+    const cookieOptions = googleAuthCookieOptions();
+    response.cookies.set(GOOGLE_AUTH_STATE_COOKIE, state, cookieOptions);
+    response.cookies.set(GOOGLE_PKCE_COOKIE, await createGooglePkceToken(codeVerifier), cookieOptions);
+    return response;
+  } catch {
+    return NextResponse.redirect(
+      authPageUrl(request, fallbackPath, { auth_error: "google_failed" }),
+    );
+  }
 }

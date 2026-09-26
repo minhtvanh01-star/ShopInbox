@@ -78,7 +78,7 @@ describe("resolveGoogleAuthUser", () => {
     }
   });
 
-  it("rejects login when no shop account exists", () => {
+  it("creates a shop owner when logging in with a new Google account", () => {
     const result = resolveGoogleAuthUser({
       googleUser,
       existingByGoogleId: null,
@@ -88,9 +88,11 @@ describe("resolveGoogleAuthUser", () => {
       intent: "login",
     });
 
-    expect(result.action).toBe("error");
-    if (result.action === "error") {
-      expect(result.code).toBe("google_no_account");
+    expect(result.action).toBe("create");
+    if (result.action === "create") {
+      expect(result.role).toBe("admin");
+      expect(result.isActive).toBe(true);
+      expect(result.googleId).toBe("google-sub-1");
     }
   });
 

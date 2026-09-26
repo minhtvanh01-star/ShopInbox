@@ -50,6 +50,7 @@ export async function toggleSuperAdminAction(
     action: grant ? AUDIT_ACTIONS.superAdminGrant : AUDIT_ACTIONS.superAdminRevoke,
     entityType: "Staff",
     entityId: staffId,
+    shopId: result.shopId,
     metadata: { email: result.email },
   });
 

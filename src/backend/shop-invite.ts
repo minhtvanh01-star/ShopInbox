@@ -1,4 +1,5 @@
 import { createHmac, randomBytes } from "node:crypto";
+import { requireSessionSecret } from "@/backend/app-secret";
 import { prisma } from "@/backend/prisma";
 import { getPublicAppUrl } from "@/backend/oauth-config";
 import { hashPassword } from "@/backend/password";
@@ -14,14 +15,7 @@ import {
 } from "@/lib/shop-invite";
 
 function inviteHmacKey() {
-  const secret = process.env.SESSION_SECRET?.trim();
-  if (!secret) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Thiếu SESSION_SECRET để hash lời mời.");
-    }
-    return "shopinbox-invite-dev-key";
-  }
-  return secret;
+  return requireSessionSecret();
 }
 
 export function hashShopInviteToken(token: string) {
@@ -59,6 +53,10 @@ export async function createShopInvite(input: {
   const role = await prisma.role.findFirst({ where: { code: roleCode, isActive: true } });
   if (!role) {
     return { ok: false as const, error: "Vai trò không hợp lệ hoặc đã tắt." };
+  }
+
+  if (role.code === ROLE_CODES.admin && !email) {
+    return { ok: false as const, error: "Lời mời admin phải gắn email." };
   }
 
   if (email) {
@@ -126,7 +124,7 @@ export async function loadUsableInviteByToken(token: string) {
   if (!isInviteTokenShape(token)) return null;
   const invite = await prisma.shopInvite.findUnique({
     where: { tokenHash: hashShopInviteToken(token) },
-    include: { shop: { select: { id: true, name: true, setupCompletedAt: true } } },
+    include: { shop: { select: { id: true, name: true, setupCompletedAt: true, suspendedAt: true } } },
   });
   if (!invite || !isInviteUsable(invite)) return null;
   return invite;
@@ -157,6 +155,9 @@ export async function acceptShopInvite(input: {
   }
   if (!inviteEmailMatches(invite.email, email)) {
     return { ok: false as const, error: "Email không khớp lời mời." };
+  }
+  if (invite.shop.suspendedAt) {
+    return { ok: false as const, error: "Cửa hàng đang bị tạm khóa." };
   }
   if (!invite.shop.setupCompletedAt) {
     return { ok: false as const, error: "Chủ shop chưa hoàn tất cấu hình cửa hàng." };

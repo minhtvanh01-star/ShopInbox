@@ -22,6 +22,7 @@ import { LAYOUT_CLASS } from "@/lib/ui-layout";
 import type { Channel, ChannelStatus } from "@/lib/types";
 import type { MetaPagePickerOption } from "@/lib/oauth-types";
 import { OAUTH_ERROR_MESSAGES } from "@/lib/oauth-flash";
+import { WebWidgetCheckControls } from "./WebWidgetCheckControls";
 
 export type ChannelAccountView = {
   id: string;
@@ -40,6 +41,8 @@ export type ChannelAccountView = {
   connectedAt?: string | null;
   lastWebhookAt?: string | null;
   hasOAuthToken?: boolean;
+  widgetKey?: string | null;
+  widgetSnippet?: string | null;
 };
 
 type AddConnectionModalProps = {
@@ -409,6 +412,24 @@ export function AddConnectionModal({
                 <span className="mt-4 rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-200">
                   {PLATFORM_AVAILABILITY_LABEL[selected.availability] || "Chưa mở"}
                 </span>
+                {selected.id === "shopify" ? (
+                  <p className="mt-4 max-w-sm text-xs leading-5 text-slate-500">
+                    Chat trên storefront Shopify: mở <span className="font-medium">Chat website</span>,
+                    lưu domain cửa hàng, dán snippet vào theme. Shopify Inbox native chưa mở — không
+                    có OAuth giả.
+                  </p>
+                ) : null}
+                {selected.id === "whatsapp" ? (
+                  <p className="mt-4 max-w-sm text-xs leading-5 text-slate-500">
+                    WhatsApp Cloud API dùng cùng app Meta với Facebook/Instagram. Mở sau khi app Live
+                    và Business Verification xong — chưa có nút kết nối.
+                  </p>
+                ) : null}
+                {selected.id === "tiktok" ? (
+                  <p className="mt-4 max-w-sm text-xs leading-5 text-slate-500">
+                    TikTok Messaging chỉ khi có quyền đối tác API. Giữ Sắp có, không làm OAuth giả.
+                  </p>
+                ) : null}
               </div>
             ) : (
               <div className="mx-auto max-w-xl">
@@ -453,9 +474,13 @@ export function AddConnectionModal({
                         {account.displayName ?? account.name}
                       </p>
                       <p className="text-xs text-slate-500">
-                        {account.hasOAuthToken
-                          ? "Đã lưu token OAuth trên server"
-                          : "Chưa kết nối OAuth"}
+                        {account.channel === "web"
+                          ? account.status === "ready"
+                            ? "Widget key đã tạo — dán snippet vào website"
+                            : "Điền domain website để bật widget"
+                          : account.hasOAuthToken
+                            ? "Đã lưu token OAuth trên server"
+                            : "Chưa kết nối OAuth"}
                       </p>
                       {account.connectedAt ? (
                         <p className="mt-1 text-xs text-slate-400">
@@ -474,7 +499,26 @@ export function AddConnectionModal({
                   </div>
                 ) : null}
 
-                {account?.status === "ready" ? (
+                {account?.status === "ready" && account.channel === "web" && account.widgetSnippet ? (
+                  <div className="mb-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
+                    <p className="section-label mb-3">Snippet widget</p>
+                    <div className="flex items-start gap-2 rounded-lg bg-white px-2 py-2 ring-1 ring-border">
+                      <code className="min-w-0 flex-1 break-all font-mono text-[11px] text-slate-700">
+                        {account.widgetSnippet}
+                      </code>
+                      <CopyButton value={account.widgetSnippet} />
+                    </div>
+                    {account.lastWebhookAt ? (
+                      <p className="mt-3 text-xs text-emerald-600">
+                        Tin widget gần nhất: {formatDateTime(account.lastWebhookAt)}
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-xs text-amber-700">
+                        Dán snippet trước thẻ đóng body trên đúng domain đã lưu, rồi nhắn thử.
+                      </p>
+                    )}
+                  </div>
+                ) : account?.status === "ready" && isOAuthPlatform ? (
                   <div className="mb-4 rounded-xl border border-border bg-surface-muted/60 p-4">
                     <p className="section-label mb-3">Tiến độ thiết lập</p>
                     <SetupChecklist
@@ -684,7 +728,9 @@ export function AddConnectionModal({
                       </div>
                     ) : null}
 
-                    {canConnect && account?.status === "ready" && account.hasOAuthToken ? (
+                    {canConnect &&
+                    account?.status === "ready" &&
+                    (account.hasOAuthToken || account.channel === "web") ? (
                       <button
                         type="button"
                         onClick={handleDisconnect}
@@ -695,7 +741,7 @@ export function AddConnectionModal({
                       </button>
                     ) : null}
 
-                    {account ? (
+                    {account && isOAuthPlatform ? (
                       <button
                         type="button"
                         onClick={() => setShowAdvanced((value) => !value)}
@@ -707,35 +753,47 @@ export function AddConnectionModal({
                   </div>
                 ) : null}
 
-                {account && (showAdvanced || !isOAuthPlatform) && selected.fields.length > 0 ? (
+                {selected.fields.length > 0 &&
+                selected.channel &&
+                (selected.channel === "web" || (account && (showAdvanced || !isOAuthPlatform))) ? (
                   <form action={saveAction} className="mt-4 space-y-4">
-                    <input type="hidden" name="channel" value={account.channel} />
+                    <input type="hidden" name="channel" value={account?.channel ?? selected.channel} />
 
                     {isOAuthPlatform ? (
                       <p className="text-xs text-slate-500">
                         Chỉ dùng khi dev local không có OAuth app — không khuyến nghị production.
                       </p>
+                    ) : selected.channel === "web" ? (
+                      <ol className="list-decimal space-y-1 pl-4 text-xs leading-5 text-slate-500">
+                        <li>Dán link website (đúng domain sẽ gắn chat).</li>
+                        <li>Bấm Kiểm tra website — xem HTML đã có widget / chat khác chưa.</li>
+                        <li>Lưu &amp; kết nối để lấy snippet, dán trước thẻ đóng body.</li>
+                        <li>Kiểm tra lại, hoặc Thử chat tại đây / Inbox kênh Web.</li>
+                      </ol>
                     ) : null}
 
                     {selected.fields.map((field) => {
+                      const formChannel = account?.channel ?? selected.channel;
                       const isSecret = field.key === "appSecret" || field.key === "webhookSecret";
-                      const hasSecret =
+                      const hasSecret = Boolean(
                         isSecret &&
-                        secretFieldHasValue(account, field.key as "appSecret" | "webhookSecret");
+                          account &&
+                          secretFieldHasValue(account, field.key as "appSecret" | "webhookSecret"),
+                      );
                       const existingNonSecret = isSecret
                         ? ""
-                        : ((account[field.key as "appId" | "pageId" | "oaId"] as
+                        : ((account?.[field.key as "appId" | "pageId" | "oaId"] as
                             | string
                             | null
                             | undefined) ?? "");
                       return (
                         <div key={field.key}>
-                          <label htmlFor={`${account.channel}-${field.key}`} className="label">
+                          <label htmlFor={`${formChannel}-${field.key}`} className="label">
                             {field.label}
                             {field.required ? " *" : ""}
                           </label>
                           <input
-                            id={`${account.channel}-${field.key}`}
+                            id={`${formChannel}-${field.key}`}
                             name={field.key}
                             type={isSecret ? "password" : "text"}
                             autoComplete="off"
@@ -757,17 +815,30 @@ export function AddConnectionModal({
                       );
                     })}
 
+                    {selected.channel === "web" ? (
+                      <WebWidgetCheckControls
+                        urlInputId={`${account?.channel ?? selected.channel}-pageId`}
+                        fallbackUrl={account?.pageId}
+                        canConnect={canConnect}
+                        ready={account?.status === "ready"}
+                      />
+                    ) : null}
+
                     <div>
-                      <label htmlFor={`${account.channel}-note`} className="label">
+                      <label htmlFor={`${account?.channel ?? selected.channel}-note`} className="label">
                         Ghi chú trạng thái
                       </label>
                       <textarea
-                        id={`${account.channel}-note`}
+                        id={`${account?.channel ?? selected.channel}-note`}
                         name="note"
                         rows={2}
-                        defaultValue={account.note}
+                        defaultValue={account?.note ?? ""}
                         disabled={!canConnect}
-                        placeholder="VD: Đã tạo app Meta, chờ duyệt quyền pages_messaging"
+                        placeholder={
+                          selected.channel === "web"
+                            ? "VD: Widget gắn footer cuahang.vn"
+                            : "VD: Đã tạo app Meta, chờ duyệt quyền pages_messaging"
+                        }
                         className="textarea-field disabled:bg-surface-muted"
                       />
                     </div>
@@ -781,7 +852,11 @@ export function AddConnectionModal({
 
                     <div className="flex flex-wrap items-center gap-3 pt-2">
                       <button type="submit" disabled={!canConnect || savePending} className="btn-secondary">
-                        {savePending ? "Đang lưu..." : "Lưu cấu hình thủ công"}
+                        {savePending
+                          ? "Đang lưu..."
+                          : selected.channel === "web"
+                            ? "Lưu & kết nối"
+                            : "Lưu cấu hình thủ công"}
                       </button>
                       <button type="button" onClick={onClose} className="btn-ghost">
                         Đóng

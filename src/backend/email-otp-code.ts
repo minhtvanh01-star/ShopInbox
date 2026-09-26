@@ -1,4 +1,5 @@
 import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
+import { requireSessionSecret } from "@/backend/app-secret";
 
 export const EMAIL_OTP_PURPOSE_REGISTER = "register";
 export const EMAIL_OTP_PURPOSE_PASSWORD_RESET = "password_reset";
@@ -23,14 +24,7 @@ export function generateEmailOtpCode() {
 }
 
 function otpHmacKey() {
-  const secret = process.env.SESSION_SECRET?.trim();
-  if (!secret) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Thiếu SESSION_SECRET để hash OTP.");
-    }
-    return "shopinbox-otp-dev-key";
-  }
-  return secret;
+  return requireSessionSecret();
 }
 
 export function hashEmailOtpCode(code: string, context?: { purpose?: string; email?: string }) {

@@ -90,7 +90,7 @@ export async function setShopSuspended(shopId: string, suspended: boolean) {
 export async function setStaffSuperAdmin(staffId: string, next: boolean, actorStaffId: string) {
   const target = await prisma.staff.findUnique({
     where: { id: staffId },
-    select: { id: true, isSuperAdmin: true, email: true, isActive: true },
+    select: { id: true, isSuperAdmin: true, email: true, isActive: true, shopId: true },
   });
   if (!target) return { ok: false as const, error: "Không tìm thấy tài khoản." };
 
@@ -102,23 +102,34 @@ export async function setStaffSuperAdmin(staffId: string, next: boolean, actorSt
     if (target.id === actorStaffId) {
       return { ok: false as const, error: "Không thể tự bỏ quyền Super admin." };
     }
-    const others = await prisma.staff.count({
-      where: { isSuperAdmin: true, isActive: true, id: { not: target.id } },
-    });
-    if (others === 0) {
+    if (target.isSuperAdmin === next) {
+      return { ok: true as const, email: target.email, shopId: target.shopId };
+    }
+    const revoked = await prisma.$executeRaw`
+      UPDATE "staff"
+      SET "isSuperAdmin" = false, "sessionVersion" = "sessionVersion" + 1
+      WHERE id = ${target.id}
+        AND "isSuperAdmin" = true
+        AND EXISTS (
+          SELECT 1 FROM "staff"
+          WHERE "isSuperAdmin" = true AND "isActive" = true AND id <> ${target.id}
+        )
+    `;
+    if (Number(revoked) !== 1) {
       return { ok: false as const, error: "Phải còn ít nhất một Super admin đang hoạt động." };
     }
+    return { ok: true as const, email: target.email, shopId: target.shopId };
   }
 
   if (target.isSuperAdmin === next) {
-    return { ok: true as const, email: target.email };
+    return { ok: true as const, email: target.email, shopId: target.shopId };
   }
 
   await prisma.staff.update({
     where: { id: target.id },
     data: { isSuperAdmin: next, sessionVersion: { increment: 1 } },
   });
-  return { ok: true as const, email: target.email };
+  return { ok: true as const, email: target.email, shopId: target.shopId };
 }
 
 export async function updateShopOps(shopId: string, input: ShopOpsInput) {

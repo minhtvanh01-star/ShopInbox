@@ -24,10 +24,17 @@ describe("app-secret", () => {
     expect(cookieSecureFlag()).toBe(true);
   });
 
-  it("turns off Secure cookies when FORCE_HTTPS=0", () => {
+  it("keeps Secure cookies in production even when FORCE_HTTPS=0", () => {
+    const env = process.env as { NODE_ENV?: string };
+    const previous = env.NODE_ENV;
+    env.NODE_ENV = "production";
     process.env.FORCE_HTTPS = "0";
     delete process.env.COOKIE_SECURE;
-    expect(cookieSecureFlag()).toBe(false);
+    try {
+      expect(cookieSecureFlag()).toBe(true);
+    } finally {
+      env.NODE_ENV = previous;
+    }
   });
 
   it("rejects the .env.example sample secret in production", () => {

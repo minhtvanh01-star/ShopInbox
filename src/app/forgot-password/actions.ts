@@ -145,8 +145,9 @@ export async function resendPasswordResetOtpAction(
 
   if (!challenge) {
     return {
-      error: "Phiên đổi mật khẩu đã hết. Hãy điền lại form.",
-      step: "form",
+      step: "otp",
+      email,
+      message: GENERIC_OTP_SENT,
     };
   }
 

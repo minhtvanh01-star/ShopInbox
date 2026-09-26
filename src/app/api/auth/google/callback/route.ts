@@ -4,6 +4,7 @@ import { resolveGoogleAuthUser } from "@/backend/google-auth";
 import {
   GOOGLE_AUTH_STATE_COOKIE,
   GOOGLE_PKCE_COOKIE,
+  googleAuthCookieOptions,
   verifyGoogleAuthStateToken,
   verifyGooglePkceToken,
 } from "@/backend/google-auth-state";
@@ -63,8 +64,9 @@ function profileRedirect(request: Request, params: Record<string, string>) {
 }
 
 function clearGoogleAuthCookies(response: NextResponse) {
-  response.cookies.delete(GOOGLE_AUTH_STATE_COOKIE);
-  response.cookies.delete(GOOGLE_PKCE_COOKIE);
+  const expired = { ...googleAuthCookieOptions(), maxAge: 0 };
+  response.cookies.set(GOOGLE_AUTH_STATE_COOKIE, "", expired);
+  response.cookies.set(GOOGLE_PKCE_COOKIE, "", expired);
   return response;
 }
 

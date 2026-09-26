@@ -33,6 +33,16 @@ export const PLATFORM_AVAILABILITY_LABEL: Record<PlatformAvailability, string> =
   coming: "Sắp có",
 };
 
+/**
+ * Kênh đối tác chưa có app/duyệt — giữ catalog, không mở OAuth giả.
+ * Theme Shopify dùng widget `web`; Inbox native cần `Channel.shopify` khi có Partner app.
+ */
+export const PARTNER_CHANNEL_READY = {
+  shopifyInbox: false,
+  whatsappCloud: false,
+  tiktokMessaging: false,
+} as const;
+
 export const CONNECT_PLATFORMS: PlatformOption[] = [
   {
     id: "facebook",
@@ -98,22 +108,26 @@ export const CONNECT_PLATFORMS: PlatformOption[] = [
     id: "web",
     channel: "web",
     name: "Chat website",
-    description: "Widget chat trên website — không cần duyệt MXH",
+    description: "Widget trên web riêng hoặc theme Shopify — không phải Shopify Inbox API",
     availability: "available",
     accent: "#0D9488",
     fields: [
       {
         key: "pageId",
-        label: "Domain website",
+        label: "Link website",
         placeholder: "https://cuahang.vn",
         required: true,
       },
-      {
-        key: "webhookSecret",
-        label: "Widget key (tùy chọn)",
-        placeholder: "key-noi-bo-widget",
-      },
     ],
+  },
+  {
+    id: "shopify",
+    name: "Shopify Inbox",
+    description:
+      "Tin nhắn native Shopify — cần app Partner + duyệt. Theme storefront: dùng Chat website.",
+    availability: "coming",
+    accent: "#96BF48",
+    fields: [],
   },
   {
     id: "threads",
@@ -126,7 +140,7 @@ export const CONNECT_PLATFORMS: PlatformOption[] = [
   {
     id: "tiktok",
     name: "TikTok",
-    description: "Chưa mở — cần đối tác Business API",
+    description: "Chưa mở — cần đối tác TikTok Business Messaging. Không có OAuth giả.",
     availability: "coming",
     accent: "#010101",
     fields: [],
@@ -134,7 +148,7 @@ export const CONNECT_PLATFORMS: PlatformOption[] = [
   {
     id: "whatsapp",
     name: "WhatsApp",
-    description: "Beta — qua Meta Cloud API",
+    description: "Cloud API sau khi Meta app Live + Business Verification. Chưa mở kết nối.",
     availability: "beta",
     accent: "#25D366",
     fields: [],

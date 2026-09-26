@@ -148,7 +148,7 @@ export function LoginForm({
         <div>
           <GoogleAuthButton
             href={`/api/auth/google/start?mode=login&next=${encodeURIComponent(nextPath)}`}
-            label="Đăng nhập với Google"
+            label="Tiếp tục với Google"
           />
           <p className="mt-2 text-xs leading-5 text-slate-500">
             Tài khoản tạo bằng Google thì dùng nút này, không nhập mật khẩu.

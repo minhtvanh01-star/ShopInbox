@@ -29,6 +29,9 @@ describe("super admin emails", () => {
     expect(isSuperAdminAllowedPath("/settings/profile")).toBe(true);
     expect(isSuperAdminAllowedPath("/inbox")).toBe(false);
     expect(isSuperAdminAllowedPath("/settings")).toBe(false);
+    expect(isSuperAdminAllowedPath("/api/health")).toBe(true);
+    expect(isSuperAdminAllowedPath("/api/uploads/shop1/a.jpg")).toBe(true);
+    expect(isSuperAdminAllowedPath("/api/connect/meta/start")).toBe(false);
   });
 
   it("bootstraps SUPER_ADMIN_EMAIL only when no super admin exists", () => {

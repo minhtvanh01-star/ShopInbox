@@ -41,11 +41,27 @@ import {
   subscribeMetaPageWebhook,
 } from "@/backend/meta-oauth";
 import { ingestRecentMetaMessages } from "@/backend/message-sync";
-import { markChannelConnecting, disconnectChannel, syncConnectedMetaInbox, saveOAuthConnection } from "@/backend/channel-connect";
+import {
+  markChannelConnecting,
+  disconnectChannel,
+  ensureChannelAccount,
+  syncConnectedMetaInbox,
+  saveOAuthConnection,
+} from "@/backend/channel-connect";
 
 describe("markChannelConnecting", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("leaves a ready channel ready so a CSRF GET cannot drop inbound", async () => {
+    vi.mocked(prisma.channelAccount.findUnique).mockResolvedValue({
+      id: "ch-facebook",
+      status: "ready",
+    } as never);
+
+    await expect(markChannelConnecting("shop1", "facebook")).resolves.toBe("ch-facebook");
+    expect(prisma.channelAccount.update).not.toHaveBeenCalled();
   });
 
   it("updates existing channel account to connecting", async () => {
@@ -105,6 +121,45 @@ describe("disconnectChannel", () => {
       }),
     });
     expect(prisma.channelAccount.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the web widget key on disconnect", async () => {
+    vi.mocked(prisma.channelAccount.update).mockResolvedValue({} as never);
+
+    await disconnectChannel("shop1", "web");
+
+    expect(prisma.channelAccount.update).toHaveBeenCalledWith({
+      where: { shopId_channel: { shopId: "shop1", channel: "web" } },
+      data: expect.objectContaining({
+        status: "disconnected",
+        webhookSecret: null,
+      }),
+    });
+  });
+});
+
+describe("ensureChannelAccount", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("creates a disconnected web draft when missing", async () => {
+    vi.mocked(prisma.channelAccount.findUnique).mockResolvedValue(null);
+    vi.mocked(prisma.channelAccount.create).mockResolvedValue({
+      id: "ch-web-new",
+      channel: "web",
+    } as never);
+
+    await ensureChannelAccount("shop1", "web");
+
+    expect(prisma.channelAccount.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        shopId: "shop1",
+        channel: "web",
+        name: "Chat website",
+        status: "disconnected",
+      }),
+    });
   });
 });
 

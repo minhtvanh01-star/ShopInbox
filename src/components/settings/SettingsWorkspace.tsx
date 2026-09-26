@@ -10,6 +10,7 @@ import {
   AddConnectionModal,
   type ChannelAccountView,
 } from "./AddConnectionModal";
+import { WebWidgetCheckControls } from "./WebWidgetCheckControls";
 import { QuickReplyManager } from "./QuickReplyManager";
 import { AutoReplyManager, type AutoReplyRuleView } from "./AutoReplyManager";
 import {
@@ -17,7 +18,11 @@ import {
   type ChecklistTemplateView,
 } from "./OrderChecklistManager";
 import { ShopPolicyForm } from "./ShopPolicyForm";
-import { disconnectChannelAction, syncMetaChannelAction } from "@/app/(app)/settings/actions";
+import {
+  disconnectChannelAction,
+  rotateWebWidgetKeyAction,
+  syncMetaChannelAction,
+} from "@/app/(app)/settings/actions";
 import type { PendingMetaPages } from "@/lib/oauth-types";
 import { formatOAuthFlashError, formatOAuthFlashSuccess } from "@/lib/oauth-flash";
 import type { QuickReply } from "@/lib/types";
@@ -148,6 +153,7 @@ export function SettingsWorkspace({
   );
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [syncing, setSyncing] = useState<string | null>(null);
+  const [rotatingWidget, setRotatingWidget] = useState(false);
   const [syncFlash, setSyncFlash] = useState<{ channel: string; ok: boolean; text: string } | null>(
     null,
   );
@@ -186,7 +192,9 @@ export function SettingsWorkspace({
     const confirmed = window.confirm(
       isCancelOAuth
         ? "Hủy phiên OAuth đang chờ? Bạn có thể kết nối lại sau."
-        : "Ngắt kết nối kênh này? Token OAuth sẽ bị xóa. Hội thoại kênh này sẽ ẩn khỏi Inbox đến khi nối lại.",
+        : channel === "web"
+          ? "Ngắt kênh web? Widget trên website sẽ ngừng nhận tin. Hội thoại web ẩn khỏi Inbox đến khi nối lại."
+          : "Ngắt kết nối kênh này? Token OAuth sẽ bị xóa. Hội thoại kênh này sẽ ẩn khỏi Inbox đến khi nối lại.",
     );
     if (!confirmed) return;
 
@@ -214,13 +222,30 @@ export function SettingsWorkspace({
     router.refresh();
   }
 
+  async function handleRotateWidget() {
+    if (!canConnect || rotatingWidget) return;
+    const confirmed = window.confirm(
+      "Tạo widget key mới? Snippet cũ trên website sẽ ngừng nhận tin cho đến khi bạn dán lại.",
+    );
+    if (!confirmed) return;
+    setRotatingWidget(true);
+    const result = await rotateWebWidgetKeyAction();
+    setRotatingWidget(false);
+    setSyncFlash({
+      channel: "web",
+      ok: Boolean(result.success),
+      text: result.success ?? result.error ?? "Không đổi được widget key.",
+    });
+    router.refresh();
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="page-header flex shrink-0 flex-wrap items-start justify-between gap-4 bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
         <div>
           <h1 className="page-title">Cài đặt kênh</h1>
           <p className="page-subtitle">
-            Kết nối Facebook, Instagram, Zalo OA qua OAuth — tin nhắn đồng bộ vào Inbox.
+            Kết nối Facebook, Instagram, Zalo OA qua OAuth, hoặc gắn widget chat lên website.
           </p>
           {channels.length > 0 ? (
             <p className="mt-2 text-xs font-medium text-teal-800">
@@ -422,7 +447,39 @@ export function SettingsWorkspace({
                       </p>
                     ) : null}
 
-                    {channel.lastWebhookAt ? (
+                    {channel.channel === "web" && channel.status === "ready" && channel.widgetSnippet ? (
+                      <div className="mt-3 space-y-2 rounded-xl border border-teal-200/80 bg-white px-3 py-2.5">
+                        <CopyRow
+                          title="Snippet gắn website"
+                          hint="Dán trước thẻ đóng body. Trả lời khách trong Inbox — widget tự lấy tin shop."
+                          value={channel.widgetSnippet}
+                        />
+                        {channel.lastWebhookAt ? (
+                          <p className="text-xs font-medium text-emerald-600">
+                            Tin widget gần nhất: {formatDateTime(channel.lastWebhookAt)}
+                          </p>
+                        ) : (
+                          <p className="text-xs leading-5 text-amber-700">
+                            Chưa có tin từ website. Dán snippet rồi nhắn thử từ đúng domain đã lưu.
+                          </p>
+                        )}
+                        <WebWidgetCheckControls
+                          fallbackUrl={channel.pageId}
+                          canConnect={canConnect}
+                          ready
+                        />
+                        {canConnect ? (
+                          <button
+                            type="button"
+                            onClick={() => handleRotateWidget()}
+                            disabled={rotatingWidget}
+                            className="btn-ghost px-2 py-1 text-xs"
+                          >
+                            {rotatingWidget ? "Đang tạo key..." : "Đổi widget key"}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : channel.lastWebhookAt ? (
                       <p className="mt-1 text-xs font-medium text-emerald-600">
                         Webhook gần nhất: {formatDateTime(channel.lastWebhookAt)}
                       </p>
@@ -431,9 +488,7 @@ export function SettingsWorkspace({
                         <p className="text-xs leading-5 text-amber-700">
                           {channel.channel === "zalo"
                             ? "OAuth đã nối. Checklist chỉ xanh khi Zalo POST webhook tin nhắn tới server — dán URL webhook vào Zalo OA Admin rồi nhắn thử vào OA."
-                            : channel.channel === "web"
-                              ? "Kênh web đã sẵn sàng cấu hình domain. Widget chat công khai chưa có — tin nhắn web chưa đồng bộ webhook."
-                              : "OAuth đã nối. Checklist webhook chỉ xanh khi Meta POST event tới server — verify URL trên Meta chưa đủ. App chưa phát hành thì chỉ nhận được sự kiện thử từ dashboard (field messages → Thử nghiệm, chọn đúng Fanpage)."}
+                            : "OAuth đã nối. Checklist webhook chỉ xanh khi Meta POST event tới server — verify URL trên Meta chưa đủ. App chưa phát hành thì chỉ nhận được sự kiện thử từ dashboard (field messages → Thử nghiệm, chọn đúng Fanpage)."}
                         </p>
                         {(channel.channel === "facebook" || channel.channel === "instagram") &&
                         metaWebhookUrl ? (
@@ -495,7 +550,8 @@ export function SettingsWorkspace({
                       ) : null}
                       {canConnect &&
                       (channel.status === "connecting" ||
-                        (channel.status === "ready" && channel.hasOAuthToken)) ? (
+                        (channel.status === "ready" && channel.hasOAuthToken) ||
+                        (channel.status === "ready" && channel.channel === "web")) ? (
                         <button
                           type="button"
                           onClick={() => handleDisconnect(channel.channel)}

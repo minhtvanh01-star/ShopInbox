@@ -147,8 +147,8 @@ export function ImagePickerButton({ disabled, onFile, onReject }: ImagePickerBut
         disabled={disabled}
         onClick={() => inputRef.current?.click()}
         className="icon-btn"
-        aria-label="Gửi ảnh JPEG, PNG, WebP hoặc GIF, tối đa 100MB"
-        title="Gửi ảnh (JPEG, PNG, WebP, GIF — tối đa 100MB)"
+        aria-label="Gửi ảnh JPEG, PNG, WebP hoặc GIF, tối đa 10MB"
+        title="Gửi ảnh (JPEG, PNG, WebP, GIF — tối đa 10MB)"
       >
         🖼️
       </button>

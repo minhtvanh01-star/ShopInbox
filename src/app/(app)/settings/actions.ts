@@ -6,10 +6,15 @@ import { writeAudit } from "@/backend/audit";
 import { hasPermission, requirePermission } from "@/backend/rbac";
 import { getSession } from "@/backend/session";
 import {
+  assertExternalAccountFree,
   disconnectChannel,
+  ensureChannelAccount,
   saveOAuthConnection,
   syncConnectedMetaInbox,
 } from "@/backend/channel-connect";
+import { rotateWebWidgetKey } from "@/backend/web-widget";
+import { checkWebsiteWidgetInstall } from "@/backend/website-check";
+import { canonicalWebsitePageId, createWebWidgetKey, normalizeWebsiteHost } from "@/lib/web-widget";
 import { pickMetaPageForChannel } from "@/backend/meta-oauth";
 import {
   OAUTH_PAGES_COOKIE,
@@ -134,7 +139,7 @@ export async function saveChannelCredentialsAction(
     return { error: "Kênh không hợp lệ" };
   }
 
-  const account = await prisma.channelAccount.findUnique({
+  let account = await prisma.channelAccount.findUnique({
     where: {
       shopId_channel: {
         shopId: session.shopId,
@@ -144,7 +149,10 @@ export async function saveChannelCredentialsAction(
   });
 
   if (!account) {
-    return { error: "Không tìm thấy kênh trong shop" };
+    if (channel !== "web") {
+      return { error: "Không tìm thấy kênh trong shop" };
+    }
+    account = await ensureChannelAccount(session.shopId, "web");
   }
 
   const note = pickField(formData, "note") ?? account.note;
@@ -164,17 +172,47 @@ export async function saveChannelCredentialsAction(
     displayName: account.displayName,
   };
 
+  if (channel === "web") {
+    const rawDomain = pageId ?? account.pageId;
+    const canonical = canonicalWebsitePageId(rawDomain);
+    if (rawDomain && !canonical) {
+      return { error: "Domain website không hợp lệ." };
+    }
+    next.pageId = canonical;
+    next.displayName = normalizeWebsiteHost(canonical) ?? account.displayName;
+  }
+
   const ready = channelHasCredentials(channel as Channel, next);
+  if (channel === "web" && ready && !next.webhookSecret) {
+    next.webhookSecret = createWebWidgetKey();
+  }
+
+  if (ready) {
+    try {
+      await assertExternalAccountFree({
+        shopId: session.shopId,
+        pageId: next.pageId,
+        oaId: next.oaId,
+      });
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Không lưu được thông tin kênh." };
+    }
+  }
 
   await prisma.channelAccount.update({
     where: { id: account.id },
     data: {
-      note,
+      note:
+        channel === "web" && ready && !pickField(formData, "note")
+          ? "Dán snippet widget vào website. Trả lời khách trong Inbox."
+          : note,
       appId: next.appId,
       appSecret: next.appSecret,
       pageId: next.pageId,
       webhookSecret: next.webhookSecret,
       oaId: next.oaId,
+      displayName: channel === "web" ? next.displayName : account.displayName,
+      connectedAt: ready ? (account.connectedAt ?? new Date()) : account.connectedAt,
       status: ready ? "ready" : account.status === "connecting" ? "connecting" : "disconnected",
     },
   });
@@ -191,10 +229,64 @@ export async function saveChannelCredentialsAction(
 
   return {
     success: ready
-      ? "Đã lưu cấu hình. Kênh sẵn sàng (cần webhook để nhận tin nhắn)."
+      ? channel === "web"
+        ? "Đã kết nối. Copy snippet, dán vào website, rồi bấm Kiểm tra website."
+        : "Đã lưu cấu hình. Kênh sẵn sàng (cần webhook để nhận tin nhắn)."
       : channel === "web"
         ? "Đã lưu nháp. Điền domain website để đánh dấu sẵn sàng."
         : "Đã lưu nháp. Nối OAuth (có access token) để kênh sẵn sàng gửi/nhận tin.",
+  };
+}
+
+export type RotateWebWidgetKeyState = {
+  error?: string;
+  success?: string;
+};
+
+export async function rotateWebWidgetKeyAction(): Promise<RotateWebWidgetKeyState> {
+  const session = await requirePermission(PERMISSION_CODES.channelsConnect);
+  const result = await rotateWebWidgetKey(session.shopId);
+  if (!result.ok) {
+    return { error: result.error };
+  }
+
+  revalidatePath("/settings");
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.channelCredentialsSave,
+    entityType: "ChannelAccount",
+    metadata: { channel: "web", rotateWidgetKey: true },
+  });
+  return { success: "Đã tạo widget key mới. Cập nhật snippet trên website." };
+}
+
+export type CheckWebsiteWidgetState = {
+  error?: string;
+  found?: boolean;
+  matchedKey?: boolean;
+  otherChats?: string[];
+  message?: string;
+  checkedUrl?: string;
+};
+
+export async function checkWebsiteWidgetAction(
+  formData: FormData,
+): Promise<CheckWebsiteWidgetState> {
+  const session = await requirePermission(PERMISSION_CODES.channelsConnect);
+  const url = pickField(formData, "url") ?? pickField(formData, "pageId");
+  const result = await checkWebsiteWidgetInstall({
+    shopId: session.shopId,
+    url,
+  });
+  if (!result.ok) {
+    return { error: result.error };
+  }
+  return {
+    found: result.found,
+    matchedKey: result.matchedKey,
+    otherChats: result.otherChats,
+    message: result.message,
+    checkedUrl: result.checkedUrl,
   };
 }
 
