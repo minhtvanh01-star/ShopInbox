@@ -4,6 +4,10 @@ export const GOOGLE_AUTH_ERROR_MESSAGES: Record<string, string> = {
   google_invalid: "Phản hồi Google không hợp lệ.",
   google_state: "Phiên OAuth hết hạn hoặc không khớp — thử lại.",
   google_failed: "Đăng nhập Google thất bại.",
+  google_redirect:
+    "URI chuyển hướng Google không khớp. Trong Console → Credentials → Authorized redirect URIs phải có đúng https://<domain>/api/auth/google/callback. Trên VPS đặt GOOGLE_REDIRECT_URI giống vậy rồi restart (không cần rebuild).",
+  google_client: "Client ID hoặc Client secret trên server không khớp Google Console.",
+  google_grant: "Mã Google hết hạn hoặc không khớp. Bấm lại Tiếp tục với Google.",
   google_email_unverified: "Email Google chưa được xác minh. Dùng tài khoản Google đã xác thực email.",
   google_email_linked_other: "Email đã liên kết tài khoản Google khác.",
   google_already_linked: "Tài khoản đã liên kết Google.",

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   assertGoogleIdentitiesMatch,
   buildGoogleOAuthUrl,
+  classifyGoogleOAuthFailure,
   createCodeChallenge,
   generateCodeVerifier,
   googleUserFromIdTokenPayload,
@@ -18,6 +19,18 @@ describe("PKCE", () => {
     const verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
     const challenge = await createCodeChallenge(verifier);
     expect(challenge).toBe("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+  });
+});
+
+describe("classifyGoogleOAuthFailure", () => {
+  it("maps token-exchange errors to specific login codes", () => {
+    expect(classifyGoogleOAuthFailure("Google token exchange failed: redirect_uri_mismatch")).toBe(
+      "google_redirect",
+    );
+    expect(classifyGoogleOAuthFailure("invalid_client")).toBe("google_client");
+    expect(classifyGoogleOAuthFailure("invalid_grant")).toBe("google_grant");
+    expect(classifyGoogleOAuthFailure("Google id_token nonce không khớp")).toBe("google_id_token");
+    expect(classifyGoogleOAuthFailure("network down")).toBe("google_failed");
   });
 });
 

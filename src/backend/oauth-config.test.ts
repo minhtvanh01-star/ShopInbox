@@ -134,6 +134,19 @@ describe("resolveOAuthRedirectUri", () => {
     ).toBe("https://custom.example/api/auth/google/callback");
   });
 
+  it("prefers APP_URL when NEXT_PUBLIC_APP_URL is still localhost", () => {
+    stashEnv(["NEXT_PUBLIC_APP_URL", "APP_URL"]);
+    process.env.NEXT_PUBLIC_APP_URL = "http://localhost:3000";
+    process.env.APP_URL = "https://shopinbox.n2.tinhgon.xyz";
+    expect(getPublicAppUrl()).toBe("https://shopinbox.n2.tinhgon.xyz");
+    expect(
+      resolveOAuthRedirectUri(
+        "http://localhost:3000/api/auth/google/callback",
+        "/api/auth/google/callback",
+      ),
+    ).toBe("https://shopinbox.n2.tinhgon.xyz/api/auth/google/callback");
+  });
+
   it("normalizes a bare production host into an https origin", () => {
     expect(normalizeAppOrigin("shopinboxn2.linhgunxy.xyz")).toBe(
       "https://shopinboxn2.linhgunxy.xyz",

@@ -111,11 +111,12 @@ export function getZaloOAuthConfig(): ZaloOAuthConfig | null {
 }
 
 export function getPublicAppUrl() {
-  return (
-    normalizeAppOrigin(process.env.NEXT_PUBLIC_APP_URL) ||
-    normalizeAppOrigin(process.env.APP_URL) ||
-    "http://localhost:3000"
-  );
+  const nextPublic = normalizeAppOrigin(process.env.NEXT_PUBLIC_APP_URL);
+  const appUrl = normalizeAppOrigin(process.env.APP_URL);
+  if (nextPublic && !(isLocalhostUrl(nextPublic) && appUrl && !isLocalhostUrl(appUrl))) {
+    return nextPublic;
+  }
+  return appUrl || nextPublic || "http://localhost:3000";
 }
 
 export function getMetaWebhookUrl() {

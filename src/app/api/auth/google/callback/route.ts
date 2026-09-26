@@ -12,6 +12,7 @@ import {
   assertGoogleIdentitiesMatch,
   exchangeGoogleCode,
   fetchGoogleUserInfo,
+  classifyGoogleOAuthFailure,
   getGoogleOAuthConfig,
   verifyGoogleIdToken,
 } from "@/backend/google-oauth";
@@ -350,15 +351,19 @@ export async function GET(request: Request) {
     return clearGoogleAuthCookies(NextResponse.redirect(absoluteAppUrl(request, SHOP_SETUP_PATH)));
   } catch (err) {
     const message = err instanceof Error ? err.message : "google_failed";
+    const codeName = classifyGoogleOAuthFailure(message);
+    console.error("[google-oauth] callback failed", {
+      code: codeName,
+      redirectUri: config.redirectUri,
+      detail: message.slice(0, 200),
+    });
     await writeAudit({
       ...auditMetaFromRequest(request),
       action: AUDIT_ACTIONS.authLoginFail,
       entityType: "Session",
-      metadata: { reason: "google_failed", method: "google", detail: message.slice(0, 200) },
+      metadata: { reason: codeName, method: "google", detail: message.slice(0, 200) },
     });
     const failedMode = statePayload.mode === "register" ? "register" : "login";
-    const codeName =
-      message.includes("id_token") || message.includes("nonce") ? "google_id_token" : "google_failed";
     const url = authPageUrl(request, failedMode === "register" ? "/register" : "/login", {
       auth_error: codeName,
     });

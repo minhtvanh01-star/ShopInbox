@@ -1,4 +1,4 @@
-import { getPublicAppUrl, normalizeAppOrigin } from "@/backend/oauth-config";
+import { getPublicAppUrl } from "@/backend/oauth-config";
 
 function isLocalHost(value: string) {
   return /localhost|127\.0\.0\.1/i.test(value);
@@ -9,18 +9,13 @@ function isLocalHost(value: string) {
  * Không dùng `request.url` thuần — trên Railway thường là `http://localhost:8080`.
  */
 export function getRequestOrigin(request: Request): string {
-  const configured =
-    normalizeAppOrigin(process.env.NEXT_PUBLIC_APP_URL) ||
-    normalizeAppOrigin(process.env.APP_URL);
+  const configured = getPublicAppUrl();
   if (configured && !isLocalHost(configured)) {
     return configured;
   }
 
   if (process.env.NODE_ENV === "production") {
-    if (configured) {
-      return configured;
-    }
-    return getPublicAppUrl();
+    return configured;
   }
 
   const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
