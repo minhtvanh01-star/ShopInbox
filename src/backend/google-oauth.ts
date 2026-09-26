@@ -47,6 +47,21 @@ export function getGoogleOAuthConfig(): GoogleOAuthConfig | null {
   };
 }
 
+export function isLocalGoogleRedirect(redirectUri: string) {
+  return /localhost|127\.0\.0\.1/i.test(redirectUri);
+}
+
+export function classifyGoogleOAuthFailure(message: string) {
+  const text = message.toLowerCase();
+  if (text.includes("id_token") || text.includes("nonce")) return "google_id_token";
+  if (text.includes("redirect_uri")) return "google_redirect";
+  if (text.includes("invalid_client") || text.includes("unauthorized_client")) {
+    return "google_client";
+  }
+  if (text.includes("invalid_grant")) return "google_grant";
+  return "google_failed";
+}
+
 function base64UrlEncode(bytes: Uint8Array) {
   return Buffer.from(bytes).toString("base64url");
 }
@@ -99,7 +114,7 @@ export async function exchangeGoogleCode(
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(`Google token exchange failed: ${text.slice(0, 200)}`);
+    throw new Error(`Google token exchange failed (${config.redirectUri}): ${text.slice(0, 200)}`);
   }
 
   const data = (await response.json()) as {

@@ -73,7 +73,8 @@ export async function GET(request: Request) {
     response.cookies.set(GOOGLE_AUTH_STATE_COOKIE, state, cookieOptions);
     response.cookies.set(GOOGLE_PKCE_COOKIE, await createGooglePkceToken(codeVerifier), cookieOptions);
     return response;
-  } catch {
+  } catch (error) {
+    console.error("[google-oauth] start failed", error);
     return NextResponse.redirect(
       authPageUrl(request, fallbackPath, { auth_error: "google_failed" }),
     );

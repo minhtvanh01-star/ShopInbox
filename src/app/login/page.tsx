@@ -1,6 +1,6 @@
 import { LoginForm } from "@/components/auth/LoginForm";
 import { AuthShell } from "@/components/auth/AuthShell";
-import { getGoogleOAuthConfig } from "@/backend/google-oauth";
+import { getGoogleOAuthConfig, isLocalGoogleRedirect } from "@/backend/google-oauth";
 import { safeInternalPath } from "@/backend/safe-path";
 
 type LoginPageProps = {
@@ -16,6 +16,7 @@ type LoginPageProps = {
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const nextPath = safeInternalPath(params.next);
+  const google = getGoogleOAuthConfig();
 
   return (
     <AuthShell
@@ -31,7 +32,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       <LoginForm
         shopName="ShopInbox"
         nextPath={nextPath}
-        googleOAuthConfigured={Boolean(getGoogleOAuthConfig())}
+        googleOAuthConfigured={Boolean(google)}
+        googleLocalRedirect={Boolean(
+          google && process.env.NODE_ENV === "production" && isLocalGoogleRedirect(google.redirectUri),
+        )}
         authError={params.auth_error}
         authSuccess={params.auth_success}
         resetSuccess={params.reset === "1"}
