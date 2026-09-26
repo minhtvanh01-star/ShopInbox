@@ -30,6 +30,16 @@ export const EXTRA_STAFF = [
   },
 ];
 
+/** Tài khoản console nền tảng — không dùng Inbox shop. */
+export const PLATFORM_SUPER_ADMIN = {
+  shopId: "platform",
+  shopName: "ShopInbox",
+  staffId: "staff-super",
+  name: "Điều hành nền tảng",
+  email: "super@shopinbox.vn",
+  password: "Super@123",
+};
+
 
 export const channelAccounts: ChannelAccount[] = [
   {

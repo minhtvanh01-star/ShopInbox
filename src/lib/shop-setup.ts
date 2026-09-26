@@ -3,7 +3,10 @@ import { isPlatformAdminPath, isSuperAdminSession, SUPER_ADMIN_HOME } from "@/li
 export const SHOP_SETUP_PATH = "/setup";
 export const PROFILE_ONBOARD_PATH = "/register/profile";
 
-export function isShopSetupPending(session: { shopSetupComplete?: boolean } | null | undefined) {
+export function isShopSetupPending(
+  session: { shopSetupComplete?: boolean; isSuperAdmin?: boolean } | null | undefined,
+) {
+  if (isSuperAdminSession(session)) return false;
   return session?.shopSetupComplete === false;
 }
 
