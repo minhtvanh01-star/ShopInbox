@@ -255,3 +255,65 @@ export async function resetStaffPasswordAction(
   revalidatePath("/staff");
   return { success: `Đã đặt mật khẩu mới cho ${target.email}.` };
 }
+
+export type InviteActionState = {
+  error?: string;
+  success?: string;
+  inviteUrl?: string;
+};
+
+export async function createStaffInviteAction(
+  _prev: InviteActionState,
+  formData: FormData,
+): Promise<InviteActionState> {
+  const session = await requirePermission(PERMISSION_CODES.staffManage);
+  const { createShopInvite } = await import("@/backend/shop-invite");
+  const result = await createShopInvite({
+    shopId: session.shopId,
+    createdByStaffId: session.staffId,
+    roleCode: String(formData.get("role") ?? DEFAULT_ROLE_CODE),
+    email: String(formData.get("email") ?? ""),
+  });
+  if (!result.ok) {
+    return { error: result.error };
+  }
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.staffInviteCreate,
+    entityType: "ShopInvite",
+    entityId: result.invite.id,
+    metadata: { email: result.invite.email, roleCode: result.invite.roleCode },
+  });
+
+  revalidatePath("/staff");
+  return {
+    success: result.invite.email
+      ? `Đã tạo lời mời cho ${result.invite.email}. Gửi link bên dưới.`
+      : "Đã tạo link mời. Gửi cho nhân viên — họ sẽ vào đúng shop này.",
+    inviteUrl: result.url,
+  };
+}
+
+export async function revokeStaffInviteAction(
+  _prev: InviteActionState,
+  formData: FormData,
+): Promise<InviteActionState> {
+  const session = await requirePermission(PERMISSION_CODES.staffManage);
+  const inviteId = String(formData.get("inviteId") ?? "").trim();
+  const { revokeShopInvite } = await import("@/backend/shop-invite");
+  const result = await revokeShopInvite(session.shopId, inviteId);
+  if (!result.ok) {
+    return { error: result.error };
+  }
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.staffInviteRevoke,
+    entityType: "ShopInvite",
+    entityId: inviteId,
+  });
+
+  revalidatePath("/staff");
+  return { success: "Đã thu hồi lời mời." };
+}

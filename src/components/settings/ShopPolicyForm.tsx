@@ -11,8 +11,10 @@ import {
   REPLY_CLAIM_TTL_MAX,
   REPLY_CLAIM_TTL_MIN,
 } from "@/lib/shop-policy";
+import { SHOP_NAME_MAX } from "@/lib/shop-name";
 
 type ShopPolicyFormProps = {
+  shopName: string;
   replyClaimTtlMinutes: number;
   maxUsersPerShop: number;
 };
@@ -20,25 +22,42 @@ type ShopPolicyFormProps = {
 const initial: UpdateShopPolicyState = {};
 
 export function ShopPolicyForm({
+  shopName,
   replyClaimTtlMinutes,
   maxUsersPerShop,
 }: ShopPolicyFormProps) {
   const [state, action, pending] = useActionState(updateShopPolicyAction, initial);
   const claimValue = state.replyClaimTtlMinutes ?? replyClaimTtlMinutes;
   const seatsValue = state.maxUsersPerShop ?? maxUsersPerShop;
+  const nameValue = state.shopName ?? shopName;
 
   return (
     <section className="card-padded">
-      <h2 className="text-sm font-semibold text-slate-900">Cấu hình vận hành</h2>
+      <h2 className="text-sm font-semibold text-slate-900">Cấu hình cửa hàng</h2>
       <p className="mt-1 text-xs text-slate-500">
-        Chỉ Admin mới đổi được. Áp dụng ngay cho Inbox (nhả hội thoại) và giới hạn nhân viên.
+        Chỉ Admin mới đổi được. Tên shop, nhả hội thoại, và giới hạn nhân viên của shop này.
       </p>
 
       <form
         action={action}
-        key={`${claimValue}-${seatsValue}`}
+        key={`${nameValue}-${claimValue}-${seatsValue}`}
         className="mt-4 grid gap-4 sm:grid-cols-2"
       >
+        <div className="field-group sm:col-span-2">
+          <label htmlFor="shopName" className="label">
+            Tên cửa hàng
+          </label>
+          <input
+            id="shopName"
+            name="shopName"
+            type="text"
+            required
+            minLength={2}
+            maxLength={SHOP_NAME_MAX}
+            defaultValue={nameValue}
+            className="input-field-sm"
+          />
+        </div>
         <div className="field-group">
           <label htmlFor="replyClaimTtlMinutes" className="label">
             Thời gian nhả hội thoại (phút)

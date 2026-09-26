@@ -84,6 +84,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         channels={channels}
         canConnect={shop.permissions.includes(PERMISSION_CODES.channelsConnect)}
         canUpdateSettings={shop.permissions.includes(PERMISSION_CODES.settingsUpdate)}
+        shopName={shop.shopName}
         replyClaimTtlMinutes={shop.replyClaimTtlMinutes}
         maxUsersPerShop={shop.maxUsersPerShop}
         quickReplies={quickReplies}

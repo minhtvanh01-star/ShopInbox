@@ -22,6 +22,7 @@ import { absoluteAppUrl } from "@/backend/public-url";
 import { safeInternalPath } from "@/backend/safe-path";
 import { createOpenRegistrationStaff } from "@/backend/open-registration";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
+import { postAuthPath, SHOP_SETUP_PATH } from "@/lib/shop-setup";
 
 function authPageUrl(
   request: Request,
@@ -205,7 +206,14 @@ export async function GET(request: Request) {
     if (resolved.action === "login") {
       const staffRow = await prisma.staff.findUnique({
         where: { id: resolved.staffId },
-        select: { isActive: true, email: true, roleCode: true, shopId: true },
+        select: {
+          isActive: true,
+          isSuperAdmin: true,
+          email: true,
+          roleCode: true,
+          shopId: true,
+          shop: { select: { suspendedAt: true } },
+        },
       });
       if (!staffRow?.isActive) {
         await writeAudit({
@@ -225,6 +233,29 @@ export async function GET(request: Request) {
           metadata: { reason: "inactive", method: "google" },
         });
         return clearGoogleAuthCookies(redirectWithError(request, "inactive", mode, nextPath));
+      }
+
+      const { isSuperAdminEmail } = await import("@/lib/super-admin");
+      if (
+        staffRow.shop.suspendedAt &&
+        !staffRow.isSuperAdmin &&
+        !isSuperAdminEmail(staffRow.email)
+      ) {
+        await writeAudit({
+          ...auditMetaFromRequest(request),
+          actorEmail: googleUser.email,
+          actor: {
+            id: resolved.staffId,
+            email: staffRow.email,
+            role: staffRow.roleCode,
+            shopId: staffRow.shopId,
+          },
+          action: AUDIT_ACTIONS.authLoginFail,
+          entityType: "Session",
+          entityId: resolved.staffId,
+          metadata: { reason: "shop_suspended", method: "google" },
+        });
+        return clearGoogleAuthCookies(redirectWithError(request, "shop_suspended", mode, nextPath));
       }
 
       const updateData: { name?: string; avatarUrl?: string | null } = {};
@@ -253,7 +284,9 @@ export async function GET(request: Request) {
         metadata: { method: "google" },
       });
 
-      return clearGoogleAuthCookies(NextResponse.redirect(absoluteAppUrl(request, nextPath)));
+      return clearGoogleAuthCookies(
+        NextResponse.redirect(absoluteAppUrl(request, postAuthPath(session, nextPath))),
+      );
     }
 
     const created = await createOpenRegistrationStaff({
@@ -292,7 +325,7 @@ export async function GET(request: Request) {
         roleCode: staff.roleCode,
         isActive: staff.isActive,
         pendingApproval: !staff.isActive,
-        bootstrap: Boolean(resolved.createShop),
+        shopCreated: true,
       },
     });
 
@@ -312,10 +345,10 @@ export async function GET(request: Request) {
       action: AUDIT_ACTIONS.authLogin,
       entityType: "Session",
       entityId: staff.id,
-      metadata: { method: "google", bootstrap: Boolean(resolved.createShop) },
+      metadata: { method: "google", shopCreated: true },
     });
 
-    return clearGoogleAuthCookies(NextResponse.redirect(absoluteAppUrl(request, nextPath)));
+    return clearGoogleAuthCookies(NextResponse.redirect(absoluteAppUrl(request, SHOP_SETUP_PATH)));
   } catch (err) {
     const message = err instanceof Error ? err.message : "google_failed";
     await writeAudit({

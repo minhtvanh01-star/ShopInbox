@@ -11,10 +11,12 @@ import {
 } from "@/backend/login-throttle";
 import { prisma } from "@/backend/prisma";
 import { verifyPassword } from "@/backend/password";
-import { toSessionPayload } from "@/backend/session-token";
+import { loadStaffSession } from "@/backend/auth";
 import { clearSessionCookie, getSession, setSessionCookie } from "@/backend/session";
 import { safeInternalPath } from "@/backend/safe-path";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
+import { postAuthPath } from "@/lib/shop-setup";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export type AuthActionState = {
   error?: string;
@@ -109,8 +111,29 @@ export async function loginAction(
     return { error: LOGIN_GENERIC_ERROR };
   }
 
+  const shop = await prisma.shop.findUnique({
+    where: { id: staff.shopId },
+    select: { suspendedAt: true },
+  });
+  if (shop?.suspendedAt && !staff.isSuperAdmin && !isSuperAdminEmail(staff.email)) {
+    await recordLoginFailure(email);
+    await writeAudit({
+      actor: {
+        id: staff.id,
+        email: staff.email,
+        role: staff.roleCode,
+        shopId: staff.shopId,
+      },
+      action: AUDIT_ACTIONS.authLoginFail,
+      entityType: "Session",
+      entityId: staff.id,
+      metadata: { reason: "shop_suspended", method: "password" },
+    });
+    return { error: LOGIN_GENERIC_ERROR };
+  }
+
   await clearLoginFailures(email);
-  const session = toSessionPayload(staff);
+  const session = await loadStaffSession(staff.id);
   await setSessionCookie(session);
   await writeAudit({
     actor: session,
@@ -120,7 +143,7 @@ export async function loginAction(
     metadata: { method: "password" },
   });
 
-  redirect(nextPath);
+  redirect(postAuthPath(session, nextPath));
 }
 
 export async function logoutAction(formData?: FormData) {

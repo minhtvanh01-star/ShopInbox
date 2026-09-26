@@ -9,6 +9,7 @@ import {
   verifySessionToken,
   type SessionPayload,
 } from "@/backend/session-token";
+import { isSuperAdminEmail } from "@/lib/super-admin";
 
 export { SESSION_COOKIE, type SessionPayload };
 export {
@@ -43,7 +44,9 @@ async function hydrateLiveSession(payload: SessionPayload): Promise<SessionPaylo
       name: true,
       roleCode: true,
       isActive: true,
+      isSuperAdmin: true,
       sessionVersion: true,
+      shop: { select: { setupCompletedAt: true, suspendedAt: true } },
     },
   });
 
@@ -51,8 +54,17 @@ async function hydrateLiveSession(payload: SessionPayload): Promise<SessionPaylo
     return null;
   }
 
+  const isSuperAdmin = staff.isSuperAdmin || isSuperAdminEmail(staff.email);
+  if (staff.shop.suspendedAt && !isSuperAdmin) {
+    return null;
+  }
+
   return {
-    ...toSessionPayload(staff),
+    ...toSessionPayload({
+      ...staff,
+      shopSetupComplete: Boolean(staff.shop.setupCompletedAt),
+      isSuperAdmin,
+    }),
     lastActiveAt: payload.lastActiveAt,
   };
 }

@@ -26,8 +26,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       subtitle="Inbox đa kênh cho cửa hàng"
       intro={
         <>
-          Đăng nhập bằng email/mật khẩu hoặc Google đã liên kết. Tài khoản đăng ký mới (email hoặc
-          Google) cần quản trị viên phê duyệt và phân quyền trước khi dùng hệ thống.
+          Đăng nhập bằng email/mật khẩu hoặc Google đã liên kết. Chủ shop mới đăng ký sẽ vào màn
+          cấu hình cửa hàng trước. Nhân viên vào shop bằng link mời, không đăng ký công khai.
         </>
       }
     >

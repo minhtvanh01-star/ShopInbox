@@ -87,6 +87,7 @@ Chi tiết: [dang-nhap-google.md](./dang-nhap-google.md).
 | Đăng nhập Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 | Backup production | Tự chạy khi `NODE_ENV=production`. Volume: `BACKUP_DIR`. Cron: `CRON_SECRET` |
 | Cloudflare | DNS cam + SSL Full (strict) + Bot Fight Mode. `CLOUDFLARE_ONLY=1` khi đã proxy |
+| Super admin | `SUPER_ADMIN_EMAIL` = email tài khoản của bạn. Vào `/admin/shops` |
 
 ## Cloudflare + backup (production)
 

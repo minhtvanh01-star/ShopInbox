@@ -80,8 +80,8 @@ async function syncRbacCatalog() {
 async function lockDemoAccounts() {
   await prisma.shop.upsert({
     where: { id: SHOP.id },
-    create: { id: SHOP.id, name: SHOP.name },
-    update: { name: SHOP.name },
+    create: { id: SHOP.id, name: SHOP.name, setupCompletedAt: new Date() },
+    update: { name: SHOP.name, setupCompletedAt: new Date() },
   });
 
   const adminHash = await hash(SHOP.staffPassword, 12);
@@ -95,6 +95,7 @@ async function lockDemoAccounts() {
       passwordHash: adminHash,
       roleCode: normalizeRoleCode(SHOP.role),
       isActive: true,
+      isSuperAdmin: true,
     },
     update: {
       name: SHOP.staffName,
@@ -102,6 +103,7 @@ async function lockDemoAccounts() {
       passwordHash: adminHash,
       roleCode: normalizeRoleCode(SHOP.role),
       isActive: true,
+      isSuperAdmin: true,
     },
   });
 
@@ -181,6 +183,7 @@ async function main() {
     data: {
       id: SHOP.id,
       name: SHOP.name,
+      setupCompletedAt: new Date(),
     },
   });
 
@@ -192,6 +195,7 @@ async function main() {
       email: SHOP.staffEmail,
       passwordHash: await hash(SHOP.staffPassword, 12),
       roleCode: normalizeRoleCode(SHOP.role),
+      isSuperAdmin: true,
     },
   });
 

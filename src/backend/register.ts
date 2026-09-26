@@ -1,15 +1,14 @@
-import { isActiveForOpenRegistration, roleCodeForNewStaff } from "@/lib/rbac-catalog";
+import { BOOTSTRAP_ROLE_CODE } from "@/lib/rbac-catalog";
 import {
   EMAIL_RE,
   REGISTER_MIN_PASSWORD_LENGTH,
   REGISTER_NAME_MAX,
 } from "@/lib/auth-password";
 
-/** Shop mặc định — khớp DEMO_SHOP_ID / Google signup */
+/** Shop demo / seed — không còn là shop mặc định khi đăng ký mở. */
 export const REGISTER_DEFAULT_SHOP_ID = "shop1";
 export const REGISTER_DEFAULT_SHOP_NAME = "ShopInbox";
 export { REGISTER_MIN_PASSWORD_LENGTH, REGISTER_NAME_MAX };
-export { isActiveForOpenRegistration };
 
 export type RegisterInput = {
   name: string;
@@ -103,46 +102,26 @@ export function validatePasswordResetInput(raw: {
   return { ok: true, data: { email, password } };
 }
 
-export type RegisterPlanInput = {
-  staffCount: number;
-  shopExists: boolean;
-  emailTaken: boolean;
-};
-
 export type RegisterPlan =
   | { ok: false; error: string }
   | {
       ok: true;
       role: string;
-      shopId: string;
-      /** Chỉ user bootstrap (đầu tiên) được active ngay; user sau chờ admin phân quyền. */
       isActive: boolean;
-      createShop?: { id: string; name: string };
     };
 
-/** User đầu tiên tự kích hoạt; mọi đăng ký mở sau đó cần admin bật + phân quyền — xem `isActiveForOpenRegistration`. */
-
 /**
- * Quyết định vai trò / shop khi đăng ký mở.
- * - User đầu tiên → admin (bootstrap); tạo shop mặc định nếu chưa có; active ngay.
- * - User sau → staff vào shop mặc định (`shop1`), inactive đến khi admin phê duyệt.
+ * Đăng ký mở = chủ shop mới (admin, dùng ngay).
+ * Nhân viên vào shop có sẵn bằng lời mời hoặc được admin tạo trên /staff.
  */
-export function planOpenRegistration(input: RegisterPlanInput): RegisterPlan {
+export function planOpenRegistration(input: { emailTaken: boolean }): RegisterPlan {
   if (input.emailTaken) {
     return { ok: false, error: "Email này đã được đăng ký." };
   }
 
-  const role = roleCodeForNewStaff(input.staffCount);
   return {
     ok: true,
-    role,
-    shopId: REGISTER_DEFAULT_SHOP_ID,
-    isActive: isActiveForOpenRegistration(input.staffCount),
-    createShop: input.shopExists
-      ? undefined
-      : {
-          id: REGISTER_DEFAULT_SHOP_ID,
-          name: REGISTER_DEFAULT_SHOP_NAME,
-        },
+    role: BOOTSTRAP_ROLE_CODE,
+    isActive: true,
   };
 }

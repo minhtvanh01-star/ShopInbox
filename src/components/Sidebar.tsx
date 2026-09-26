@@ -18,9 +18,11 @@ type NavItem = {
   icon: () => React.JSX.Element;
   permission?: string;
   anyPermission?: string[];
+  superAdminOnly?: boolean;
 };
 
 const NAV: NavItem[] = [
+  { href: "/admin/shops", label: "Quản lý shop", icon: AdminIcon, superAdminOnly: true },
   { href: "/inbox", label: "Inbox", icon: InboxIcon, permission: PERMISSION_CODES.inboxRead },
   { href: "/orders", label: "Đơn hàng", icon: OrderIcon, permission: PERMISSION_CODES.ordersRead },
   { href: "/products", label: "Sản phẩm", icon: ProductIcon, permission: PERMISSION_CODES.ordersRead },
@@ -43,6 +45,7 @@ type SidebarProps = {
   staffName: string;
   roleLabel: string;
   permissions: string[];
+  isSuperAdmin?: boolean;
   inboxNotices: InboxNoticeSummary;
 };
 
@@ -51,10 +54,12 @@ export function Sidebar({
   staffName,
   roleLabel,
   permissions,
+  isSuperAdmin = false,
   inboxNotices,
 }: SidebarProps) {
   const pathname = usePathname();
   const items = NAV.filter((item) => {
+    if (item.superAdminOnly) return isSuperAdmin;
     if (item.anyPermission?.length) {
       return item.anyPermission.some((code) => permissions.includes(code));
     }
@@ -516,6 +521,17 @@ function GearIcon() {
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <circle cx="12" cy="12" r="3" />
       <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  );
+}
+
+function AdminIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
     </svg>
   );
 }

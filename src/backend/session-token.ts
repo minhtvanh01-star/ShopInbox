@@ -38,6 +38,10 @@ export type SessionPayload = {
   lastActiveAt: number;
   /** Khớp Staff.sessionVersion — đổi mật khẩu / vô hiệu hóa làm JWT cũ hết hạn. */
   sessionVersion?: number;
+  /** false = chủ shop chưa xong /setup. Thiếu field = shop cũ, coi như xong. */
+  shopSetupComplete?: boolean;
+  /** Quyền nền tảng — quản lý mọi shop. */
+  isSuperAdmin?: boolean;
 };
 
 export function toSessionPayload(staff: {
@@ -47,6 +51,8 @@ export function toSessionPayload(staff: {
   name: string;
   roleCode: string;
   sessionVersion?: number;
+  shopSetupComplete?: boolean;
+  isSuperAdmin?: boolean;
 }): Omit<SessionPayload, "lastActiveAt"> {
   return {
     staffId: staff.id,
@@ -55,6 +61,10 @@ export function toSessionPayload(staff: {
     name: staff.name,
     role: normalizeRoleCode(staff.roleCode),
     sessionVersion: sessionVersionOf(staff.sessionVersion),
+    ...(typeof staff.shopSetupComplete === "boolean"
+      ? { shopSetupComplete: staff.shopSetupComplete }
+      : {}),
+    ...(typeof staff.isSuperAdmin === "boolean" ? { isSuperAdmin: staff.isSuperAdmin } : {}),
   };
 }
 
@@ -72,6 +82,10 @@ export async function createSessionToken(
     role,
     lastActiveAt,
     sessionVersion,
+    ...(typeof payload.shopSetupComplete === "boolean"
+      ? { shopSetupComplete: payload.shopSetupComplete }
+      : {}),
+    ...(typeof payload.isSuperAdmin === "boolean" ? { isSuperAdmin: payload.isSuperAdmin } : {}),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -123,6 +137,10 @@ export async function verifySessionToken(
       role: normalizeRoleCode(payload.role),
       lastActiveAt,
       sessionVersion: sessionVersionOf(payload.sessionVersion),
+      ...(typeof payload.shopSetupComplete === "boolean"
+        ? { shopSetupComplete: payload.shopSetupComplete }
+        : {}),
+      ...(typeof payload.isSuperAdmin === "boolean" ? { isSuperAdmin: payload.isSuperAdmin } : {}),
     };
   } catch {
     return null;

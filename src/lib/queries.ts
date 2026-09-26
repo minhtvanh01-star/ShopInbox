@@ -34,6 +34,7 @@ export type ShopContext = {
   permissions: string[];
   replyClaimTtlMinutes: number;
   maxUsersPerShop: number;
+  isSuperAdmin: boolean;
 };
 
 function toIso(value: Date) {
@@ -168,10 +169,11 @@ export async function getShopContext(): Promise<ShopContext> {
     staffName: staff.name,
     staffEmail: staff.email,
     role: staff.roleCode,
-    roleLabel: staff.role?.name ?? roleLabel(staff.roleCode),
+    roleLabel: session.isSuperAdmin ? "Super admin" : staff.role?.name ?? roleLabel(staff.roleCode),
     permissions: await getPermissionCodes(session),
     replyClaimTtlMinutes: policy.replyClaimTtlMinutes,
     maxUsersPerShop: policy.maxUsersPerShop,
+    isSuperAdmin: Boolean(session.isSuperAdmin),
   };
 }
 
