@@ -25,6 +25,22 @@ function isLocalhostUrl(value: string) {
   return /localhost|127\.0\.0\.1/i.test(value);
 }
 
+/** Chấp nhận `https://host` hoặc host trần (thiếu scheme) — tránh `new URL` ném lỗi trong middleware. */
+export function normalizeAppOrigin(value: string | undefined | null) {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed) return null;
+  const withScheme = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  try {
+    const url = new URL(withScheme);
+    if (!url.hostname) return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Ưu tiên URL production từ NEXT_PUBLIC_APP_URL khi biến redirect vẫn còn localhost
  * (lỗi thường gặp trên Railway khi copy .env local).
@@ -96,10 +112,10 @@ export function getZaloOAuthConfig(): ZaloOAuthConfig | null {
 
 export function getPublicAppUrl() {
   return (
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    process.env.APP_URL?.trim() ||
+    normalizeAppOrigin(process.env.NEXT_PUBLIC_APP_URL) ||
+    normalizeAppOrigin(process.env.APP_URL) ||
     "http://localhost:3000"
-  ).replace(/\/$/, "");
+  );
 }
 
 export function getMetaWebhookUrl() {

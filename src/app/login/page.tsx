@@ -1,8 +1,6 @@
 import { LoginForm } from "@/components/auth/LoginForm";
 import { AuthShell } from "@/components/auth/AuthShell";
-import { prisma } from "@/backend/prisma";
 import { getGoogleOAuthConfig } from "@/backend/google-oauth";
-import { DEMO_SHOP_ID } from "@/lib/queries";
 import { safeInternalPath } from "@/backend/safe-path";
 
 type LoginPageProps = {
@@ -17,7 +15,6 @@ type LoginPageProps = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
-  const shop = await prisma.shop.findUnique({ where: { id: DEMO_SHOP_ID } });
   const nextPath = safeInternalPath(params.next);
 
   return (
@@ -32,7 +29,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       }
     >
       <LoginForm
-        shopName={shop?.name ?? "ShopInbox"}
+        shopName="ShopInbox"
         nextPath={nextPath}
         googleOAuthConfigured={Boolean(getGoogleOAuthConfig())}
         authError={params.auth_error}

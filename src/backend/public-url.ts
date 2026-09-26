@@ -1,4 +1,4 @@
-import { getPublicAppUrl } from "@/backend/oauth-config";
+import { getPublicAppUrl, normalizeAppOrigin } from "@/backend/oauth-config";
 
 function isLocalHost(value: string) {
   return /localhost|127\.0\.0\.1/i.test(value);
@@ -9,14 +9,16 @@ function isLocalHost(value: string) {
  * Không dùng `request.url` thuần — trên Railway thường là `http://localhost:8080`.
  */
 export function getRequestOrigin(request: Request): string {
-  const configured = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim();
+  const configured =
+    normalizeAppOrigin(process.env.NEXT_PUBLIC_APP_URL) ||
+    normalizeAppOrigin(process.env.APP_URL);
   if (configured && !isLocalHost(configured)) {
-    return configured.replace(/\/$/, "");
+    return configured;
   }
 
   if (process.env.NODE_ENV === "production") {
     if (configured) {
-      return configured.replace(/\/$/, "");
+      return configured;
     }
     return getPublicAppUrl();
   }
@@ -48,5 +50,9 @@ export function getRequestOrigin(request: Request): string {
 /** Absolute URL cho redirect (path nội bộ bắt đầu bằng `/`). */
 export function absoluteAppUrl(request: Request, path: string): URL {
   const normalized = path.startsWith("/") ? path : `/${path}`;
-  return new URL(normalized, `${getRequestOrigin(request)}/`);
+  try {
+    return new URL(normalized, `${getRequestOrigin(request)}/`);
+  } catch {
+    return new URL(normalized, request.url);
+  }
 }

@@ -68,4 +68,30 @@ describe("getRequestOrigin / absoluteAppUrl", () => {
     const request = new Request("http://localhost:8080/inbox");
     expect(getRequestOrigin(request)).toBe("http://localhost:3000");
   });
+
+  it("accepts NEXT_PUBLIC_APP_URL without https:// so /loginpin redirect cannot throw", () => {
+    stash();
+    process.env.NEXT_PUBLIC_APP_URL = "shopinboxn2.linhgunxy.xyz";
+    const request = new Request("http://localhost:8080/loginpin");
+    expect(getRequestOrigin(request)).toBe("https://shopinboxn2.linhgunxy.xyz");
+    expect(absoluteAppUrl(request, "/login").toString()).toBe(
+      "https://shopinboxn2.linhgunxy.xyz/login",
+    );
+  });
+
+  it("falls back when APP_URL is not a valid origin", () => {
+    stash();
+    const env = process.env as { NODE_ENV?: string };
+    const previous = env.NODE_ENV;
+    env.NODE_ENV = "production";
+    process.env.NEXT_PUBLIC_APP_URL = "://bad";
+    delete process.env.APP_URL;
+    try {
+      const request = new Request("http://localhost:8080/loginpin");
+      expect(() => absoluteAppUrl(request, "/login")).not.toThrow();
+      expect(absoluteAppUrl(request, "/login").pathname).toBe("/login");
+    } finally {
+      env.NODE_ENV = previous;
+    }
+  });
 });
