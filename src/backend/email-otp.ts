@@ -1,6 +1,7 @@
 import { prisma } from "@/backend/prisma";
 import {
   buildPasswordResetOtpEmail,
+  buildProfileVerifyOtpEmail,
   buildRegisterOtpEmail,
   canSendRegisterOtp,
   isEmailConfigured,
@@ -11,6 +12,8 @@ import {
   EMAIL_OTP_LOCKOUT_MS,
   EMAIL_OTP_MAX_ATTEMPTS,
   EMAIL_OTP_PURPOSE_PASSWORD_RESET,
+  EMAIL_OTP_PURPOSE_PROFILE_PASSWORD,
+  EMAIL_OTP_PURPOSE_PROFILE_VERIFY,
   EMAIL_OTP_PURPOSE_REGISTER,
   EMAIL_OTP_RESEND_COOLDOWN_MS,
   EMAIL_OTP_TTL_MS,
@@ -18,8 +21,10 @@ import {
   generateEmailOtpCode,
   hashEmailOtpCode,
   parsePasswordResetOtpPayload,
+  parseProfileOtpPayload,
   parseRegisterOtpPayload,
   type PasswordResetOtpPayload,
+  type ProfileOtpPayload,
   type RegisterOtpPayload,
 } from "@/backend/email-otp-code";
 
@@ -27,14 +32,18 @@ export {
   EMAIL_OTP_CODE_LENGTH,
   EMAIL_OTP_MAX_ATTEMPTS,
   EMAIL_OTP_PURPOSE_PASSWORD_RESET,
+  EMAIL_OTP_PURPOSE_PROFILE_PASSWORD,
+  EMAIL_OTP_PURPOSE_PROFILE_VERIFY,
   EMAIL_OTP_PURPOSE_REGISTER,
   EMAIL_OTP_RESEND_COOLDOWN_MS,
   EMAIL_OTP_TTL_MS,
   generateEmailOtpCode,
   hashEmailOtpCode,
   parsePasswordResetOtpPayload,
+  parseProfileOtpPayload,
   parseRegisterOtpPayload,
   type PasswordResetOtpPayload,
+  type ProfileOtpPayload,
   type RegisterOtpPayload,
 } from "@/backend/email-otp-code";
 
@@ -293,4 +302,143 @@ export async function discardPasswordResetEmailOtp(email: string) {
       purpose: EMAIL_OTP_PURPOSE_PASSWORD_RESET,
     },
   });
+}
+
+async function createProfileEmailOtp(input: {
+  email: string;
+  purpose: typeof EMAIL_OTP_PURPOSE_PROFILE_VERIFY | typeof EMAIL_OTP_PURPOSE_PROFILE_PASSWORD;
+  payload: ProfileOtpPayload;
+  mail: (code: string) => { subject: string; text: string; html?: string };
+}) {
+  if (!canSendRegisterOtp()) {
+    throw new Error(
+      "Chưa cấu hình gửi email. Điền GMAIL_USER + GMAIL_APP_PASSWORD (hoặc SMTP_*) trong .env rồi restart.",
+    );
+  }
+
+  const email = input.email.trim().toLowerCase();
+  const existing = await prisma.emailOtpChallenge.findFirst({
+    where: { email, purpose: input.purpose },
+    orderBy: { lastSentAt: "desc" },
+  });
+  assertOtpSendAllowed(existing);
+
+  const code = generateEmailOtpCode();
+  const codeHash = hashEmailOtpCode(code, { purpose: input.purpose, email });
+  const payloadJson = JSON.stringify(input.payload);
+  const expiresAt = new Date(Date.now() + EMAIL_OTP_TTL_MS);
+
+  if (isEmailConfigured()) {
+    const mail = input.mail(code);
+    await sendEmail({ to: email, ...mail });
+  }
+
+  if (shouldLogEmailOtpCode()) {
+    console.info(`[email-otp] ${input.purpose} code for ${email}: ${code}`);
+  }
+
+  await prisma.emailOtpChallenge.deleteMany({
+    where: { email, purpose: input.purpose },
+  });
+  await prisma.emailOtpChallenge.create({
+    data: {
+      email,
+      purpose: input.purpose,
+      codeHash,
+      payloadJson,
+      expiresAt,
+    },
+  });
+
+  return { email, expiresAt };
+}
+
+export async function createProfileVerifyEmailOtp(input: { email: string; staffId: string }) {
+  return createProfileEmailOtp({
+    email: input.email,
+    purpose: EMAIL_OTP_PURPOSE_PROFILE_VERIFY,
+    payload: { staffId: input.staffId },
+    mail: buildProfileVerifyOtpEmail,
+  });
+}
+
+export async function createProfilePasswordEmailOtp(input: {
+  email: string;
+  staffId: string;
+  passwordHash: string;
+}) {
+  return createProfileEmailOtp({
+    email: input.email,
+    purpose: EMAIL_OTP_PURPOSE_PROFILE_PASSWORD,
+    payload: { staffId: input.staffId, passwordHash: input.passwordHash },
+    mail: buildPasswordResetOtpEmail,
+  });
+}
+
+export type VerifyProfileOtpResult =
+  | { ok: true; email: string; payload: ProfileOtpPayload; challengeId: string }
+  | { ok: false; error: string };
+
+async function verifyProfileEmailOtp(input: {
+  email: string;
+  code: string;
+  purpose: typeof EMAIL_OTP_PURPOSE_PROFILE_VERIFY | typeof EMAIL_OTP_PURPOSE_PROFILE_PASSWORD;
+}): Promise<VerifyProfileOtpResult> {
+  const email = input.email.trim().toLowerCase();
+  const code = input.code.trim();
+
+  if (!/^\d{6}$/.test(code)) {
+    return { ok: false, error: "Mã xác minh gồm 6 chữ số." };
+  }
+
+  const challenge = await prisma.emailOtpChallenge.findFirst({
+    where: { email, purpose: input.purpose },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (!challenge) {
+    return { ok: false, error: "Chưa có mã xác minh. Hãy gửi lại mã từ hồ sơ." };
+  }
+
+  if (challenge.expiresAt.getTime() < Date.now()) {
+    await prisma.emailOtpChallenge.delete({ where: { id: challenge.id } });
+    return { ok: false, error: "Mã đã hết hạn. Hãy yêu cầu mã mới." };
+  }
+
+  if (challenge.attempts >= EMAIL_OTP_MAX_ATTEMPTS) {
+    return { ok: false, error: "Nhập sai quá nhiều lần. Vui lòng đợi rồi gửi lại mã." };
+  }
+
+  const expected = hashEmailOtpCode(code, { purpose: input.purpose, email });
+  const ok = emailOtpCodesEqual(challenge.codeHash, expected);
+  if (!ok) {
+    const claimed = await prisma.emailOtpChallenge.updateMany({
+      where: { id: challenge.id, attempts: { lt: EMAIL_OTP_MAX_ATTEMPTS } },
+      data: { attempts: { increment: 1 } },
+    });
+    if (claimed.count === 0) {
+      return { ok: false, error: "Nhập sai quá nhiều lần. Vui lòng đợi rồi gửi lại mã." };
+    }
+    return { ok: false, error: "Mã xác minh không đúng." };
+  }
+
+  const payload = parseProfileOtpPayload(challenge.payloadJson);
+  if (!payload) {
+    await prisma.emailOtpChallenge.delete({ where: { id: challenge.id } });
+    return { ok: false, error: "Phiên xác minh không hợp lệ. Hãy thử lại." };
+  }
+
+  return { ok: true, email, payload, challengeId: challenge.id };
+}
+
+export async function verifyProfileVerifyEmailOtp(input: { email: string; code: string }) {
+  return verifyProfileEmailOtp({ ...input, purpose: EMAIL_OTP_PURPOSE_PROFILE_VERIFY });
+}
+
+export async function verifyProfilePasswordEmailOtp(input: { email: string; code: string }) {
+  return verifyProfileEmailOtp({ ...input, purpose: EMAIL_OTP_PURPOSE_PROFILE_PASSWORD });
+}
+
+export async function consumeProfileEmailOtp(challengeId: string) {
+  await prisma.emailOtpChallenge.deleteMany({ where: { id: challengeId } });
 }

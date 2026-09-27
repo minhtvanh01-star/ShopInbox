@@ -3,9 +3,12 @@ import {
   getMetaOAuthConfig,
   getMetaOAuthRedirectUri,
   getPublicAppUrl,
+  getShopifyOAuthConfig,
+  getShopifyWebhookUrl,
   getZaloOAuthConfig,
   isUsableOAuthRedirectUri,
   listMissingMetaOAuthEnvVars,
+  listMissingShopifyOAuthEnvVars,
   listMissingZaloOAuthEnvVars,
   normalizeAppOrigin,
   resolveOAuthRedirectUri,
@@ -19,6 +22,12 @@ const META_KEYS = [
   "NEXT_PUBLIC_APP_URL",
 ] as const;
 const ZALO_KEYS = ["ZALO_APP_ID", "ZALO_APP_SECRET", "ZALO_REDIRECT_URI", "NEXT_PUBLIC_APP_URL"] as const;
+const SHOPIFY_KEYS = [
+  "SHOPIFY_API_KEY",
+  "SHOPIFY_API_SECRET",
+  "SHOPIFY_REDIRECT_URI",
+  "NEXT_PUBLIC_APP_URL",
+] as const;
 
 const saved: Record<string, string | undefined> = {};
 
@@ -40,7 +49,7 @@ function restoreEnv(keys: readonly string[]) {
 
 describe("oauth-config", () => {
   afterEach(() => {
-    restoreEnv([...META_KEYS, ...ZALO_KEYS]);
+    restoreEnv([...META_KEYS, ...ZALO_KEYS, ...SHOPIFY_KEYS]);
   });
 
   it("lists missing Meta env vars and returns null config", () => {
@@ -94,6 +103,25 @@ describe("oauth-config", () => {
 
     expect(getMetaOAuthConfig()?.redirectUri).toBe(
       "https://shopinbox.example.com/api/connect/meta/callback",
+    );
+  });
+
+  it("lists missing Shopify env vars and derives webhook from origin", () => {
+    stashEnv(SHOPIFY_KEYS);
+    delete process.env.SHOPIFY_API_KEY;
+    delete process.env.SHOPIFY_API_SECRET;
+    expect(listMissingShopifyOAuthEnvVars()).toEqual(["SHOPIFY_API_KEY", "SHOPIFY_API_SECRET"]);
+    expect(getShopifyOAuthConfig()).toBeNull();
+
+    process.env.SHOPIFY_API_KEY = "key-1";
+    process.env.SHOPIFY_API_SECRET = "secret-1";
+    delete process.env.SHOPIFY_REDIRECT_URI;
+    process.env.NEXT_PUBLIC_APP_URL = "https://shopinbox.example.com";
+    expect(getShopifyOAuthConfig()?.redirectUri).toBe(
+      "https://shopinbox.example.com/api/connect/shopify/callback",
+    );
+    expect(getShopifyWebhookUrl("https://shopinbox.n2.tinhgon.xyz")).toBe(
+      "https://shopinbox.n2.tinhgon.xyz/api/webhooks/shopify",
     );
   });
 

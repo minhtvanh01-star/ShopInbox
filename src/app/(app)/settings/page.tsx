@@ -16,6 +16,7 @@ type SettingsPageProps = {
     oauth_success?: string;
     oauth_error?: string;
     oauth_message?: string;
+    oauth_warning?: string;
     oauth_pick?: string;
   }>;
 };
@@ -92,6 +93,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
           success: params.oauth_success,
           error: params.oauth_error,
           errorMessage: params.oauth_message,
+          warning: params.oauth_warning,
           pickChannel: params.oauth_pick,
         }}
       />

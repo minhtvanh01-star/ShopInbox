@@ -3,6 +3,8 @@ import { requireSessionSecret } from "@/backend/app-secret";
 
 export const EMAIL_OTP_PURPOSE_REGISTER = "register";
 export const EMAIL_OTP_PURPOSE_PASSWORD_RESET = "password_reset";
+export const EMAIL_OTP_PURPOSE_PROFILE_VERIFY = "profile_verify";
+export const EMAIL_OTP_PURPOSE_PROFILE_PASSWORD = "profile_password";
 export const EMAIL_OTP_TTL_MS = 10 * 60 * 1000;
 export const EMAIL_OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 export const EMAIL_OTP_LOCKOUT_MS = 15 * 60 * 1000;
@@ -16,6 +18,11 @@ export type RegisterOtpPayload = {
 
 export type PasswordResetOtpPayload = {
   passwordHash: string;
+};
+
+export type ProfileOtpPayload = {
+  staffId: string;
+  passwordHash?: string;
 };
 
 export function generateEmailOtpCode() {
@@ -56,6 +63,24 @@ export function parseRegisterOtpPayload(raw: string): RegisterOtpPayload | null 
       data.passwordHash
     ) {
       return { name: data.name.trim(), passwordHash: data.passwordHash };
+    }
+  } catch {
+    // ignore
+  }
+  return null;
+}
+
+export function parseProfileOtpPayload(raw: string): ProfileOtpPayload | null {
+  try {
+    const data = JSON.parse(raw) as Partial<ProfileOtpPayload>;
+    if (typeof data.staffId === "string" && data.staffId.trim()) {
+      return {
+        staffId: data.staffId.trim(),
+        passwordHash:
+          typeof data.passwordHash === "string" && data.passwordHash
+            ? data.passwordHash
+            : undefined,
+      };
     }
   } catch {
     // ignore

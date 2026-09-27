@@ -69,9 +69,9 @@ export async function saveShopImageUpload(input: {
   if (!absolutePath) {
     throw new Error("Shop không hợp lệ để lưu ảnh.");
   }
-  const relativePath = path.join(input.shopId, fileName);
-  await mkdir(path.dirname(absolutePath), { recursive: true });
-  await writeFile(absolutePath, input.bytes);
+  const relativePath = `${input.shopId}/${fileName}`;
+  await mkdir(/* turbopackIgnore: true */ path.dirname(absolutePath), { recursive: true });
+  await writeFile(/* turbopackIgnore: true */ absolutePath, input.bytes);
 
   const safeName = (input.originalName?.trim() || `image.${ext}`).slice(0, 120);
 
@@ -92,7 +92,7 @@ export async function readShopUpload(shopId: string, fileName: string) {
     return null;
   }
   try {
-    const bytes = await readFile(absolutePath);
+    const bytes = await readFile(/* turbopackIgnore: true */ absolutePath);
     const ext = path.extname(fileName).slice(1).toLowerCase();
     const mime =
       ext === "jpg" || ext === "jpeg"

@@ -6,6 +6,7 @@ import {
   type RegisterProfileState,
 } from "@/app/register/profile/actions";
 import { StaffAvatar } from "@/components/staff/StaffAvatar";
+import { maskEmail } from "@/lib/mask-email";
 
 const initial: RegisterProfileState = {};
 
@@ -25,9 +26,9 @@ export function RegisterProfileForm({
   return (
     <form action={action} className="mt-6 space-y-5">
       <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-muted px-4 py-3">
-        <StaffAvatar name={defaultName || email} avatarUrl={avatarUrl} size="md" />
+        <StaffAvatar name={defaultName || maskEmail(email)} avatarUrl={avatarUrl} size="md" />
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-slate-800">{email}</p>
+          <p className="truncate text-sm font-medium text-slate-800">{maskEmail(email)}</p>
           <p className="text-xs text-slate-500">Email lấy từ Google hoặc đăng ký — không đổi ở bước này.</p>
         </div>
       </div>

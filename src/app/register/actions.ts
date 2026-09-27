@@ -18,6 +18,7 @@ import { setSessionCookie } from "@/backend/session";
 import { toSessionPayload } from "@/backend/session-token";
 import { databaseErrorMessage } from "@/lib/database-url";
 import { shouldSkipRegisterOtp } from "@/lib/first-run";
+import { maskEmail } from "@/lib/mask-email";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
 import { postAuthPath, PROFILE_ONBOARD_PATH } from "@/lib/shop-setup";
 
@@ -88,7 +89,7 @@ export async function registerAction(
   return {
     step: "otp",
     email,
-    message: `Đã gửi mã 6 số tới ${email}. Kiểm tra hộp thư (và Spam).`,
+    message: `Đã gửi mã 6 số tới ${maskEmail(email)}. Kiểm tra hộp thư (và Spam).`,
   };
 }
 
@@ -111,6 +112,7 @@ export async function verifyRegisterOtpAction(
     name: verified.payload.name,
     passwordHash: verified.payload.passwordHash,
     method: "password_email_otp",
+    emailVerified: true,
   });
   if (finished.error) {
     await discardRegisterEmailOtp(verified.email);
@@ -125,11 +127,13 @@ async function finishOpenRegistration(input: {
   name: string;
   passwordHash: string;
   method: string;
+  emailVerified?: boolean;
 }): Promise<RegisterActionState> {
   const created = await createOpenRegistrationStaff({
     email: input.email,
     name: input.name,
     passwordHash: input.passwordHash,
+    emailVerified: input.emailVerified,
   });
 
   if (!created.ok) {
@@ -216,6 +220,6 @@ export async function resendRegisterOtpAction(
   return {
     step: "otp",
     email,
-    message: `Đã gửi lại mã tới ${email}.`,
+    message: `Đã gửi lại mã tới ${maskEmail(email)}.`,
   };
 }

@@ -28,6 +28,7 @@ export async function createOpenRegistrationStaff(input: {
   passwordHash?: string | null;
   googleId?: string | null;
   avatarUrl?: string | null;
+  emailVerified?: boolean;
 }): Promise<{ ok: true; staff: OpenRegistrationStaff } | { ok: false; error: string }> {
   try {
     return await withOpenRegistrationLock(async (tx) => {
@@ -57,6 +58,7 @@ export async function createOpenRegistrationStaff(input: {
           passwordHash: input.passwordHash ?? null,
           googleId: input.googleId ?? null,
           avatarUrl: input.avatarUrl ?? null,
+          emailVerifiedAt: input.emailVerified ? new Date() : null,
           roleCode: normalizeRoleCode(BOOTSTRAP_ROLE_CODE),
           isActive: true,
         },

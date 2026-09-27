@@ -288,7 +288,12 @@ export async function GET(request: Request) {
         return clearGoogleAuthCookies(redirectWithError(request, "shop_suspended", mode, nextPath));
       }
 
-      const updateData: { name?: string; avatarUrl?: string | null; googleId?: string } = {};
+      const updateData: {
+        name?: string;
+        avatarUrl?: string | null;
+        googleId?: string;
+        emailVerifiedAt?: Date;
+      } = { emailVerifiedAt: new Date() };
       if (resolved.linkGoogleId) {
         updateData.googleId = resolved.linkGoogleId;
       }
@@ -340,6 +345,7 @@ export async function GET(request: Request) {
       name: resolved.name,
       googleId: resolved.googleId,
       avatarUrl: resolved.avatarUrl,
+      emailVerified: true,
     });
     if (!created.ok) {
       return clearGoogleAuthCookies(

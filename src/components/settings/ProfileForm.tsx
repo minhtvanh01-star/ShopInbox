@@ -2,25 +2,32 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import {
-  changePasswordAction,
+  confirmProfilePasswordOtpAction,
+  confirmProfileVerifyOtpAction,
+  requestProfilePasswordOtpAction,
+  requestProfileVerifyOtpAction,
   updateAvatarAction,
   updateProfileAction,
   type ProfileActionState,
+  type ProfileOtpActionState,
 } from "@/app/(app)/settings/profile/actions";
 import { StaffAvatar } from "@/components/staff/StaffAvatar";
 import { GOOGLE_AUTH_ERROR_MESSAGES } from "@/lib/google-auth-errors";
 import { STAFF_AVATAR_MAX_MB } from "@/lib/staff-avatar";
 
 const initialState: ProfileActionState = {};
+const initialOtpState: ProfileOtpActionState = {};
 
 type ProfileFormProps = {
   profile: {
     name: string;
-    email: string;
+    emailMasked: string;
     phone: string;
     avatarUrl: string;
     authMethod: "google" | "email" | "both";
-    canChangePassword: boolean;
+    emailVerified: boolean;
+    hasPassword: boolean;
+    canSendEmailOtp: boolean;
     canLinkGoogle: boolean;
     googleOAuthConfigured: boolean;
   };
@@ -47,12 +54,26 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
     updateAvatarAction,
     initialState,
   );
-  const [passwordState, passwordAction, passwordPending] = useActionState(
-    changePasswordAction,
-    initialState,
+  const [verifyRequestState, verifyRequestAction, verifyRequestPending] = useActionState(
+    requestProfileVerifyOtpAction,
+    initialOtpState,
+  );
+  const [verifyConfirmState, verifyConfirmAction, verifyConfirmPending] = useActionState(
+    confirmProfileVerifyOtpAction,
+    initialOtpState,
+  );
+  const [passwordRequestState, passwordRequestAction, passwordRequestPending] = useActionState(
+    requestProfilePasswordOtpAction,
+    initialOtpState,
+  );
+  const [passwordConfirmState, passwordConfirmAction, passwordConfirmPending] = useActionState(
+    confirmProfilePasswordOtpAction,
+    initialOtpState,
   );
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [verifyStep, setVerifyStep] = useState<"form" | "otp">("form");
+  const [passwordStep, setPasswordStep] = useState<"form" | "otp">("form");
 
   useEffect(() => {
     return () => {
@@ -60,11 +81,39 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
     };
   }, [previewUrl]);
 
+  const [prevVerifyRequest, setPrevVerifyRequest] = useState(verifyRequestState);
+  if (verifyRequestState !== prevVerifyRequest) {
+    setPrevVerifyRequest(verifyRequestState);
+    if (verifyRequestState.step === "otp") setVerifyStep("otp");
+    if (verifyRequestState.success) setVerifyStep("form");
+  }
+
+  const [prevPasswordRequest, setPrevPasswordRequest] = useState(passwordRequestState);
+  if (passwordRequestState !== prevPasswordRequest) {
+    setPrevPasswordRequest(passwordRequestState);
+    if (passwordRequestState.step === "otp") setPasswordStep("otp");
+    if (passwordRequestState.success) setPasswordStep("form");
+  }
+
+  const [prevPasswordConfirm, setPrevPasswordConfirm] = useState(passwordConfirmState);
+  if (passwordConfirmState !== prevPasswordConfirm) {
+    setPrevPasswordConfirm(passwordConfirmState);
+    if (passwordConfirmState.success) setPasswordStep("form");
+    if (passwordConfirmState.step === "form" && passwordConfirmState.error) {
+      setPasswordStep("form");
+    }
+  }
+
   const flashMessage = flash?.success
     ? { type: "success" as const, text: AUTH_ERROR_MESSAGES[flash.success] ?? flash.success }
     : flash?.error
       ? { type: "error" as const, text: AUTH_ERROR_MESSAGES[flash.error] ?? flash.error }
       : null;
+
+  const verifyError = verifyConfirmState.error || verifyRequestState.error;
+  const verifySuccess = verifyConfirmState.success || verifyRequestState.success;
+  const passwordError = passwordConfirmState.error || passwordRequestState.error;
+  const passwordSuccess = passwordConfirmState.success || passwordRequestState.success;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -164,20 +213,12 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
             </div>
 
             <div className="field-group">
-              <label htmlFor="email" className="label mb-0">
-                Email
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                readOnly
-                value={profile.email}
-                className="input-field bg-surface-muted text-slate-500"
-              />
-              {profile.authMethod === "google" || profile.authMethod === "both" ? (
-                <p className="mt-1 text-xs text-slate-400">Email từ Google — không đổi tại đây.</p>
-              ) : null}
+              <span className="label mb-0">Email</span>
+              <p className="input-field bg-surface-muted text-slate-600">{profile.emailMasked}</p>
+              <p className="mt-1 text-xs text-slate-400">
+                Email đã che một phần. Đổi mật khẩu hoặc xác nhận hồ sơ dùng mã OTP gửi tới hộp thư
+                này.
+              </p>
             </div>
 
             <div className="field-group">
@@ -212,6 +253,84 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
         </section>
 
         <div className="space-y-6">
+          <section className="card-padded">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-slate-900">Xác nhận hồ sơ</h2>
+              <span
+                className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
+                  profile.emailVerified
+                    ? "bg-emerald-50 text-emerald-800 ring-emerald-200"
+                    : "bg-amber-50 text-amber-800 ring-amber-200"
+                }`}
+              >
+                {profile.emailVerified ? "Đã xác nhận" : "Chưa xác nhận"}
+              </span>
+            </div>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Nhân viên được mời bằng email cần nhập mã OTP gửi tới {profile.emailMasked} trước khi
+              đổi thông tin nhạy cảm. Tài khoản Google đã xác minh email thì được tính đã xác nhận.
+            </p>
+            {profile.emailVerified ? (
+              <p className="mt-3 text-sm text-emerald-800">Email hồ sơ đã được xác nhận.</p>
+            ) : verifyStep === "otp" ? (
+              <form action={verifyConfirmAction} className="mt-4 space-y-4">
+                <p className="text-sm text-slate-600">
+                  {verifyRequestState.message ?? `Nhập mã 6 số đã gửi tới ${profile.emailMasked}.`}
+                </p>
+                <div className="field-group">
+                  <label htmlFor="verifyCode" className="label mb-0">
+                    Mã xác nhận
+                  </label>
+                  <input
+                    id="verifyCode"
+                    name="code"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    autoComplete="one-time-code"
+                    required
+                    className="input-field tracking-[0.35em] text-center text-lg"
+                    placeholder="000000"
+                  />
+                </div>
+                {verifyError ? (
+                  <p role="alert" className="alert-error">
+                    {verifyError}
+                  </p>
+                ) : null}
+                <button type="submit" disabled={verifyConfirmPending} className="btn-primary">
+                  {verifyConfirmPending ? "Đang xác nhận..." : "Xác nhận email"}
+                </button>
+              </form>
+            ) : (
+              <form action={verifyRequestAction} className="mt-4 space-y-3">
+                {verifyError ? (
+                  <p role="alert" className="alert-error">
+                    {verifyError}
+                  </p>
+                ) : null}
+                {verifySuccess ? (
+                  <p role="status" className="alert-success">
+                    {verifySuccess}
+                  </p>
+                ) : null}
+                <button
+                  type="submit"
+                  disabled={verifyRequestPending || !profile.canSendEmailOtp}
+                  className="btn-secondary"
+                >
+                  {verifyRequestPending ? "Đang gửi mã..." : "Gửi mã OTP xác nhận"}
+                </button>
+                {!profile.canSendEmailOtp ? (
+                  <p className="text-xs text-amber-700">
+                    Chưa cấu hình gửi email OTP. Liên hệ quản trị.
+                  </p>
+                ) : null}
+              </form>
+            )}
+          </section>
+
           {profile.canLinkGoogle ? (
             <section className="card-padded">
               <h2 className="text-base font-semibold text-slate-900">Liên kết Google</h2>
@@ -235,25 +354,69 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
             </section>
           ) : null}
 
-          {profile.canChangePassword ? (
-            <section className="card-padded">
-              <h2 className="text-base font-semibold text-slate-900">Đổi mật khẩu</h2>
-              <form action={passwordAction} className="mt-4 space-y-4">
+          <section className="card-padded">
+            <h2 className="text-base font-semibold text-slate-900">
+              {profile.hasPassword ? "Đổi mật khẩu" : "Thêm mật khẩu đăng nhập"}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              {profile.hasPassword
+                ? "Đổi mật khẩu bắt buộc mã OTP gửi tới email đã che. Sau đó đăng nhập bằng email + mật khẩu."
+                : "Tài khoản đang vào bằng Google. Thêm mật khẩu (OTP email) để đăng nhập ngoài, không cần mở Google."}
+            </p>
+            {passwordStep === "otp" ? (
+              <form action={passwordConfirmAction} className="mt-4 space-y-4">
+                <p className="text-sm text-slate-600">
+                  {passwordRequestState.message ?? `Nhập mã 6 số đã gửi tới ${profile.emailMasked}.`}
+                </p>
                 <div className="field-group">
-                  <label htmlFor="currentPassword" className="label mb-0">
-                    Mật khẩu hiện tại
+                  <label htmlFor="passwordOtp" className="label mb-0">
+                    Mã xác minh
                   </label>
                   <input
-                    id="currentPassword"
-                    name="currentPassword"
-                    type="password"
-                    autoComplete="current-password"
-                    className="input-field"
+                    id="passwordOtp"
+                    name="code"
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]{6}"
+                    maxLength={6}
+                    autoComplete="one-time-code"
+                    required
+                    className="input-field tracking-[0.35em] text-center text-lg"
+                    placeholder="000000"
                   />
                 </div>
+                {passwordError ? (
+                  <p role="alert" className="alert-error">
+                    {passwordError}
+                  </p>
+                ) : null}
+                <button type="submit" disabled={passwordConfirmPending} className="btn-primary">
+                  {passwordConfirmPending
+                    ? "Đang lưu..."
+                    : profile.hasPassword
+                      ? "Xác nhận đổi mật khẩu"
+                      : "Xác nhận thêm mật khẩu"}
+                </button>
+              </form>
+            ) : (
+              <form action={passwordRequestAction} className="mt-4 space-y-4">
+                {profile.hasPassword ? (
+                  <div className="field-group">
+                    <label htmlFor="currentPassword" className="label mb-0">
+                      Mật khẩu hiện tại
+                    </label>
+                    <input
+                      id="currentPassword"
+                      name="currentPassword"
+                      type="password"
+                      autoComplete="current-password"
+                      className="input-field"
+                    />
+                  </div>
+                ) : null}
                 <div className="field-group">
                   <label htmlFor="newPassword" className="label mb-0">
-                    Mật khẩu mới
+                    {profile.hasPassword ? "Mật khẩu mới" : "Mật khẩu"}
                   </label>
                   <input
                     id="newPassword"
@@ -261,12 +424,13 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
                     type="password"
                     autoComplete="new-password"
                     minLength={8}
+                    required
                     className="input-field"
                   />
                 </div>
                 <div className="field-group">
                   <label htmlFor="confirmPassword" className="label mb-0">
-                    Xác nhận mật khẩu mới
+                    Xác nhận mật khẩu
                   </label>
                   <input
                     id="confirmPassword"
@@ -274,25 +438,35 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
                     type="password"
                     autoComplete="new-password"
                     minLength={8}
+                    required
                     className="input-field"
                   />
                 </div>
-                {passwordState.error ? (
+                {passwordError ? (
                   <p role="alert" className="alert-error">
-                    {passwordState.error}
+                    {passwordError}
                   </p>
                 ) : null}
-                {passwordState.success ? (
+                {passwordSuccess ? (
                   <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
-                    {passwordState.success}
+                    {passwordSuccess}
                   </p>
                 ) : null}
-                <button type="submit" disabled={passwordPending} className="btn-secondary">
-                  {passwordPending ? "Đang đổi..." : "Đổi mật khẩu"}
+                <button
+                  type="submit"
+                  disabled={passwordRequestPending || !profile.canSendEmailOtp}
+                  className="btn-secondary"
+                >
+                  {passwordRequestPending ? "Đang gửi mã..." : "Gửi mã OTP"}
                 </button>
+                {!profile.canSendEmailOtp ? (
+                  <p className="text-xs text-amber-700">
+                    Chưa cấu hình gửi email OTP. Liên hệ quản trị.
+                  </p>
+                ) : null}
               </form>
-            </section>
-          ) : null}
+            )}
+          </section>
         </div>
       </div>
       </div>

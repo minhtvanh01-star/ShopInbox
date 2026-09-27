@@ -190,8 +190,9 @@ export function getZaloWebhookUrl() {
   return `${getPublicAppUrl()}/api/webhooks/zalo`;
 }
 
-export function getShopifyWebhookUrl() {
-  return `${getPublicAppUrl()}/api/webhooks/shopify`;
+export function getShopifyWebhookUrl(publicOrigin?: string) {
+  const origin = (publicOrigin && normalizeAppOrigin(publicOrigin)) || getPublicAppUrl();
+  return `${origin}/api/webhooks/shopify`;
 }
 
 export function getWebWidgetScriptUrl() {

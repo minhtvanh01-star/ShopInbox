@@ -7,6 +7,7 @@ import {
   type InviteActionState,
 } from "@/app/(app)/staff/actions";
 import { DEFAULT_ROLE_CODE, roleLabel } from "@/lib/rbac-catalog";
+import { maskEmail } from "@/lib/mask-email";
 
 const createInitial: InviteActionState = {};
 const revokeInitial: InviteActionState = {};
@@ -130,7 +131,7 @@ export function StaffInvitePanel({
             <li key={invite.id} className="flex items-center justify-between gap-3 py-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-slate-800">
-                  {invite.email ?? "Link chung"}
+                  {invite.email ? maskEmail(invite.email) : "Link chung"}
                 </p>
                 <p className="text-xs text-slate-500">
                   {roleLabel(invite.roleCode)} · hết hạn {invite.expiresAt}

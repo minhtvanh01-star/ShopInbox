@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatOAuthFlashError,
   formatOAuthFlashSuccess,
+  formatOAuthFlashWarning,
   hintFromMetaGraphMessage,
 } from "./oauth-flash";
 
@@ -42,5 +43,12 @@ describe("formatOAuthFlashSuccess", () => {
   it("xác nhận đã nối Facebook, không nhắc webhook", () => {
     expect(formatOAuthFlashSuccess("facebook")).toMatch(/Facebook/i);
     expect(formatOAuthFlashSuccess("facebook")).not.toMatch(/webhook/i);
+  });
+});
+
+describe("formatOAuthFlashWarning", () => {
+  it("cảnh báo webhook Shopify chưa đăng ký", () => {
+    expect(formatOAuthFlashWarning("shopify_webhook")).toMatch(/webhook/i);
+    expect(formatOAuthFlashWarning("other")).toBeUndefined();
   });
 });

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildShopifyOAuthUrl,
   getShopifyScopes,
+  isShopifyOAuthTimestampFresh,
   normalizeShopifyShopDomain,
   verifyShopifyOAuthHmac,
   verifyShopifyWebhookHmac,
@@ -66,6 +67,13 @@ describe("Shopify OAuth helpers", () => {
     params.set("hmac", createHmac("sha256", secret).update(message).digest("hex"));
     expect(verifyShopifyOAuthHmac(params, secret)).toBe(true);
     expect(verifyShopifyOAuthHmac(params, "wrong")).toBe(false);
+  });
+
+  it("accepts a fresh Shopify timestamp", () => {
+    const now = 1_710_000_000_000;
+    expect(isShopifyOAuthTimestampFresh(String(Math.floor(now / 1000)), now)).toBe(true);
+    expect(isShopifyOAuthTimestampFresh("100", now)).toBe(false);
+    expect(isShopifyOAuthTimestampFresh("", now)).toBe(false);
   });
 
   it("verifies webhook hmac", () => {

@@ -17,6 +17,7 @@ import { bumpStaffSessionVersion } from "@/backend/auth";
 import { validatePasswordResetInput } from "@/backend/register";
 import { toSessionPayload } from "@/backend/session-token";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
+import { maskEmail } from "@/lib/mask-email";
 
 export type ForgotPasswordActionState = {
   error?: string;
@@ -27,7 +28,7 @@ export type ForgotPasswordActionState = {
 
 /** Thông báo chung — tránh lộ email có tồn tại hay không. */
 const GENERIC_OTP_SENT =
-  "Nếu email hợp lệ và có mật khẩu, chúng tôi đã gửi mã 6 số. Kiểm tra hộp thư (và Spam).";
+  "Nếu email hợp lệ, chúng tôi đã gửi mã 6 số. Kiểm tra hộp thư (và Spam).";
 
 export async function requestPasswordResetAction(
   _prev: ForgotPasswordActionState,
@@ -50,7 +51,7 @@ export async function requestPasswordResetAction(
   });
 
   // Anti-enumeration: không gửi OTP nếu không đủ điều kiện, vẫn trả bước OTP chung.
-  const eligible = Boolean(staff?.isActive && staff.passwordHash);
+  const eligible = Boolean(staff?.isActive);
   if (eligible) {
     try {
       await createPasswordResetEmailOtp({
@@ -99,7 +100,7 @@ export async function verifyPasswordResetOtpAction(
     },
   });
 
-  if (!staff || !staff.isActive || !staff.passwordHash) {
+  if (!staff || !staff.isActive) {
     await discardPasswordResetEmailOtp(verified.email);
     return {
       error: "Không đổi được mật khẩu cho tài khoản này. Liên hệ admin shop.",
@@ -172,6 +173,6 @@ export async function resendPasswordResetOtpAction(
   return {
     step: "otp",
     email,
-    message: `Đã gửi lại mã tới ${email}.`,
+    message: `Đã gửi lại mã tới ${maskEmail(email)}.`,
   };
 }

@@ -110,3 +110,14 @@ export function buildPasswordResetOtpEmail(code: string) {
   `;
   return { subject, text, html };
 }
+
+export function buildProfileVerifyOtpEmail(code: string) {
+  const subject = "Mã xác nhận hồ sơ ShopInbox";
+  const text = `Mã xác nhận hồ sơ ShopInbox của bạn là: ${code}\n\nMã có hiệu lực 10 phút. Nếu bạn không yêu cầu, hãy bỏ qua email này.`;
+  const html = `
+    <p>Mã xác nhận hồ sơ <strong>ShopInbox</strong> của bạn là:</p>
+    <p style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</p>
+    <p>Mã có hiệu lực <strong>10 phút</strong>. Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>
+  `;
+  return { subject, text, html };
+}

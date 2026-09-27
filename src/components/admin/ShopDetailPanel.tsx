@@ -10,6 +10,7 @@ import {
 } from "@/app/(app)/admin/shops/actions";
 import { StaffAvatar } from "@/components/staff/StaffAvatar";
 import { roleLabel } from "@/lib/rbac-catalog";
+import { maskEmail } from "@/lib/mask-email";
 import {
   SHOP_PLAN_LABEL,
   SHOP_PLANS,
@@ -155,7 +156,7 @@ export function ShopDetailPanel({
                     ) : null}
                   </p>
                   <p className="truncate text-xs text-slate-500">
-                    {member.email} · {roleLabel(member.roleCode)}
+                    {maskEmail(member.email)} · {roleLabel(member.roleCode)}
                     {member.isActive ? "" : " · chờ / tắt"}
                   </p>
                   </div>

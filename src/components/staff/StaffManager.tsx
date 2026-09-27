@@ -18,6 +18,7 @@ import {
 
 import { StaffAvatar } from "@/components/staff/StaffAvatar";
 import { DEFAULT_ROLE_CODE, roleBadgeClass, roleLabel } from "@/lib/rbac-catalog";
+import { maskEmail } from "@/lib/mask-email";
 import { DEFAULT_MAX_USERS_PER_SHOP } from "@/lib/shop-policy";
 
 
@@ -218,7 +219,7 @@ export function StaffManager({
 
                   </p>
 
-                  <p className="truncate text-sm text-slate-500">{member.email}</p>
+                  <p className="truncate text-sm text-slate-500">{maskEmail(member.email)}</p>
 
                 </div>
 
@@ -286,7 +287,7 @@ export function StaffManager({
 
                   </h2>
 
-                  <p className="mt-1 text-sm text-slate-500">{editing.email}</p>
+                  <p className="mt-1 text-sm text-slate-500">{maskEmail(editing.email)}</p>
 
                   {!editing.isActive ? (
 

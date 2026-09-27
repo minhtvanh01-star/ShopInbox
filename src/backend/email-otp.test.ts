@@ -5,6 +5,7 @@ import {
   generateEmailOtpCode,
   hashEmailOtpCode,
   parsePasswordResetOtpPayload,
+  parseProfileOtpPayload,
   parseRegisterOtpPayload,
   EMAIL_OTP_CODE_LENGTH,
 } from "@/backend/email-otp-code";
@@ -39,6 +40,16 @@ describe("email OTP helpers", () => {
       parseRegisterOtpPayload(JSON.stringify({ name: "Minh", passwordHash: "hash" })),
     ).toEqual({ name: "Minh", passwordHash: "hash" });
     expect(parseRegisterOtpPayload("{}")).toBeNull();
+  });
+
+  it("parses profile OTP payload", () => {
+    expect(
+      parseProfileOtpPayload(JSON.stringify({ staffId: "staff-1", passwordHash: "hash" })),
+    ).toEqual({ staffId: "staff-1", passwordHash: "hash" });
+    expect(parseProfileOtpPayload(JSON.stringify({ staffId: "staff-1" }))).toEqual({
+      staffId: "staff-1",
+    });
+    expect(parseProfileOtpPayload("{}")).toBeNull();
   });
 
   it("parses password reset payload", () => {
