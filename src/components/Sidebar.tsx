@@ -11,6 +11,7 @@ import { INBOX_NOTICES_REFRESH_EVENT } from "@/lib/inbox-notices";
 import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { SUPER_ADMIN_HOME } from "@/lib/super-admin";
 import { StaffAvatar } from "@/components/staff/StaffAvatar";
 import { NexoMark, NexoWordmark } from "@/components/brand/NexoMark";
 
@@ -138,6 +139,12 @@ export function Sidebar({
   }, [isSuperAdmin, permissions, startTransition]);
 
   const iconOnly = collapsed;
+  const homeHref = isSuperAdmin
+    ? SUPER_ADMIN_HOME
+    : permissions.includes(PERMISSION_CODES.inboxRead)
+      ? "/inbox"
+      : "/settings/profile";
+  const homeLabel = isSuperAdmin ? "Về trang quản lý shop" : "Về Inbox";
   const unreadBadge =
     summary.unreadTotal > 99 ? "99+" : summary.unreadTotal > 0 ? String(summary.unreadTotal) : null;
   // Khớp prefix dài nhất — tránh `/settings/profile` sáng cả `/settings`.
@@ -174,130 +181,135 @@ export function Sidebar({
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
       >
         <div
-          className={`flex items-center border-b border-border py-4 ${iconOnly ? "flex-col gap-2 px-2" : "gap-3 px-4"}`}
+          className={`border-b border-border ${iconOnly ? "flex flex-col items-center gap-2 px-2 py-3" : "px-3 py-3"}`}
         >
-          <NexoMark className="h-9 w-9" />
-          {!iconOnly ? (
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm leading-none">
-                <NexoWordmark />
-              </p>
-              <p className="truncate text-xs text-slate-500">
-                {isSuperAdmin ? "Nền tảng · Super admin" : shopName}
-              </p>
-            </div>
-          ) : null}
-
-          {!isSuperAdmin && permissions.includes(PERMISSION_CODES.inboxRead) ? (
-            <div className="relative" ref={panelRef}>
-              <button
-                type="button"
-                aria-label="Thông báo inbox"
-                aria-expanded={noticesOpen}
-                title="Thông báo"
-                onClick={() => setNoticesOpen((open) => !open)}
-                className="group relative icon-btn shrink-0"
-              >
-                <BellIcon />
-                {unreadBadge ? (
-                  <span
-                    role="status"
-                    aria-live="polite"
-                    aria-atomic="true"
-                    className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[10px] font-bold text-white"
+          <div className={`flex ${iconOnly ? "flex-col items-center gap-2" : "items-start gap-2"}`}>
+            <Link
+              href={homeHref}
+              aria-label={homeLabel}
+              title={homeLabel}
+              onClick={() => setMobileOpen(false)}
+              className="shrink-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500/40"
+            >
+              <NexoMark className="h-9 w-9" />
+            </Link>
+            {!iconOnly ? (
+              <div className="min-w-0 flex-1">
+                <p className="text-sm leading-5">
+                  <NexoWordmark />
+                </p>
+                <p className="mt-0.5 break-words text-xs leading-4 text-slate-500">
+                  {isSuperAdmin ? "Nền tảng · Super admin" : shopName}
+                </p>
+              </div>
+            ) : null}
+            <div className={`flex shrink-0 items-center gap-0.5 ${iconOnly ? "flex-col" : "ml-auto"}`}>
+              {!isSuperAdmin && permissions.includes(PERMISSION_CODES.inboxRead) ? (
+                <div className="relative" ref={panelRef}>
+                  <button
+                    type="button"
+                    aria-label="Thông báo inbox"
+                    aria-expanded={noticesOpen}
+                    title="Thông báo"
+                    onClick={() => setNoticesOpen((open) => !open)}
+                    className="group relative icon-btn shrink-0"
                   >
-                    <span className="sr-only">{summary.unreadTotal} tin chưa đọc</span>
-                    <span aria-hidden="true">{unreadBadge}</span>
-                  </span>
-                ) : null}
-                {iconOnly ? (
-                  <span className="pointer-events-none absolute left-full z-50 ml-2 hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-lg group-hover:block">
-                    Thông báo
-                  </span>
-                ) : null}
-              </button>
-              {noticesOpen ? (
-                <div
-                  className={`absolute z-50 mt-2 w-80 overflow-hidden rounded-xl border border-border bg-surface shadow-elevated ${
-                    iconOnly ? "left-0" : "right-0"
-                  }`}
-                >
-                  <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
-                    <p className="text-sm font-semibold text-slate-900">Thông báo</p>
-                    <span className="text-[11px] text-slate-500">
-                      {pending ? "Đang cập nhật…" : `${summary.unreadConversations} hội thoại`}
-                    </span>
-                  </div>
-                  <ul className="max-h-80 overflow-y-auto">
-                    {summary.notices.length === 0 ? (
-                      <li className="px-3 py-8 text-center text-sm text-slate-500">
-                        Không có tin chưa đọc
-                      </li>
-                    ) : (
-                      summary.notices.map((item) => (
-                        <li key={item.conversationId} className="border-b border-border last:border-b-0">
-                          <Link
-                            href={`/inbox?c=${encodeURIComponent(item.conversationId)}`}
-                            onClick={() => {
-                              setNoticesOpen(false);
-                              setMobileOpen(false);
-                            }}
-                            className="block px-3 py-2.5 transition-colors hover:bg-surface-muted"
-                          >
-                            <NoticeRow item={item} />
-                          </Link>
-                        </li>
-                      ))
-                    )}
-                  </ul>
-                  <div className="border-t border-border px-3 py-2">
-                    <Link
-                      href="/inbox"
-                      onClick={() => {
-                        setNoticesOpen(false);
-                        setMobileOpen(false);
-                      }}
-                      className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
-                    >
-                      Mở Inbox
-                    </Link>
-                  </div>
+                    <BellIcon />
+                    {unreadBadge ? (
+                      <span
+                        role="status"
+                        aria-live="polite"
+                        aria-atomic="true"
+                        className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[10px] font-bold text-white"
+                      >
+                        <span className="sr-only">{summary.unreadTotal} tin chưa đọc</span>
+                        <span aria-hidden="true">{unreadBadge}</span>
+                      </span>
+                    ) : null}
+                    {iconOnly ? (
+                      <span className="pointer-events-none absolute left-full z-50 ml-2 hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-lg group-hover:block">
+                        Thông báo
+                      </span>
+                    ) : null}
+                  </button>
+                  {noticesOpen ? (
+                    <div className="absolute left-full top-0 z-50 ml-2 w-80 overflow-hidden rounded-xl border border-border bg-surface shadow-elevated">
+                      <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
+                        <p className="text-sm font-semibold text-slate-900">Thông báo</p>
+                        <span className="text-[11px] text-slate-500">
+                          {pending ? "Đang cập nhật…" : `${summary.unreadConversations} hội thoại`}
+                        </span>
+                      </div>
+                      <ul className="max-h-80 overflow-y-auto">
+                        {summary.notices.length === 0 ? (
+                          <li className="px-3 py-8 text-center text-sm text-slate-500">
+                            Không có tin chưa đọc
+                          </li>
+                        ) : (
+                          summary.notices.map((item) => (
+                            <li key={item.conversationId} className="border-b border-border last:border-b-0">
+                              <Link
+                                href={`/inbox?c=${encodeURIComponent(item.conversationId)}`}
+                                onClick={() => {
+                                  setNoticesOpen(false);
+                                  setMobileOpen(false);
+                                }}
+                                className="block px-3 py-2.5 transition-colors hover:bg-surface-muted"
+                              >
+                                <NoticeRow item={item} />
+                              </Link>
+                            </li>
+                          ))
+                        )}
+                      </ul>
+                      <div className="border-t border-border px-3 py-2">
+                        <Link
+                          href="/inbox"
+                          onClick={() => {
+                            setNoticesOpen(false);
+                            setMobileOpen(false);
+                          }}
+                          className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
+                        >
+                          Mở Inbox
+                        </Link>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
+              {!iconOnly ? (
+                <button
+                  type="button"
+                  aria-label="Thu gọn sidebar"
+                  title="Thu gọn"
+                  onClick={() => setCollapsed(true)}
+                  className="icon-btn hidden shrink-0 md:inline-flex"
+                >
+                  <ChevronLeftIcon />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-label="Mở rộng sidebar"
+                  title="Mở rộng"
+                  onClick={() => setCollapsed(false)}
+                  className="icon-btn hidden shrink-0 md:inline-flex"
+                >
+                  <ChevronRightIcon />
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label="Đóng menu"
+                title="Đóng menu"
+                onClick={() => setMobileOpen(false)}
+                className="icon-btn shrink-0 md:hidden"
+              >
+                <CloseIcon />
+              </button>
             </div>
-          ) : null}
-
-          {!iconOnly ? (
-            <button
-              type="button"
-              aria-label="Thu gọn sidebar"
-              title="Thu gọn"
-              onClick={() => setCollapsed(true)}
-              className="icon-btn hidden shrink-0 md:inline-flex"
-            >
-              <ChevronLeftIcon />
-            </button>
-          ) : (
-            <button
-              type="button"
-              aria-label="Mở rộng sidebar"
-              title="Mở rộng"
-              onClick={() => setCollapsed(false)}
-              className="icon-btn hidden shrink-0 md:inline-flex"
-            >
-              <ChevronRightIcon />
-            </button>
-          )}
-          {/* Chỉ hiện khi drawer mobile mở — desktop thu gọn dùng nút mở rộng ở trên */}
-          <button
-            type="button"
-            aria-label="Đóng menu"
-            title="Đóng menu"
-            onClick={() => setMobileOpen(false)}
-            className="icon-btn shrink-0 md:hidden"
-          >
-            <CloseIcon />
-          </button>
+          </div>
         </div>
 
         <nav className={`flex flex-1 flex-col gap-1 py-4 ${iconOnly ? "px-2" : "px-3"}`}>

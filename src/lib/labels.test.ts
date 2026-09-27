@@ -79,7 +79,7 @@ describe("getInboxChannelFilters", () => {
 describe("inboxChannelsSubtitle", () => {
   it("lists channel names from filters", () => {
     expect(inboxChannelsSubtitle(getInboxChannelFilters(["facebook", "web"]))).toBe(
-      "Tin nhắn đồng bộ từ Facebook, Web",
+      "Hội thoại từ Facebook, Web",
     );
   });
 });

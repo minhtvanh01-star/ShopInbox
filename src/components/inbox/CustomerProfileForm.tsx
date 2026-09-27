@@ -2,7 +2,11 @@
 
 import { useState, useTransition } from "react";
 import { updateCustomerProfile } from "@/app/(app)/actions";
-import { CUSTOMER_ADDRESS_MAX, CUSTOMER_NOTE_MAX } from "@/lib/customer-profile";
+import {
+  CUSTOMER_ADDRESS_MAX,
+  CUSTOMER_NOTE_MAX,
+  customerProfileChecklist,
+} from "@/lib/customer-profile";
 import type { Customer } from "@/lib/types";
 
 type CustomerProfileFormProps = {
@@ -92,11 +96,27 @@ export function CustomerProfileForm({ customer, onSaved }: CustomerProfileFormPr
         </p>
       ) : null}
       {saved ? (
-        <p role="status" className="text-sm text-teal-800">
-          Đã lưu hồ sơ khách.
-        </p>
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2"
+        >
+          <span className="text-xs font-semibold text-teal-800">Đã lưu</span>
+          {customerProfileChecklist({ phone, address, note }).map((item) => (
+            <span
+              key={item.id}
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                item.done
+                  ? "bg-white text-teal-800 ring-1 ring-teal-200"
+                  : "bg-white/70 text-slate-500 ring-1 ring-border"
+              }`}
+            >
+              <span aria-hidden="true">{item.done ? "✓" : "○"}</span>
+              {item.label}
+            </span>
+          ))}
+        </div>
       ) : null}
-      <button type="submit" disabled={pending} className="btn-primary-sm w-full">
+      <button type="submit" disabled={pending} className="btn-secondary w-full min-h-11">
         {pending ? "Đang lưu…" : "Lưu hồ sơ"}
       </button>
     </form>

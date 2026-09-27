@@ -63,6 +63,25 @@ export function parseCustomerProfileInput(raw: {
   };
 }
 
+export type CustomerProfileChecklistItem = {
+  id: "phone" | "address" | "note";
+  label: string;
+  done: boolean;
+};
+
+/** Một hàng checklist sau khi lưu hồ sơ khách trên Inbox. */
+export function customerProfileChecklist(input: {
+  phone?: string | null;
+  address?: string | null;
+  note?: string | null;
+}): CustomerProfileChecklistItem[] {
+  return [
+    { id: "phone", label: "SĐT", done: Boolean(input.phone?.trim()) },
+    { id: "address", label: "Địa chỉ", done: Boolean(input.address?.trim()) },
+    { id: "note", label: "Ghi chú", done: Boolean(input.note?.trim()) },
+  ];
+}
+
 export function customerMatchesQuery(
   customer: { name: string; phone?: string | null; note?: string | null },
   query: string,

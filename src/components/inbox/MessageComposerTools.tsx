@@ -83,7 +83,7 @@ export function EmojiPickerButton({ disabled, onPick }: EmojiPickerButtonProps) 
         aria-haspopup="dialog"
         title="Emoji"
       >
-        😊
+        <SmileIcon />
       </button>
       {open ? (
         <div
@@ -150,9 +150,46 @@ export function ImagePickerButton({ disabled, onFile, onReject }: ImagePickerBut
         aria-label="Gửi ảnh JPEG, PNG, WebP hoặc GIF, tối đa 10MB"
         title="Gửi ảnh (JPEG, PNG, WebP, GIF — tối đa 10MB)"
       >
-        🖼️
+        <ImageIcon />
       </button>
     </>
+  );
+}
+
+function SmileIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="9" />
+      <path d="M8 14s1.5 2 4 2 4-2 4-2" />
+      <line x1="9" y1="9.5" x2="9.1" y2="9.5" strokeLinecap="round" />
+      <line x1="15" y1="9.5" x2="15.1" y2="9.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ImageIcon() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      <rect x="3" y="5" width="18" height="14" rx="2" />
+      <circle cx="8.5" cy="10" r="1.5" />
+      <path d="m21 16-5-5-4 4-2-2-5 5" />
+    </svg>
   );
 }
 

@@ -1,5 +1,5 @@
 /** Layout dimensions — single source for sidebar & inbox panels */
-export const SIDEBAR_WIDTH = 240;
+export const SIDEBAR_WIDTH = 268;
 export const SIDEBAR_COLLAPSED_WIDTH = 56;
 export const INBOX_LIST_MIN = 240;
 export const INBOX_LIST_MAX = 420;

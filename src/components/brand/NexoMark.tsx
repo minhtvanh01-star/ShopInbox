@@ -21,6 +21,6 @@ export function NexoMark({ className = "h-9 w-9" }: NexoMarkProps) {
 
 export function NexoWordmark({ className = "" }: { className?: string }) {
   return (
-    <span className={`font-semibold tracking-[0.14em] text-slate-900 ${className}`}>NEXO</span>
+    <span className={`font-semibold tracking-wide text-slate-900 ${className}`}>NEXO</span>
   );
 }
