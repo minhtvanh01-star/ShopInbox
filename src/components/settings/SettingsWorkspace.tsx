@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CHANNEL_ACCENT, CONNECT_PLATFORMS } from "@/lib/channels";
-import { CHANNEL_STATUS_LABEL, formatDateTime } from "@/lib/labels";
+import { CHANNEL_STATUS_LABEL, formatDateTime, oauthSwitchPageLabel } from "@/lib/labels";
 import {
   AddConnectionModal,
   type ChannelAccountView,
@@ -386,6 +386,18 @@ export function SettingsWorkspace({
                       >
                         {channel.status === "ready" ? "Xem kết nối" : "Kết nối kênh"}
                       </button>
+                      {canConnect &&
+                      metaOAuthConfigured &&
+                      channel.status === "ready" &&
+                      channel.hasOAuthToken &&
+                      (channel.channel === "facebook" || channel.channel === "instagram") ? (
+                        <a
+                          href={`/api/connect/meta/start?channel=${channel.channel}`}
+                          className="btn-secondary"
+                        >
+                          {oauthSwitchPageLabel(channel.channel)}
+                        </a>
+                      ) : null}
                       {canConnect &&
                       channel.status === "ready" &&
                       channel.hasOAuthToken &&

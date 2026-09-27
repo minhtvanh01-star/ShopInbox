@@ -601,6 +601,7 @@ export async function getChannelAccounts() {
     /** Không serialize secret xuống client — chỉ cờ đã có / chưa. */
     hasAppSecret: canConnect ? Boolean(account.appSecret?.trim()) : false,
     pageId: canConnect ? account.pageId : null,
+    linkedPageId: canConnect ? account.linkedPageId : null,
     hasWebhookSecret: canConnect ? Boolean(account.webhookSecret?.trim()) : false,
     oaId: canConnect ? account.oaId : null,
     displayName: account.displayName,

@@ -105,6 +105,17 @@ export async function completeMetaPageAction(
 
   try {
     const picked = pickMetaPageForChannel(payload.channel, page);
+    const existing = await prisma.channelAccount.findUnique({
+      where: {
+        shopId_channel: { shopId: session.shopId, channel: payload.channel },
+      },
+      select: { status: true, pageId: true, displayName: true },
+    });
+    const isSwitch =
+      existing?.status === "ready" &&
+      Boolean(existing.pageId) &&
+      existing.pageId !== picked.externalId;
+
     await saveOAuthConnection({
       shopId: session.shopId,
       channel: payload.channel,
@@ -116,13 +127,23 @@ export async function completeMetaPageAction(
     await consumeOAuthPagesToken(token);
     jar.delete(OAUTH_PAGES_COOKIE);
     revalidatePath("/settings");
+    revalidatePath("/inbox");
     await writeAudit({
       actor: session,
       action: AUDIT_ACTIONS.channelConnect,
       entityType: "ChannelAccount",
-      metadata: { channel: payload.channel, displayName: picked.displayName, via: "meta_page_pick" },
+      metadata: {
+        channel: payload.channel,
+        displayName: picked.displayName,
+        via: isSwitch ? "meta_page_switch" : "meta_page_pick",
+        previousPageId: isSwitch ? existing.pageId : undefined,
+      },
     });
-    return { success: `Đã kết nối ${picked.displayName}.` };
+    return {
+      success: isSwitch
+        ? `Đã đổi Inbox sang ${picked.displayName}.`
+        : `Đã kết nối ${picked.displayName}.`,
+    };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Không lưu được kết nối Meta." };
   }

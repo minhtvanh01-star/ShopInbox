@@ -4,6 +4,9 @@ import {
   formatTimeVN,
   getInboxChannelFilters,
   inboxChannelsSubtitle,
+  isCurrentMetaPickerPage,
+  oauthConnectLabel,
+  oauthSwitchPageLabel,
   parseVnDayEnd,
   parseVnDayStart,
 } from "./labels";
@@ -78,5 +81,29 @@ describe("inboxChannelsSubtitle", () => {
     expect(inboxChannelsSubtitle(getInboxChannelFilters(["facebook", "web"]))).toBe(
       "Tin nhắn đồng bộ từ Facebook, Web",
     );
+  });
+});
+
+describe("oauth page switch labels", () => {
+  it("nối Fanpage thay vì chat Facebook cá nhân", () => {
+    expect(oauthConnectLabel("facebook")).toBe("Kết nối Fanpage");
+    expect(oauthSwitchPageLabel("facebook")).toBe("Đổi Fanpage");
+    expect(oauthSwitchPageLabel("instagram")).toBe("Đổi trang Instagram");
+  });
+
+  it("khớp Fanpage đang dùng trong danh sách picker", () => {
+    expect(
+      isCurrentMetaPickerPage("facebook", { pageId: "p1" }, { pageId: "p1" }),
+    ).toBe(true);
+    expect(
+      isCurrentMetaPickerPage("facebook", { pageId: "p2" }, { pageId: "p1" }),
+    ).toBe(false);
+    expect(
+      isCurrentMetaPickerPage(
+        "instagram",
+        { pageId: "fb1", instagramId: "ig1" },
+        { pageId: "ig1", linkedPageId: "fb1" },
+      ),
+    ).toBe(true);
   });
 });

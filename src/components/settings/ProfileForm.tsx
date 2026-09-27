@@ -12,6 +12,7 @@ import {
   type ProfileOtpActionState,
 } from "@/app/(app)/settings/profile/actions";
 import { StaffAvatar } from "@/components/staff/StaffAvatar";
+import { PasswordField } from "@/components/ui/PasswordField";
 import { GOOGLE_AUTH_ERROR_MESSAGES } from "@/lib/google-auth-errors";
 import { STAFF_AVATAR_MAX_MB } from "@/lib/staff-avatar";
 
@@ -117,14 +118,14 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <header className="page-header shrink-0 bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
+      <header className="page-header shrink-0 bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)] px-4 py-4 sm:px-6 sm:py-5">
         <h1 className="page-title">Hồ sơ cá nhân</h1>
         <p className="page-subtitle">Cập nhật thông tin và phương thức đăng nhập của bạn.</p>
       </header>
 
       {flashMessage ? (
         <div
-          className={`shrink-0 border-b px-6 py-3 text-sm ${
+          className={`shrink-0 border-b px-4 py-3 text-sm sm:px-6 ${
             flashMessage.type === "success"
               ? "border-emerald-200 bg-emerald-50 text-emerald-800"
               : "border-amber-200 bg-amber-50 text-amber-800"
@@ -135,9 +136,9 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="grid gap-6 p-6 lg:grid-cols-2">
+        <div className="grid gap-4 p-4 sm:gap-6 sm:p-6 lg:grid-cols-2">
           <section className="card-padded">
-            <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-semibold text-slate-900">Thông tin cơ bản</h2>
               <span className="rounded-full bg-teal-50 px-2.5 py-0.5 text-[11px] font-semibold text-teal-800 ring-1 ring-teal-200 ring-inset">
                 {authBadgeLabel(profile.authMethod)}
@@ -214,10 +215,11 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
 
             <div className="field-group">
               <span className="label mb-0">Email</span>
-              <p className="input-field bg-surface-muted text-slate-600">{profile.emailMasked}</p>
-              <p className="mt-1 text-xs text-slate-400">
-                Email đã che một phần. Đổi mật khẩu hoặc xác nhận hồ sơ dùng mã OTP gửi tới hộp thư
-                này.
+              <p className="input-field flex min-h-11 items-center break-all bg-surface-muted text-slate-600">
+                {profile.emailMasked}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                Đã che một phần. OTP đổi mật khẩu / xác nhận hồ sơ gửi tới hộp thư này.
               </p>
             </div>
 
@@ -246,7 +248,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
               </p>
             ) : null}
 
-            <button type="submit" disabled={profilePending} className="btn-primary">
+            <button type="submit" disabled={profilePending} className="btn-primary w-full sm:w-auto">
               {profilePending ? "Đang lưu..." : "Lưu hồ sơ"}
             </button>
           </form>
@@ -254,7 +256,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
 
         <div className="space-y-6">
           <section className="card-padded">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-base font-semibold text-slate-900">Xác nhận hồ sơ</h2>
               <span
                 className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
@@ -267,8 +269,8 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
               </span>
             </div>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Nhân viên được mời bằng email cần nhập mã OTP gửi tới {profile.emailMasked} trước khi
-              đổi thông tin nhạy cảm. Tài khoản Google đã xác minh email thì được tính đã xác nhận.
+              Nhân viên mời bằng email cần OTP tới {profile.emailMasked}. Tài khoản Google đã xác
+              minh thì được tính đã xác nhận.
             </p>
             {profile.emailVerified ? (
               <p className="mt-3 text-sm text-emerald-800">Email hồ sơ đã được xác nhận.</p>
@@ -290,7 +292,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
                     maxLength={6}
                     autoComplete="one-time-code"
                     required
-                    className="input-field tracking-[0.35em] text-center text-lg"
+                    className="input-field min-h-12 tracking-[0.35em] text-center text-lg"
                     placeholder="000000"
                   />
                 </div>
@@ -299,7 +301,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
                     {verifyError}
                   </p>
                 ) : null}
-                <button type="submit" disabled={verifyConfirmPending} className="btn-primary">
+                <button type="submit" disabled={verifyConfirmPending} className="btn-primary w-full sm:w-auto">
                   {verifyConfirmPending ? "Đang xác nhận..." : "Xác nhận email"}
                 </button>
               </form>
@@ -318,7 +320,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
                 <button
                   type="submit"
                   disabled={verifyRequestPending || !profile.canSendEmailOtp}
-                  className="btn-secondary"
+                  className="btn-secondary w-full sm:w-auto"
                 >
                   {verifyRequestPending ? "Đang gửi mã..." : "Gửi mã OTP xác nhận"}
                 </button>
@@ -341,7 +343,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
               {profile.googleOAuthConfigured ? (
                 <a
                   href="/api/auth/google/start?mode=link"
-                  className="btn-secondary mt-4 inline-flex items-center gap-2"
+                  className="btn-secondary mt-4 inline-flex w-full items-center justify-center gap-2 sm:w-auto"
                 >
                   <GoogleIcon />
                   Liên kết Google
@@ -360,8 +362,8 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">
               {profile.hasPassword
-                ? "Đổi mật khẩu bắt buộc mã OTP gửi tới email đã che. Sau đó đăng nhập bằng email + mật khẩu."
-                : "Tài khoản đang vào bằng Google. Thêm mật khẩu (OTP email) để đăng nhập ngoài, không cần mở Google."}
+                ? "Bắt buộc OTP gửi tới email đã che. Sau đó đăng nhập bằng email + mật khẩu."
+                : "Thêm mật khẩu (OTP email) để đăng nhập ngoài, không cần Google."}
             </p>
             {passwordStep === "otp" ? (
               <form action={passwordConfirmAction} className="mt-4 space-y-4">
@@ -381,7 +383,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
                     maxLength={6}
                     autoComplete="one-time-code"
                     required
-                    className="input-field tracking-[0.35em] text-center text-lg"
+                    className="input-field min-h-12 tracking-[0.35em] text-center text-lg"
                     placeholder="000000"
                   />
                 </div>
@@ -390,7 +392,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
                     {passwordError}
                   </p>
                 ) : null}
-                <button type="submit" disabled={passwordConfirmPending} className="btn-primary">
+                <button type="submit" disabled={passwordConfirmPending} className="btn-primary w-full sm:w-auto">
                   {passwordConfirmPending
                     ? "Đang lưu..."
                     : profile.hasPassword
@@ -401,47 +403,29 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
             ) : (
               <form action={passwordRequestAction} className="mt-4 space-y-4">
                 {profile.hasPassword ? (
-                  <div className="field-group">
-                    <label htmlFor="currentPassword" className="label mb-0">
-                      Mật khẩu hiện tại
-                    </label>
-                    <input
-                      id="currentPassword"
-                      name="currentPassword"
-                      type="password"
-                      autoComplete="current-password"
-                      className="input-field"
-                    />
-                  </div>
+                  <PasswordField
+                    id="currentPassword"
+                    name="currentPassword"
+                    label="Mật khẩu hiện tại"
+                    autoComplete="current-password"
+                  />
                 ) : null}
-                <div className="field-group">
-                  <label htmlFor="newPassword" className="label mb-0">
-                    {profile.hasPassword ? "Mật khẩu mới" : "Mật khẩu"}
-                  </label>
-                  <input
-                    id="newPassword"
-                    name="newPassword"
-                    type="password"
-                    autoComplete="new-password"
-                    minLength={8}
-                    required
-                    className="input-field"
-                  />
-                </div>
-                <div className="field-group">
-                  <label htmlFor="confirmPassword" className="label mb-0">
-                    Xác nhận mật khẩu
-                  </label>
-                  <input
-                    id="confirmPassword"
-                    name="confirmPassword"
-                    type="password"
-                    autoComplete="new-password"
-                    minLength={8}
-                    required
-                    className="input-field"
-                  />
-                </div>
+                <PasswordField
+                  id="newPassword"
+                  name="newPassword"
+                  label={profile.hasPassword ? "Mật khẩu mới" : "Mật khẩu"}
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
+                <PasswordField
+                  id="confirmPassword"
+                  name="confirmPassword"
+                  label="Xác nhận mật khẩu"
+                  autoComplete="new-password"
+                  minLength={8}
+                  required
+                />
                 {passwordError ? (
                   <p role="alert" className="alert-error">
                     {passwordError}
@@ -455,7 +439,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
                 <button
                   type="submit"
                   disabled={passwordRequestPending || !profile.canSendEmailOtp}
-                  className="btn-secondary"
+                  className="btn-secondary w-full sm:w-auto"
                 >
                   {passwordRequestPending ? "Đang gửi mã..." : "Gửi mã OTP"}
                 </button>
