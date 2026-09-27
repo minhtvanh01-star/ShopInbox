@@ -1,9 +1,12 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   getMetaOAuthConfig,
   getMetaOAuthRedirectUri,
   getPublicAppUrl,
   getShopifyOAuthConfig,
+  getShopifyScopes,
   getShopifyWebhookUrl,
   getZaloOAuthConfig,
   isUsableOAuthRedirectUri,
@@ -123,6 +126,13 @@ describe("oauth-config", () => {
     expect(getShopifyWebhookUrl("https://shopinbox.n2.tinhgon.xyz")).toBe(
       "https://shopinbox.n2.tinhgon.xyz/api/webhooks/shopify",
     );
+    expect(getShopifyScopes("")).toBe("read_customers,read_orders");
+  });
+
+  it("stays Edge-safe so middleware does not load node:crypto", () => {
+    const src = readFileSync(path.join(process.cwd(), "src/backend/oauth-config.ts"), "utf8");
+    expect(src).not.toMatch(/from ["']node:crypto["']/);
+    expect(src).not.toMatch(/from ["']@\/backend\/shopify-oauth["']/);
   });
 
   it("lists missing Zalo env vars", () => {

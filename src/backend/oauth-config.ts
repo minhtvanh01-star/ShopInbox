@@ -1,4 +1,16 @@
-import { getShopifyScopes } from "@/backend/shopify-oauth";
+/**
+ * Không import module Node-only (`node:crypto`, Prisma, …).
+ * File này bị middleware Edge kéo qua `public-url` — `node:crypto` sẽ 500 trên VibeHost.
+ */
+export const SHOPIFY_DEFAULT_SCOPES = "read_customers,read_orders";
+
+export function getShopifyScopes(raw = process.env.SHOPIFY_SCOPES) {
+  const scopes = String(raw ?? "")
+    .split(/[,\s]+/)
+    .map((scope) => scope.trim())
+    .filter(Boolean);
+  return scopes.length > 0 ? scopes.join(",") : SHOPIFY_DEFAULT_SCOPES;
+}
 
 export type MetaOAuthConfig = {
   appId: string;

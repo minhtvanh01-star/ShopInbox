@@ -1,8 +1,9 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { ShopifyOAuthConfig } from "@/backend/oauth-config";
 
+export { getShopifyScopes, SHOPIFY_DEFAULT_SCOPES } from "@/backend/oauth-config";
+
 export const SHOPIFY_API_VERSION = "2024-10";
-export const SHOPIFY_DEFAULT_SCOPES = "read_customers,read_orders";
 
 const SHOP_HOST_RE = /^[a-z0-9][a-z0-9-]*\.myshopify\.com$/;
 
@@ -15,14 +16,6 @@ export function normalizeShopifyShopDomain(raw: string | undefined | null) {
   if (!trimmed) return null;
   const host = trimmed.includes(".") ? trimmed : `${trimmed}.myshopify.com`;
   return SHOP_HOST_RE.test(host) ? host : null;
-}
-
-export function getShopifyScopes(raw = process.env.SHOPIFY_SCOPES) {
-  const scopes = String(raw ?? "")
-    .split(/[,\s]+/)
-    .map((scope) => scope.trim())
-    .filter(Boolean);
-  return scopes.length > 0 ? scopes.join(",") : SHOPIFY_DEFAULT_SCOPES;
 }
 
 export function buildShopifyOAuthUrl(
