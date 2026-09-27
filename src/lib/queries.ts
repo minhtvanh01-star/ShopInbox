@@ -223,11 +223,31 @@ export async function getShopContext(): Promise<ShopContext> {
   }
 }
 
+function emptyInboxData(session: { staffId: string }) {
+  return {
+    currentStaffId: session.staffId,
+    replyClaimTtlMinutes: DEFAULT_SHOP_POLICY.replyClaimTtlMinutes,
+    conversations: [] as Conversation[],
+    messages: [] as Message[],
+    customers: [] as Customer[],
+    orders: [] as Order[],
+    products: [] as SellableVariant[],
+    quickReplies: [] as QuickReply[],
+  };
+}
+
 export async function getInboxData() {
   const session = await requirePermission(PERMISSION_CODES.inboxRead);
   const shopId = session.shopId;
-  const readyChannels = await loadVisibleInboxChannels(shopId);
+  let readyChannels: Channel[];
+  try {
+    readyChannels = await loadVisibleInboxChannels(shopId);
+  } catch (error) {
+    console.error("[getInboxData] channels failed — empty inbox", error);
+    return emptyInboxData(session);
+  }
   const hideInbox = readyChannels.length === 0;
+  try {
   const [conversations, messages, customers, orders, sellableVariants, quickReplies, reactions, policy] =
     await Promise.all([
     hideInbox
@@ -361,6 +381,10 @@ export async function getInboxData() {
       }),
     ),
   };
+  } catch (error) {
+    console.error("[getInboxData] failed — empty inbox", error);
+    return emptyInboxData(session);
+  }
 }
 
 export async function getInboxNotificationSummary(): Promise<InboxNoticeSummary> {
@@ -556,10 +580,16 @@ export async function getChannelAccounts() {
   const session = await requireSession();
   const canConnect = await hasPermission(session, PERMISSION_CODES.channelsConnect);
 
-  const accounts = await prisma.channelAccount.findMany({
-    where: { shopId: session.shopId },
-    orderBy: { name: "asc" },
-  });
+  let accounts: Awaited<ReturnType<typeof prisma.channelAccount.findMany>> = [];
+  try {
+    accounts = await prisma.channelAccount.findMany({
+      where: { shopId: session.shopId },
+      orderBy: { name: "asc" },
+    });
+  } catch (error) {
+    console.error("[getChannelAccounts] failed — no channels", error);
+    return [];
+  }
 
   return accounts.map((account) => ({
     id: account.id,

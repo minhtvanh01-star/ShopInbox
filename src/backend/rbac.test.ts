@@ -140,6 +140,21 @@ describe("hasPermission / requirePermission", () => {
     await expect(requirePermission(PERMISSION_CODES.channelsConnect)).resolves.toEqual(adminSession);
   });
 
+  it("falls back to catalog when role_permissions is empty", async () => {
+    vi.mocked(prisma.staff.findUnique).mockResolvedValue({
+      shopId: "shop1",
+      isActive: true,
+      roleCode: "admin",
+      role: {
+        isActive: true,
+        permissions: [],
+      },
+    } as never);
+
+    expect(await hasPermission(adminSession, PERMISSION_CODES.inboxRead)).toBe(true);
+    expect(await hasPermission(adminSession, PERMISSION_CODES.channelsConnect)).toBe(true);
+  });
+
   it("denies permissions when staff is inactive", async () => {
     vi.mocked(prisma.staff.findUnique).mockResolvedValue({
       shopId: "shop1",

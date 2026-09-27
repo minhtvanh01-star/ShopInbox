@@ -6,6 +6,7 @@ import {
   isSuperAdminEmail,
   parseSuperAdminEmails,
   shouldBlockLastActiveSuperAdmin,
+  pickFirstSuperAdminStaffId,
   shouldBootstrapSuperAdmin,
 } from "@/lib/super-admin";
 
@@ -51,6 +52,55 @@ describe("super admin emails", () => {
         allowlist: "owner@shop.vn",
       }),
     ).toBe(false);
+  });
+
+  it("bootstraps the first shop admin when env is empty and nobody is Super admin", () => {
+    expect(
+      shouldBootstrapSuperAdmin({
+        isSuperAdmin: false,
+        email: "admin@lily.vn",
+        existingSuperAdminCount: 0,
+        roleCode: "admin",
+      }),
+    ).toBe(true);
+    expect(
+      shouldBootstrapSuperAdmin({
+        isSuperAdmin: false,
+        email: "nhanvien@lily.vn",
+        existingSuperAdminCount: 0,
+        roleCode: "staff",
+      }),
+    ).toBe(false);
+  });
+
+  it("picks allowlisted staff then the oldest shop admin", () => {
+    const older = new Date("2026-01-01");
+    const newer = new Date("2026-06-01");
+    expect(
+      pickFirstSuperAdminStaffId({
+        existingSuperAdminCount: 0,
+        allowlist: "boss@shop.vn",
+        staff: [
+          { id: "a1", email: "admin@lily.vn", roleCode: "admin", createdAt: older },
+          { id: "b1", email: "boss@shop.vn", roleCode: "staff", createdAt: newer },
+        ],
+      }),
+    ).toBe("b1");
+    expect(
+      pickFirstSuperAdminStaffId({
+        existingSuperAdminCount: 0,
+        staff: [
+          { id: "a2", email: "later@shop.vn", roleCode: "admin", createdAt: newer },
+          { id: "a1", email: "admin@lily.vn", roleCode: "admin", createdAt: older },
+        ],
+      }),
+    ).toBe("a1");
+    expect(
+      pickFirstSuperAdminStaffId({
+        existingSuperAdminCount: 1,
+        staff: [{ id: "a1", email: "admin@lily.vn", roleCode: "admin", createdAt: older }],
+      }),
+    ).toBeNull();
   });
 
   it("does not re-grant after revoke just because env still matches", () => {
