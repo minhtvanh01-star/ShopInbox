@@ -18,6 +18,7 @@ import {
   type ChecklistTemplateView,
 } from "./OrderChecklistManager";
 import { ShopPolicyForm } from "./ShopPolicyForm";
+import { NexoMark } from "@/components/brand/NexoMark";
 import {
   disconnectChannelAction,
   rotateWebWidgetKeyAction,
@@ -398,9 +399,7 @@ export function SettingsWorkspace({
 
         {channels.length === 0 ? (
           <div className="empty-state m-6">
-            <div className="brand-mark mb-4 h-12 w-12 text-lg" aria-hidden="true">
-              S
-            </div>
+            <NexoMark className="mb-4 h-12 w-12" />
             <p className="text-base font-medium text-slate-700">Chưa có kênh nào</p>
             <p className="mt-1 max-w-sm text-sm text-slate-500">
               {canConnect

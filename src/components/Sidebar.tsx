@@ -12,6 +12,7 @@ import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
 import { usePersistedState } from "@/lib/use-persisted-state";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 import { StaffAvatar } from "@/components/staff/StaffAvatar";
+import { NexoMark, NexoWordmark } from "@/components/brand/NexoMark";
 
 type NavItem = {
   href: string;
@@ -175,12 +176,12 @@ export function Sidebar({
         <div
           className={`flex items-center border-b border-border py-4 ${iconOnly ? "flex-col gap-2 px-2" : "gap-3 px-4"}`}
         >
-          <div className="brand-mark h-9 w-9 text-sm" aria-hidden="true">
-            S
-          </div>
+          <NexoMark className="h-9 w-9" />
           {!iconOnly ? (
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold tracking-tight text-teal-950">ShopInbox</p>
+              <p className="truncate text-sm leading-none">
+                <NexoWordmark />
+              </p>
               <p className="truncate text-xs text-slate-500">
                 {isSuperAdmin ? "Nền tảng · Super admin" : shopName}
               </p>
