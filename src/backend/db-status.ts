@@ -60,7 +60,6 @@ export async function probeDatabase(
   }
   try {
     await prisma.$queryRaw`SELECT 1`;
-    return { ok: true, hostKind: info.kind, code: "ok", hint: info.hint, source: resolved.source };
   } catch (error) {
     let code = classifyDatabaseError(error);
     if (
@@ -76,6 +75,19 @@ export async function probeDatabase(
       ok: false,
       hostKind: info.kind,
       code,
+      hint: info.hint,
+      source: resolved.source,
+      env: presence,
+    };
+  }
+  try {
+    await prisma.staff.count();
+    return { ok: true, hostKind: info.kind, code: "ok", hint: info.hint, source: resolved.source };
+  } catch (error) {
+    return {
+      ok: false,
+      hostKind: info.kind,
+      code: classifyDatabaseError(error),
       hint: info.hint,
       source: resolved.source,
       env: presence,

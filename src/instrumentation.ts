@@ -3,9 +3,9 @@ export async function register() {
   const { startScheduledBackups } = await import("@/backend/db-backup-schedule");
   startScheduledBackups();
   try {
-    const { ensureProductionData } = await import("@/backend/prod-bootstrap");
-    await ensureProductionData();
+    const { ensureDatabaseReady } = await import("@/backend/prod-bootstrap");
+    await ensureDatabaseReady();
   } catch (error) {
-    console.error("[instrumentation] production data bootstrap failed", error);
+    console.error("[instrumentation] database ready failed", error);
   }
 }

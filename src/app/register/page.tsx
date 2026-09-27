@@ -3,6 +3,7 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { getGoogleOAuthConfig } from "@/backend/google-oauth";
 import { canSendRegisterOtp, isEmailConfigured } from "@/backend/email";
 import { prisma } from "@/backend/prisma";
+import { ensureDatabaseReady } from "@/backend/prod-bootstrap";
 import { shouldSkipRegisterOtp } from "@/lib/first-run";
 import { safeInternalPath } from "@/backend/safe-path";
 
@@ -42,6 +43,11 @@ async function loadFirstRun() {
   try {
     return shouldSkipRegisterOtp(await prisma.staff.count());
   } catch {
-    return false;
+    try {
+      await ensureDatabaseReady();
+      return shouldSkipRegisterOtp(await prisma.staff.count());
+    } catch {
+      return false;
+    }
   }
 }
