@@ -38,7 +38,7 @@ export type CompleteMetaPageState = {
   success?: string;
 };
 
-const CHANNELS: Channel[] = ["facebook", "zalo", "instagram", "web"];
+const CHANNELS: Channel[] = ["facebook", "zalo", "instagram", "web", "shopify"];
 
 function pickField(formData: FormData, key: string) {
   const raw = formData.get(key);

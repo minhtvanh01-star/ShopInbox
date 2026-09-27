@@ -1,6 +1,8 @@
 import { prisma } from "@/backend/prisma";
 import { BOOTSTRAP_ROLE_CODE } from "@/lib/rbac-catalog";
 import type { ShopOpsInput, ShopPlanCode, ShopSupportStatusCode } from "@/lib/shop-ops";
+import { DEFAULT_MAX_USERS_PER_SHOP } from "@/lib/shop-policy";
+import { isPlatformShopId, PLATFORM_SHOP_ID } from "@/lib/super-admin";
 
 export type PlatformShopFilters = {
   plan?: ShopPlanCode | null;
@@ -30,8 +32,9 @@ function mapPlatformShopRow(shop: {
   supportStatus?: ShopSupportStatusCode | null;
   supportTopic?: string | null;
   supportNote?: string | null;
+  maxUsersPerShop?: number | null;
   _count: { staff: number; channelAccounts: number; orders: number };
-  staff: Array<{ id: string; name: string; email: string; isSuperAdmin?: boolean }>;
+  staff: Array<{ id: string; name: string; isSuperAdmin?: boolean }>;
 }) {
   return {
     id: shop.id,
@@ -44,6 +47,7 @@ function mapPlatformShopRow(shop: {
     supportStatus: shop.supportStatus ?? ("ok" as const),
     supportTopic: shop.supportTopic ?? "none",
     supportNote: shop.supportNote ?? "",
+    seatLimit: shop.maxUsersPerShop || DEFAULT_MAX_USERS_PER_SHOP,
     staffCount: shop._count.staff,
     channelCount: shop._count.channelAccounts,
     orderCount: shop._count.orders,
@@ -55,6 +59,7 @@ export async function listPlatformShops(filters: PlatformShopFilters = {}) {
   try {
     const shops = await prisma.shop.findMany({
       where: {
+        id: { not: PLATFORM_SHOP_ID },
         ...(filters.plan ? { planCode: filters.plan } : {}),
         ...(filters.support ? { supportStatus: filters.support } : {}),
       },
@@ -70,10 +75,11 @@ export async function listPlatformShops(filters: PlatformShopFilters = {}) {
         supportStatus: true,
         supportTopic: true,
         supportNote: true,
+        maxUsersPerShop: true,
         _count: { select: shopCountSelect },
         staff: {
           ...ownerSelect,
-          select: { id: true, name: true, email: true, isSuperAdmin: true },
+          select: { id: true, name: true, isSuperAdmin: true },
         },
       },
     });
@@ -82,6 +88,7 @@ export async function listPlatformShops(filters: PlatformShopFilters = {}) {
     console.error("[listPlatformShops] full query failed — trying safe columns", error);
     try {
       const shops = await prisma.shop.findMany({
+        where: { id: { not: PLATFORM_SHOP_ID } },
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
@@ -89,10 +96,11 @@ export async function listPlatformShops(filters: PlatformShopFilters = {}) {
           createdAt: true,
           setupCompletedAt: true,
           suspendedAt: true,
+          maxUsersPerShop: true,
           _count: { select: shopCountSelect },
           staff: {
             ...ownerSelect,
-            select: { id: true, name: true, email: true },
+            select: { id: true, name: true },
           },
         },
       });
@@ -101,6 +109,7 @@ export async function listPlatformShops(filters: PlatformShopFilters = {}) {
       console.error("[listPlatformShops] mid query failed — listing id/name only", fallbackError);
       try {
         const shops = await prisma.shop.findMany({
+          where: { id: { not: PLATFORM_SHOP_ID } },
           orderBy: { createdAt: "desc" },
           select: { id: true, name: true, createdAt: true },
         });
@@ -129,6 +138,7 @@ const channelSelect = {
 } as const;
 
 export async function getPlatformShopDetail(shopId: string) {
+  if (isPlatformShopId(shopId)) return null;
   try {
     return await prisma.shop.findUnique({
       where: { id: shopId },

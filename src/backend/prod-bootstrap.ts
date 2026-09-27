@@ -1,10 +1,15 @@
-import { createOpenRegistrationStaff } from "@/backend/open-registration";
 import { hashPassword } from "@/backend/password";
 import { prisma } from "@/backend/prisma";
 import { isPrismaSchemaDriftError } from "@/backend/prisma-errors";
 import { syncRbacCatalog } from "@/backend/rbac-sync";
 import { readFirstAdminBootstrap } from "@/lib/first-run";
-import { pickFirstSuperAdminStaffId } from "@/lib/super-admin";
+import {
+  PLATFORM_SHOP_ID,
+  PLATFORM_SHOP_NAME,
+  parseSuperAdminEmails,
+  pickFirstSuperAdminStaffId,
+} from "@/lib/super-admin";
+import { normalizeRoleCode, BOOTSTRAP_ROLE_CODE } from "@/lib/rbac-catalog";
 
 let bootstrapPromise: Promise<void> | null = null;
 let readyPromise: Promise<void> | null = null;
@@ -48,49 +53,88 @@ async function runProductionBootstrap() {
   }
 
   try {
+    await ensurePlatformShop();
     await ensureFirstAdminAccount();
     await grantFirstSuperAdmin();
+    await parkSuperAdminsOnPlatformShop();
   } catch (error) {
     console.error("[ensureProductionData] Super admin grant failed", error);
   }
 }
 
-/** DB trống + SUPER_ADMIN_EMAIL/PASSWORD — tạo Super admin để vào hệ thống. */
+async function ensurePlatformShop() {
+  await prisma.shop.upsert({
+    where: { id: PLATFORM_SHOP_ID },
+    create: {
+      id: PLATFORM_SHOP_ID,
+      name: PLATFORM_SHOP_NAME,
+      setupCompletedAt: new Date(),
+    },
+    update: { name: PLATFORM_SHOP_NAME, setupCompletedAt: new Date() },
+  });
+}
+
+/** Super admin chỉ ở shop nền tảng. Có SUPER_ADMIN_EMAIL thì gỡ flag khỏi chủ shop khách. */
+async function parkSuperAdminsOnPlatformShop() {
+  await ensurePlatformShop();
+  const allowlist = parseSuperAdminEmails(process.env.SUPER_ADMIN_EMAIL);
+  if (allowlist.length > 0) {
+    await prisma.staff.updateMany({
+      where: { isSuperAdmin: true, email: { notIn: allowlist } },
+      data: { isSuperAdmin: false, sessionVersion: { increment: 1 } },
+    });
+  }
+  await prisma.staff.updateMany({
+    where: { isSuperAdmin: true, shopId: { not: PLATFORM_SHOP_ID } },
+    data: { shopId: PLATFORM_SHOP_ID, sessionVersion: { increment: 1 } },
+  });
+}
+
+/** SUPER_ADMIN_EMAIL/PASSWORD — tạo hoặc chuyển Super admin sang shop nền tảng. */
 export async function ensureFirstAdminAccount() {
   const spec = readFirstAdminBootstrap(process.env);
   if (!spec) return;
 
-  let staffCount = 0;
   try {
-    staffCount = await prisma.staff.count();
+    await ensurePlatformShop();
   } catch (error) {
     if (!isPrismaSchemaDriftError(error)) {
       throw error;
     }
-    console.error("[ensureFirstAdminAccount] staff count failed — skip", error);
+    console.error("[ensureFirstAdminAccount] platform shop failed — skip", error);
     return;
   }
-  if (staffCount > 0) return;
 
-  const created = await createOpenRegistrationStaff({
-    email: spec.email,
-    name: spec.name,
-    passwordHash: await hashPassword(spec.password),
+  const existing = await prisma.staff.findUnique({
+    where: { email: spec.email },
+    select: { id: true, shopId: true, isSuperAdmin: true },
   });
-  if (!created.ok) {
-    console.error("[ensureFirstAdminAccount] create failed", created.error);
+  if (existing) {
+    if (existing.shopId !== PLATFORM_SHOP_ID || !existing.isSuperAdmin) {
+      await prisma.staff.update({
+        where: { id: existing.id },
+        data: {
+          shopId: PLATFORM_SHOP_ID,
+          isSuperAdmin: true,
+          sessionVersion: { increment: 1 },
+        },
+      });
+    }
     return;
   }
 
-  try {
-    await prisma.shop.update({
-      where: { id: created.staff.shopId },
-      data: { setupCompletedAt: new Date() },
-    });
-  } catch (error) {
-    console.error("[ensureFirstAdminAccount] shop setup stamp failed", error);
-  }
-  await grantFirstSuperAdmin();
+  await prisma.staff.create({
+    data: {
+      id: `staff-${crypto.randomUUID()}`,
+      shopId: PLATFORM_SHOP_ID,
+      name: spec.name,
+      email: spec.email,
+      passwordHash: await hashPassword(spec.password),
+      roleCode: normalizeRoleCode(BOOTSTRAP_ROLE_CODE),
+      isActive: true,
+      isSuperAdmin: true,
+    },
+  });
 }
 
 export async function ensureFirstSuperAdminGranted() {
@@ -123,6 +167,10 @@ async function grantFirstSuperAdmin() {
 
   await prisma.staff.update({
     where: { id: staffId },
-    data: { isSuperAdmin: true, sessionVersion: { increment: 1 } },
+    data: {
+      isSuperAdmin: true,
+      shopId: PLATFORM_SHOP_ID,
+      sessionVersion: { increment: 1 },
+    },
   });
 }

@@ -15,6 +15,7 @@ export type OAuthStatePayload = {
   channel: Channel;
   nonce: string;
   codeVerifier?: string;
+  shopDomain?: string;
 };
 
 export type { MetaPageOption } from "@/lib/oauth-types";
@@ -35,6 +36,7 @@ export async function createOAuthStateToken(payload: OAuthStatePayload) {
     channel: payload.channel,
     nonce: payload.nonce,
     ...(payload.codeVerifier ? { codeVerifier: payload.codeVerifier } : {}),
+    ...(payload.shopDomain ? { shopDomain: payload.shopDomain } : {}),
   })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -54,7 +56,12 @@ export async function verifyOAuthStateToken(token: string): Promise<OAuthStatePa
     }
 
     const channel = payload.channel;
-    if (channel !== "facebook" && channel !== "instagram" && channel !== "zalo") {
+    if (
+      channel !== "facebook" &&
+      channel !== "instagram" &&
+      channel !== "zalo" &&
+      channel !== "shopify"
+    ) {
       return null;
     }
 
@@ -63,6 +70,7 @@ export async function verifyOAuthStateToken(token: string): Promise<OAuthStatePa
       channel,
       nonce: payload.nonce,
       codeVerifier: typeof payload.codeVerifier === "string" ? payload.codeVerifier : undefined,
+      shopDomain: typeof payload.shopDomain === "string" ? payload.shopDomain : undefined,
     };
   } catch {
     return null;

@@ -4,6 +4,7 @@ import {
   getMetaOAuthRedirectUri,
   getPublicAppUrl,
   getZaloOAuthConfig,
+  isUsableOAuthRedirectUri,
   listMissingMetaOAuthEnvVars,
   listMissingZaloOAuthEnvVars,
   normalizeAppOrigin,
@@ -155,5 +156,34 @@ describe("resolveOAuthRedirectUri", () => {
     process.env.NEXT_PUBLIC_APP_URL = "shopinbox.n2.tingon.xyz";
     delete process.env.APP_URL;
     expect(getPublicAppUrl()).toBe("https://shopinbox.n2.tingon.xyz");
+  });
+
+  it("rejects database URIs so shops never see postgres credentials", () => {
+    expect(
+      normalizeAppOrigin(
+        "postgres://user:d70secret@vays-db.example:54322/shopinbox_db",
+      ),
+    ).toBeNull();
+    stashEnv(["NEXT_PUBLIC_APP_URL", "APP_URL", "META_REDIRECT_URI"]);
+    process.env.NEXT_PUBLIC_APP_URL =
+      "postgres://user:d70secret@vays-db.example:54322/shopinbox_db";
+    process.env.APP_URL = "https://shopinbox.n2.tinhgon.xyz";
+    process.env.META_REDIRECT_URI =
+      "postgres://user:d70secret@vays-db.example:54322/shopinbox_db";
+    expect(getPublicAppUrl()).toBe("https://shopinbox.n2.tinhgon.xyz");
+    expect(
+      resolveOAuthRedirectUri(
+        process.env.META_REDIRECT_URI,
+        "/api/connect/meta/callback",
+      ),
+    ).toBe("https://shopinbox.n2.tinhgon.xyz/api/connect/meta/callback");
+    expect(
+      getMetaOAuthRedirectUri("https://shopinbox.n2.tinhgon.xyz"),
+    ).toBe("https://shopinbox.n2.tinhgon.xyz/api/connect/meta/callback");
+    expect(
+      isUsableOAuthRedirectUri(
+        "postgres://user:secret@vays-db.example:54322/shopinbox_db",
+      ),
+    ).toBe(false);
   });
 });

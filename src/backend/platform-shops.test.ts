@@ -11,6 +11,7 @@ vi.mock("@/backend/prisma", () => ({
 
 import { prisma } from "@/backend/prisma";
 import { getPlatformShopDetail, listPlatformShops } from "@/backend/platform-shops";
+import { PLATFORM_SHOP_ID } from "@/lib/super-admin";
 
 const missingPlan = new Error(
   "P2022\nThe column `shops.planCode` does not exist in the current database.",
@@ -53,6 +54,11 @@ describe("listPlatformShops", () => {
 describe("getPlatformShopDetail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("hides the platform shop from the tenant console", async () => {
+    await expect(getPlatformShopDetail(PLATFORM_SHOP_ID)).resolves.toBeNull();
+    expect(prisma.shop.findUnique).not.toHaveBeenCalled();
   });
 
   it("fills default plan/support when shop-ops columns are missing", async () => {

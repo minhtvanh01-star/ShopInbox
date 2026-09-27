@@ -1,13 +1,5 @@
-import {
-  getMetaOAuthConfig,
-  getMetaOAuthRedirectUri,
-  getMetaWebhookUrl,
-  getZaloOAuthConfig,
-  getZaloOAuthRedirectUri,
-  getZaloWebhookUrl,
-  listMissingMetaOAuthEnvVars,
-  listMissingZaloOAuthEnvVars,
-} from "@/backend/oauth-config";
+import { getMetaOAuthConfig, getShopifyOAuthConfig, getZaloOAuthConfig } from "@/backend/oauth-config";
+import { isSuperAdminSession, SUPER_ADMIN_HOME } from "@/lib/super-admin";
 import { listQuickReplies } from "@/backend/quick-reply";
 import { listAutoReplyRules } from "@/backend/auto-reply";
 import { ensureDefaultChecklistTemplates } from "@/backend/order-checklist";
@@ -30,6 +22,9 @@ type SettingsPageProps = {
 
 export default async function SettingsPage({ searchParams }: SettingsPageProps) {
   const session = await requireSession();
+  if (isSuperAdminSession(session)) {
+    redirect(SUPER_ADMIN_HOME);
+  }
   const canOpen =
     (await hasPermission(session, PERMISSION_CODES.settingsUpdate)) ||
     (await hasPermission(session, PERMISSION_CODES.channelsConnect));
@@ -51,8 +46,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
 
   const metaConfig = getMetaOAuthConfig();
   const zaloConfig = getZaloOAuthConfig();
-  const metaMissingEnvVars = listMissingMetaOAuthEnvVars();
-  const zaloMissingEnvVars = listMissingZaloOAuthEnvVars();
+  const shopifyConfig = getShopifyOAuthConfig();
 
   const quickReplies = quickReplyRows.map((row) => ({
     id: row.id,
@@ -92,18 +86,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         checklistTemplates={checklistTemplates}
         metaOAuthConfigured={Boolean(metaConfig)}
         zaloOAuthConfigured={Boolean(zaloConfig)}
-        metaMissingEnvVars={metaMissingEnvVars}
-        zaloMissingEnvVars={zaloMissingEnvVars}
-        metaOAuthRedirectUri={getMetaOAuthRedirectUri()}
-        zaloOAuthRedirectUri={getZaloOAuthRedirectUri()}
-        metaWebhookUrl={getMetaWebhookUrl()}
-        zaloWebhookUrl={getZaloWebhookUrl()}
-        metaWebhookVerifyToken={
-          shop.permissions.includes(PERMISSION_CODES.channelsConnect) &&
-          Boolean(metaConfig?.webhookVerifyToken ?? process.env.META_WEBHOOK_VERIFY_TOKEN?.trim())
-            ? "Đã cấu hình trên server — dán META_WEBHOOK_VERIFY_TOKEN vào Meta Developers (không hiện secret)."
-            : ""
-        }
+        shopifyOAuthConfigured={Boolean(shopifyConfig)}
         pendingMetaPages={pendingMetaPages}
         oauthFlash={{
           success: params.oauth_success,

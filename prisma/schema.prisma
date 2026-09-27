@@ -12,6 +12,7 @@ enum Channel {
   zalo
   instagram
   web
+  shopify
 }
 
 enum ChannelStatus {

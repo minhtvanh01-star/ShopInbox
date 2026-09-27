@@ -3,6 +3,7 @@ import {
   canShopStaffMutateMember,
   isPlatformAdminPath,
   isSuperAdminAllowedPath,
+  isPlatformShopId,
   isSuperAdminEmail,
   parseSuperAdminEmails,
   shouldBlockLastActiveSuperAdmin,
@@ -35,6 +36,11 @@ describe("super admin emails", () => {
     expect(isSuperAdminAllowedPath("/api/connect/meta/start")).toBe(false);
   });
 
+  it("does not treat the platform shop as a tenant shop", () => {
+    expect(isPlatformShopId("platform")).toBe(true);
+    expect(isPlatformShopId("shop1")).toBe(false);
+  });
+
   it("bootstraps SUPER_ADMIN_EMAIL only when no super admin exists", () => {
     expect(
       shouldBootstrapSuperAdmin({
@@ -54,7 +60,7 @@ describe("super admin emails", () => {
     ).toBe(false);
   });
 
-  it("bootstraps the first shop admin when env is empty and nobody is Super admin", () => {
+  it("does not bootstrap a shop owner just because they registered first", () => {
     expect(
       shouldBootstrapSuperAdmin({
         isSuperAdmin: false,
@@ -62,7 +68,7 @@ describe("super admin emails", () => {
         existingSuperAdminCount: 0,
         roleCode: "admin",
       }),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldBootstrapSuperAdmin({
         isSuperAdmin: false,
@@ -73,7 +79,7 @@ describe("super admin emails", () => {
     ).toBe(false);
   });
 
-  it("picks allowlisted staff then the oldest shop admin", () => {
+  it("picks only the allowlisted email, never the oldest shop admin", () => {
     const older = new Date("2026-01-01");
     const newer = new Date("2026-06-01");
     expect(
@@ -94,7 +100,7 @@ describe("super admin emails", () => {
           { id: "a1", email: "admin@lily.vn", roleCode: "admin", createdAt: older },
         ],
       }),
-    ).toBe("a1");
+    ).toBeNull();
     expect(
       pickFirstSuperAdminStaffId({
         existingSuperAdminCount: 1,

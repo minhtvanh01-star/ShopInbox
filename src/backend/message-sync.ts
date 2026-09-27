@@ -49,6 +49,7 @@ function defaultSenderName(channel: Channel, senderExternalId: string) {
   if (channel === "instagram") return `Khách Instagram ${suffix}`;
   if (channel === "zalo") return `Khách Zalo ${suffix}`;
   if (channel === "web") return `Khách web ${suffix}`;
+  if (channel === "shopify") return `Khách Shopify ${suffix}`;
   return `Khách ${suffix}`;
 }
 

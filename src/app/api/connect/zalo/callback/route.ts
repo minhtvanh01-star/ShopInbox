@@ -6,7 +6,7 @@ import { auditMetaFromRequest, writeAudit } from "@/backend/audit";
 import { saveOAuthConnection } from "@/backend/channel-connect";
 import { getZaloOAuthConfig } from "@/backend/oauth-config";
 import { OAUTH_STATE_COOKIE, verifyOAuthStateToken } from "@/backend/oauth-state";
-import { absoluteAppUrl } from "@/backend/public-url";
+import { absoluteAppUrl, getRequestOrigin } from "@/backend/public-url";
 import { exchangeZaloCode, fetchZaloOaInfo } from "@/backend/zalo-oauth";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
 import { sanitizeOAuthFlashMessage } from "@/lib/meta-webhook-security";
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(absoluteAppUrl(request, "/login?next=/settings"));
   }
 
-  const config = getZaloOAuthConfig();
+  const config = getZaloOAuthConfig(getRequestOrigin(request));
   if (!config) {
     return NextResponse.redirect(
       settingsUrl(request, { oauth_error: "zalo_not_configured" }),

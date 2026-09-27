@@ -1,5 +1,13 @@
 export const SUPER_ADMIN_HOME = "/admin/shops";
 
+/** Shop kỹ thuật cho Super admin — không phải cửa hàng khách. */
+export const PLATFORM_SHOP_ID = "platform";
+export const PLATFORM_SHOP_NAME = "Nền tảng";
+
+export function isPlatformShopId(shopId: string) {
+  return shopId === PLATFORM_SHOP_ID;
+}
+
 export function parseSuperAdminEmails(raw = process.env.SUPER_ADMIN_EMAIL) {
   return String(raw ?? "")
     .split(/[,;\s]+/)
@@ -23,30 +31,17 @@ export function shouldBootstrapSuperAdmin(input: {
 }) {
   if (input.isSuperAdmin) return false;
   if (input.existingSuperAdminCount > 0) return false;
-  if (isSuperAdminEmail(input.email, input.allowlist)) return true;
-  return isShopAdminRole(input.roleCode);
+  return isSuperAdminEmail(input.email, input.allowlist);
 }
 
-function isShopAdminRole(roleCode?: string) {
-  const role = String(roleCode ?? "")
-    .trim()
-    .toLowerCase();
-  return role === "admin" || role === "owner";
-}
-
-/** Chọn staff để gán Super admin lần đầu (env khớp, không thì chủ shop cũ nhất). */
+/** Chỉ gán Super admin lần đầu khi email khớp SUPER_ADMIN_EMAIL — không lấy chủ shop. */
 export function pickFirstSuperAdminStaffId(input: {
   existingSuperAdminCount: number;
   allowlist?: string;
   staff: Array<{ id: string; email: string; roleCode: string; createdAt: Date }>;
 }) {
   if (input.existingSuperAdminCount > 0) return null;
-  const allowlisted = input.staff.find((row) => isSuperAdminEmail(row.email, input.allowlist));
-  if (allowlisted) return allowlisted.id;
-  const owners = input.staff
-    .filter((row) => isShopAdminRole(row.roleCode))
-    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
-  return owners[0]?.id ?? null;
+  return input.staff.find((row) => isSuperAdminEmail(row.email, input.allowlist))?.id ?? null;
 }
 
 export function isSuperAdminSession(session: { isSuperAdmin?: boolean } | null | undefined) {

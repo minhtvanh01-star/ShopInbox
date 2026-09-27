@@ -8,3 +8,8 @@ export function shopSeatLimitMessage(max: number = MAX_USERS_PER_SHOP) {
 export function canAddActiveShopSeat(activeCount: number, max: number = MAX_USERS_PER_SHOP) {
   return activeCount < max;
 }
+
+/** Số nhân viên đang có / hạn ghế của shop (gói). */
+export function formatShopSeatUsage(used: number, max: number = MAX_USERS_PER_SHOP) {
+  return `${used}/${max}`;
+}

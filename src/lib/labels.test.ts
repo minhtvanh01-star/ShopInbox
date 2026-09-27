@@ -56,6 +56,7 @@ describe("getInboxChannelFilters", () => {
       { id: "zalo", label: "Zalo" },
       { id: "instagram", label: "Instagram" },
       { id: "web", label: "Web" },
+      { id: "shopify", label: "Shopify" },
     ]);
   });
 
