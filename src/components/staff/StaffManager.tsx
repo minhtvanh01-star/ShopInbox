@@ -555,8 +555,8 @@ export function StaffManager({
 
             <p className="mt-1 text-sm leading-6 text-slate-500">
 
-              Chọn vai trò từ danh sách đang bật trong cấu hình. Tối đa {maxUsersPerShop} thành
-              viên đang hoạt động / shop.
+              Chọn vai trò từ danh sách đang bật trong cấu hình. Bản chạy thử tối đa{" "}
+              {maxUsersPerShop} người đang hoạt động; bản nâng cấp sẽ mở thêm ghế sau.
 
             </p>
 

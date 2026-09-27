@@ -78,6 +78,7 @@ describe("rbac catalog", () => {
     expect(catalogHasPermission(ROLE_CODES.staff, PERMISSION_CODES.customersUpdate)).toBe(true);
     expect(catalogHasPermission(ROLE_CODES.staff, PERMISSION_CODES.productsManage)).toBe(false);
     expect(catalogHasPermission(ROLE_CODES.manager, PERMISSION_CODES.productsManage)).toBe(true);
+    expect(catalogHasPermission(ROLE_CODES.staff, PERMISSION_CODES.auditRead)).toBe(false);
   });
 
   it("hasPermissionCodes checks membership", () => {
@@ -181,12 +182,16 @@ describe("isAdminSession", () => {
 
 describe("isAdminRole / normalizeRoleCode casing", () => {
   it("treats Admin/owner casing as admin", async () => {
-    const { isAdminRole, normalizeRoleCode } = await import("@/lib/rbac-catalog");
+    const { canViewAuditLog, isAdminRole, normalizeRoleCode } = await import("@/lib/rbac-catalog");
     expect(normalizeRoleCode(" Admin ")).toBe(ROLE_CODES.admin);
     expect(normalizeRoleCode("OWNER")).toBe(ROLE_CODES.admin);
     expect(isAdminRole("admin")).toBe(true);
     expect(isAdminRole("Admin")).toBe(true);
     expect(isAdminRole("owner")).toBe(true);
     expect(isAdminRole("staff")).toBe(false);
+    expect(canViewAuditLog("staff")).toBe(false);
+    expect(canViewAuditLog("admin")).toBe(true);
+    expect(canViewAuditLog("manager")).toBe(true);
+    expect(canViewAuditLog(undefined)).toBe(true);
   });
 });

@@ -73,10 +73,17 @@ async function registerMetaWebhooks(input: {
   return notes.join("");
 }
 
-export async function syncConnectedMetaInbox(shopId: string, channel: Channel) {
+export async function syncConnectedMetaInbox(
+  shopId: string,
+  channel: Channel,
+  options?: { registerWebhooks?: boolean; updateNote?: boolean },
+) {
   if (channel !== "facebook" && channel !== "instagram") {
     throw new Error("Chỉ đồng bộ được Facebook hoặc Instagram.");
   }
+
+  const registerWebhooks = options?.registerWebhooks !== false;
+  const updateNote = options?.updateNote !== false;
 
   const account = await prisma.channelAccount.findUniqueOrThrow({
     where: { shopId_channel: { shopId, channel } },
@@ -96,12 +103,14 @@ export async function syncConnectedMetaInbox(shopId: string, channel: Channel) {
     throw new Error("Thiếu Page ID trên kênh.");
   }
 
-  const webhookNote = await registerMetaWebhooks({
-    channel,
-    accessToken,
-    pageId: account.pageId,
-    linkedPageId: account.linkedPageId,
-  });
+  const webhookNote = registerWebhooks
+    ? await registerMetaWebhooks({
+        channel,
+        accessToken,
+        pageId: account.pageId,
+        linkedPageId: account.linkedPageId,
+      })
+    : "";
 
   const conversations = await fetchRecentMetaConversations(graphPageId, accessToken, {
     platform: channel === "instagram" ? "instagram" : "MESSENGER",
@@ -113,17 +122,19 @@ export async function syncConnectedMetaInbox(shopId: string, channel: Channel) {
     conversations,
   });
 
-  const ingestNote =
-    ingested > 0
-      ? ` Đã kéo ${ingested} tin nhắn gần đây vào Inbox.`
-      : " Chưa có tin khách trong hội thoại gần đây — nhắn thử từ nick tester.";
+  if (updateNote) {
+    const ingestNote =
+      ingested > 0
+        ? ` Đã kéo ${ingested} tin nhắn gần đây vào Inbox.`
+        : " Chưa có tin khách trong hội thoại gần đây — nhắn thử từ nick tester.";
 
-  await prisma.channelAccount.update({
-    where: { id: account.id },
-    data: {
-      note: `Đã kết nối OAuth — ${account.displayName ?? account.name}.${webhookNote}${ingestNote}`,
-    },
-  });
+    await prisma.channelAccount.update({
+      where: { id: account.id },
+      data: {
+        note: `Đã kết nối OAuth — ${account.displayName ?? account.name}.${webhookNote}${ingestNote}`,
+      },
+    });
+  }
 
   return { ingested, webhookNote };
 }

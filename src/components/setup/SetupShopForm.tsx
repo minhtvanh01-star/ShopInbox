@@ -12,6 +12,7 @@ import {
   REPLY_CLAIM_TTL_MIN,
 } from "@/lib/shop-policy";
 import { SHOP_NAME_MAX } from "@/lib/shop-name";
+import { trialPlanSeatWarning } from "@/lib/shop-seats";
 
 const initial: SetupShopState = {};
 
@@ -83,6 +84,7 @@ export function SetupShopForm({
               defaultValue={maxUsersPerShop}
               className="input-field"
             />
+            <p className="text-xs leading-5 text-amber-800">{trialPlanSeatWarning()}</p>
           </div>
         </div>
         <button type="submit" disabled={pending} className="btn-primary w-full" aria-busy={pending}>

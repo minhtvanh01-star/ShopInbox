@@ -6,6 +6,7 @@ import { listOpenShopInvites } from "@/backend/shop-invite";
 import { formatDateTime, formatTime } from "@/lib/labels";
 import { prisma } from "@/backend/prisma";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { trialPlanSeatWarning } from "@/lib/shop-seats";
 
 export default async function StaffPage() {
   const session = await requirePermission(PERMISSION_CODES.staffRead);
@@ -32,6 +33,12 @@ export default async function StaffPage() {
         <p className="page-subtitle">
           Mời nhân viên vào đúng shop này, hoặc tạo tài khoản trực tiếp. Gán vai trò và bật/tắt
           đăng nhập.
+        </p>
+        <p
+          role="status"
+          className="mt-3 max-w-2xl rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm leading-6 text-amber-950"
+        >
+          {trialPlanSeatWarning()}
         </p>
       </header>
       {canManage ? (

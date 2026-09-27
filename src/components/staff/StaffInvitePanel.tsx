@@ -8,6 +8,7 @@ import {
 } from "@/app/(app)/staff/actions";
 import { DEFAULT_ROLE_CODE, roleLabel } from "@/lib/rbac-catalog";
 import { maskEmail } from "@/lib/mask-email";
+import { trialPlanSeatWarning } from "@/lib/shop-seats";
 
 const createInitial: InviteActionState = {};
 const revokeInitial: InviteActionState = {};
@@ -53,6 +54,12 @@ export function StaffInvitePanel({
       <p className="mt-1 text-sm leading-6 text-slate-500">
         Nhân viên không đăng ký công khai. Gửi link — họ tạo tài khoản và được gắn đúng cửa hàng
         của bạn.
+      </p>
+      <p
+        role="status"
+        className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-950"
+      >
+        {trialPlanSeatWarning()}
       </p>
 
       <form action={createAction} className="mt-4 grid gap-3 sm:grid-cols-2">

@@ -70,7 +70,7 @@ model Shop {
   createdAt             DateTime           @default(now())
   /** Phút idle trước khi nhả claim hội thoại (nhân viên). */
   replyClaimTtlMinutes  Int                @default(15)
-  /** Số thành viên active tối đa trên shop. */
+  /** Số thành viên active tối đa trên shop (mặc định 3, trần chạy thử 5). */
   maxUsersPerShop       Int                @default(3)
   /** Null = chủ shop chưa xong màn cấu hình — chặn Inbox/kênh/nhân viên. */
   setupCompletedAt      DateTime?

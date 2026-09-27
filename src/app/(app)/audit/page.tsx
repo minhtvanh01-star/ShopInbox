@@ -1,9 +1,10 @@
+import { redirect } from "next/navigation";
 import { prisma } from "@/backend/prisma";
 import { requirePermission } from "@/backend/rbac";
 import { AuditLogTable, type AuditRow } from "@/components/audit/AuditLogTable";
 import { formatDateTimeVN, parseVnDayEnd, parseVnDayStart } from "@/lib/labels";
-import { maskEmail } from "@/lib/mask-email";
-import { AUDIT_ACTION_LABEL, PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { maskEmail, maskEmailsInValue } from "@/lib/mask-email";
+import { AUDIT_ACTION_LABEL, canViewAuditLog, PERMISSION_CODES } from "@/lib/rbac-catalog";
 
 type AuditPageProps = {
   searchParams: Promise<{
@@ -16,6 +17,9 @@ type AuditPageProps = {
 
 export default async function AuditPage({ searchParams }: AuditPageProps) {
   const session = await requirePermission(PERMISSION_CODES.auditRead);
+  if (!canViewAuditLog(session.role)) {
+    redirect("/inbox");
+  }
   const params = await searchParams;
   const actorId = params.actorId?.trim() || undefined;
   const action = params.action?.trim() || undefined;
@@ -50,12 +54,12 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
   const rows: AuditRow[] = logs.map((log) => ({
     id: log.id,
     createdAt: formatDateTimeVN(log.createdAt),
-    actorEmail: log.actorEmail,
+    actorEmail: log.actorEmail ? maskEmail(log.actorEmail) : null,
     actorRole: log.actorRole,
     action: log.action,
     entityType: log.entityType,
     entityId: log.entityId,
-    metadata: log.metadata,
+    metadata: maskEmailsInValue(log.metadata),
   }));
 
   const actionOptions = Object.entries(AUDIT_ACTION_LABEL).sort((a, b) => a[1].localeCompare(b[1], "vi"));

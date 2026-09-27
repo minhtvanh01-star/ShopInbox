@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { maskEmail } from "./mask-email";
+import { maskEmail, maskEmailsInValue } from "./mask-email";
 
 describe("maskEmail", () => {
   it("keeps the domain and masks the middle of the local part", () => {
@@ -17,5 +17,15 @@ describe("maskEmail", () => {
     expect(maskEmail("")).toBe("***");
     expect(maskEmail(null)).toBe("***");
     expect(maskEmail("not-an-email")).toBe("***");
+  });
+});
+
+describe("maskEmailsInValue", () => {
+  it("masks emails inside objects and sentences", () => {
+    expect(maskEmailsInValue({ email: "admin@lily.vn", ok: true })).toEqual({
+      email: "ad***in@lily.vn",
+      ok: true,
+    });
+    expect(maskEmailsInValue("Gửi tới admin@lily.vn")).toBe("Gửi tới ad***in@lily.vn");
   });
 });

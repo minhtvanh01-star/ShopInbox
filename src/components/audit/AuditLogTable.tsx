@@ -1,4 +1,5 @@
 import { auditActionLabel, auditEntityLabel, roleLabel } from "@/lib/rbac-catalog";
+import { maskEmailsInValue } from "@/lib/mask-email";
 
 export type AuditRow = {
   id: string;
@@ -14,9 +15,9 @@ export type AuditRow = {
 function metadataText(metadata: unknown): string | null {
   if (metadata == null) return null;
   try {
-    return JSON.stringify(metadata, null, 2);
+    return JSON.stringify(maskEmailsInValue(metadata), null, 2);
   } catch {
-    return String(metadata);
+    return String(maskEmailsInValue(metadata));
   }
 }
 
