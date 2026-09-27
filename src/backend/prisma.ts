@@ -1,5 +1,7 @@
 import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { prismaPgConfig } from "@/lib/database-url";
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
@@ -11,13 +13,15 @@ const globalForPrisma = globalThis as unknown as {
 const PRISMA_SCHEMA_EPOCH = 4;
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error("Thiếu DATABASE_URL. Copy .env.example thành .env.");
-  }
-
+  const pool = new Pool({
+    ...prismaPgConfig(process.env.DATABASE_URL),
+    connectionTimeoutMillis: 8_000,
+  });
+  pool.on("error", (error) => {
+    console.error("[prisma] pool error", error);
+  });
   return new PrismaClient({
-    adapter: new PrismaPg({ connectionString }),
+    adapter: new PrismaPg(pool),
   });
 }
 

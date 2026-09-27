@@ -16,7 +16,8 @@ import { planOpenRegistration, validateRegisterInput } from "@/backend/register"
 import { ensureFirstSuperAdminGranted } from "@/backend/prod-bootstrap";
 import { setSessionCookie } from "@/backend/session";
 import { toSessionPayload } from "@/backend/session-token";
-import { LOGIN_DB_ERROR, shouldSkipRegisterOtp } from "@/lib/first-run";
+import { databaseErrorMessage } from "@/lib/database-url";
+import { shouldSkipRegisterOtp } from "@/lib/first-run";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
 import { postAuthPath, PROFILE_ONBOARD_PATH } from "@/lib/shop-setup";
 
@@ -54,7 +55,7 @@ export async function registerAction(
     ]);
   } catch (error) {
     console.error("[registerAction] staff lookup failed", error);
-    return { error: LOGIN_DB_ERROR, step: "form" };
+    return { error: databaseErrorMessage(error), step: "form" };
   }
   const plan = planOpenRegistration({ emailTaken: Boolean(existing) });
   if (!plan.ok) {
