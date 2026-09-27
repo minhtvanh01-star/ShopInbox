@@ -23,6 +23,7 @@ import { resolveIsSuperAdmin } from "@/backend/super-admin";
 export type AuthActionState = {
   error?: string;
   success?: string;
+  redirectTo?: string;
 };
 
 export async function loginAction(
@@ -39,11 +40,9 @@ export async function loginAction(
     return { error: "Nhập email và mật khẩu." };
   }
 
-  try {
-    await ensureProductionData();
-  } catch (error) {
+  void ensureProductionData().catch((error) => {
     console.error("[loginAction] production data bootstrap failed", error);
-  }
+  });
 
   if (await isLoginEmailThrottled(email)) {
     await writeAudit({
@@ -189,18 +188,28 @@ export async function loginAction(
     return { error: LOGIN_GENERIC_ERROR };
   }
 
-  await clearLoginFailures(email);
-  const session = await loadStaffSession(staff.id);
-  await setSessionCookie(session);
-  await writeAudit({
-    actor: session,
-    action: AUDIT_ACTIONS.authLogin,
-    entityType: "Session",
-    entityId: staff.id,
-    metadata: { method: "password" },
-  });
-
-  redirect(postAuthPath(session, nextPath));
+  try {
+    await clearLoginFailures(email);
+    const session = await loadStaffSession(staff.id);
+    await setSessionCookie(session);
+    await writeAudit({
+      actor: session,
+      action: AUDIT_ACTIONS.authLogin,
+      entityType: "Session",
+      entityId: staff.id,
+      metadata: { method: "password" },
+    });
+    // Không dùng redirect() trong useActionState — React production #441.
+    return { redirectTo: postAuthPath(session, nextPath) };
+  } catch (error) {
+    console.error("[loginAction] session after password failed", error);
+    return {
+      error:
+        error instanceof Error && error.message
+          ? error.message
+          : "Đăng nhập được nhưng không mở được trang. Thử lại.",
+    };
+  }
 }
 
 export async function logoutAction(formData?: FormData) {
