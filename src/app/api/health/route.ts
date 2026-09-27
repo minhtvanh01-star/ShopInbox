@@ -9,7 +9,7 @@ export async function GET() {
       ok: status.ok,
       db: status.ok,
       host: status.hostKind,
-      ...(status.ok ? {} : { error: status.code }),
+      ...(status.ok ? {} : { error: status.code, hint: status.hint }),
     },
     { status: status.ok ? 200 : 503 },
   );
