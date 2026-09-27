@@ -2,6 +2,8 @@ import { RegisterForm } from "@/components/auth/RegisterForm";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { getGoogleOAuthConfig } from "@/backend/google-oauth";
 import { canSendRegisterOtp, isEmailConfigured } from "@/backend/email";
+import { prisma } from "@/backend/prisma";
+import { shouldSkipRegisterOtp } from "@/lib/first-run";
 import { safeInternalPath } from "@/backend/safe-path";
 
 type RegisterPageProps = {
@@ -11,6 +13,7 @@ type RegisterPageProps = {
 export default async function RegisterPage({ searchParams }: RegisterPageProps) {
   const params = await searchParams;
   const nextPath = safeInternalPath(params.next);
+  const firstRun = await loadFirstRun();
 
   return (
     <AuthShell
@@ -28,8 +31,17 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
         googleOAuthConfigured={Boolean(getGoogleOAuthConfig())}
         emailConfigured={isEmailConfigured()}
         canSendRegisterOtp={canSendRegisterOtp()}
+        firstRun={firstRun}
         authError={params.auth_error}
       />
     </AuthShell>
   );
+}
+
+async function loadFirstRun() {
+  try {
+    return shouldSkipRegisterOtp(await prisma.staff.count());
+  } catch {
+    return false;
+  }
 }

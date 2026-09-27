@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   registerAction,
   resendRegisterOtpAction,
@@ -22,6 +23,8 @@ type RegisterFormProps = {
   emailConfigured: boolean;
   /** Có thể gửi OTP (SMTP hoặc EMAIL_OTP_DEV_LOG=1). */
   canSendRegisterOtp: boolean;
+  /** DB trống — cho tạo tài khoản đầu tiên không cần SMTP. */
+  firstRun?: boolean;
   authError?: string;
 };
 
@@ -30,8 +33,11 @@ export function RegisterForm({
   googleOAuthConfigured,
   emailConfigured,
   canSendRegisterOtp,
+  firstRun = false,
   authError,
 }: RegisterFormProps) {
+  const router = useRouter();
+  const canSubmit = canSendRegisterOtp || firstRun;
   const [registerState, registerFormAction, registerPending] = useActionState(
     registerAction,
     initialState,
@@ -138,6 +144,13 @@ export function RegisterForm({
       formErrorRef.current?.focus();
     }
   }, [formAlert]);
+
+  useEffect(() => {
+    const next = registerState.redirectTo || verifyState.redirectTo;
+    if (next) {
+      router.replace(next);
+    }
+  }, [registerState.redirectTo, verifyState.redirectTo, router]);
 
   if (view === "otp" && otpEmail) {
     return (
@@ -247,7 +260,11 @@ export function RegisterForm({
         </div>
       </div>
 
-      {!canSendRegisterOtp ? (
+      {firstRun ? (
+        <p className="mb-4 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-xs text-teal-900">
+          Đây là tài khoản đầu tiên trên hệ thống. Điền form là vào được ngay, không cần mã email.
+        </p>
+      ) : !canSendRegisterOtp ? (
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
           Gửi mã email chưa được cấu hình trên server. Liên hệ quản trị viên.
         </p>
@@ -349,11 +366,17 @@ export function RegisterForm({
         </div>
         <button
           type="submit"
-          disabled={registerPending || !canSendRegisterOtp}
+          disabled={registerPending || !canSubmit || Boolean(registerState.redirectTo)}
           aria-busy={registerPending}
           className="btn-primary w-full"
         >
-            {registerPending ? "Đang gửi mã…" : "Gửi mã xác thực"}
+            {registerPending || registerState.redirectTo
+              ? firstRun
+                ? "Đang tạo tài khoản…"
+                : "Đang gửi mã…"
+              : firstRun
+                ? "Tạo tài khoản đầu tiên"
+                : "Gửi mã xác thực"}
         </button>
       </form>
 
