@@ -17,7 +17,13 @@ import {
   type PlatformOption,
 } from "@/lib/channels";
 import { activateFocusTrap, getFocusableElements } from "@/lib/focus-trap";
-import { CHANNEL_STATUS_LABEL, formatDateTime } from "@/lib/labels";
+import {
+  CHANNEL_STATUS_LABEL,
+  formatDateTime,
+  isCurrentMetaPickerPage,
+  oauthConnectLabel,
+  oauthSwitchPageLabel,
+} from "@/lib/labels";
 import { LAYOUT_CLASS } from "@/lib/ui-layout";
 import type { Channel, ChannelStatus } from "@/lib/types";
 import type { MetaPagePickerOption } from "@/lib/oauth-types";
@@ -34,6 +40,7 @@ export type ChannelAccountView = {
   /** Đã lưu app secret trên server (không gửi giá trị xuống UI). */
   hasAppSecret?: boolean;
   pageId?: string | null;
+  linkedPageId?: string | null;
   hasWebhookSecret?: boolean;
   oaId?: string | null;
   displayName?: string | null;
@@ -91,14 +98,6 @@ function oauthStartUrl(platform: PlatformOption) {
     return "/api/connect/shopify/start";
   }
   return null;
-}
-
-function oauthConnectLabel(channel: Channel | undefined) {
-  if (channel === "zalo") return "Kết nối với Zalo";
-  if (channel === "instagram") return "Kết nối với Instagram";
-  if (channel === "facebook") return "Kết nối với Facebook";
-  if (channel === "shopify") return "Kết nối với Shopify";
-  return "Kết nối";
 }
 
 function statusBadgeClass(status: ChannelStatus) {
@@ -249,7 +248,15 @@ export function AddConnectionModal({
         ? `/api/connect/shopify/start?shop=${encodeURIComponent(shopifyHost)}`
         : null
       : oauthStartUrl(selected);
-  const connectLabel = oauthConnectLabel(selected.channel);
+  const canSwitchMetaPage =
+    canConnect &&
+    account?.status === "ready" &&
+    account.hasOAuthToken &&
+    (selected.channel === "facebook" || selected.channel === "instagram");
+  const connectLabel =
+    canSwitchMetaPage && selected.channel
+      ? oauthSwitchPageLabel(selected.channel)
+      : oauthConnectLabel(selected.channel);
   const showPagePicker =
     pendingMetaPages &&
     selected.channel &&
@@ -525,10 +532,15 @@ export function AddConnectionModal({
                 {showPagePicker && pendingMetaPages ? (
                   <form action={pickAction} className="mt-4 space-y-4 rounded-xl border border-teal-200 bg-teal-50/40 p-4">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">Chọn trang để kích hoạt</p>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {canSwitchMetaPage ? "Đổi trang đang dùng cho Inbox" : "Chọn trang để kích hoạt"}
+                      </p>
                       <p className="mt-1 text-xs text-slate-600">
-                        Tài khoản Meta có nhiều Fanpage. Chọn một trang cho kênh{" "}
+                        Tài khoản Meta có nhiều Fanpage. Mỗi shop chỉ dùng một trang cho kênh{" "}
                         {pendingMetaPages.channel === "instagram" ? "Instagram" : "Facebook"}.
+                        {canSwitchMetaPage
+                          ? " Chọn trang khác rồi xác nhận — hội thoại trang cũ vẫn xem được."
+                          : ""}
                       </p>
                     </div>
                     <fieldset className="space-y-2">
@@ -539,6 +551,11 @@ export function AddConnectionModal({
                             : page.pageName;
                         const disabled =
                           pendingMetaPages.channel === "instagram" && !page.instagramId;
+                        const current = isCurrentMetaPickerPage(
+                          pendingMetaPages.channel,
+                          page,
+                          account,
+                        );
                         return (
                           <label
                             key={page.pageId}
@@ -551,10 +568,14 @@ export function AddConnectionModal({
                               name="pageId"
                               value={page.pageId}
                               required
+                              defaultChecked={current}
                               disabled={disabled || !canConnect}
                               className="text-teal-600"
                             />
                             <span>{label}</span>
+                            {current ? (
+                              <span className="text-xs font-medium text-teal-700">Đang dùng</span>
+                            ) : null}
                             {disabled ? (
                               <span className="text-xs text-slate-400">(chưa có IG Business)</span>
                             ) : null}
@@ -569,7 +590,11 @@ export function AddConnectionModal({
                     ) : null}
                     {pickState.success ? <p className="alert-success">{pickState.success}</p> : null}
                     <button type="submit" disabled={!canConnect || pickPending} className="btn-primary">
-                      {pickPending ? "Đang lưu..." : "Xác nhận trang"}
+                      {pickPending
+                        ? "Đang lưu..."
+                        : canSwitchMetaPage
+                          ? "Đổi sang trang này"
+                          : "Xác nhận trang"}
                     </button>
                   </form>
                 ) : null}
@@ -577,13 +602,17 @@ export function AddConnectionModal({
                 {isOAuthPlatform ? (
                   <div className="mt-4 space-y-4">
                     <div className="rounded-xl border border-border bg-surface-muted/60 p-4">
-                      <p className="text-sm font-medium text-slate-900">Kết nối kênh</p>
+                      <p className="text-sm font-medium text-slate-900">
+                        {canSwitchMetaPage ? "Đổi Fanpage / trang" : "Kết nối kênh"}
+                      </p>
                       <p className="mt-1 text-xs text-slate-500">
                         {selected.channel === "zalo"
                           ? "Đăng nhập Zalo OA và cấp quyền cho ShopInbox."
                           : selected.channel === "shopify"
                             ? "Nhập domain *.myshopify.com rồi đăng nhập admin Shopify để cấp quyền."
-                            : "Đăng nhập Facebook (admin Fanpage / Instagram Business) và cấp quyền."}
+                            : canSwitchMetaPage
+                              ? "Tài khoản Facebook có nhiều Fanpage? Đăng nhập lại (admin trang), rồi chọn trang khác. Mỗi shop chỉ dùng một trang cùng lúc."
+                              : "Đăng nhập Facebook với tài khoản admin Fanpage / Instagram Business, rồi chọn trang cho Inbox."}
                       </p>
                       {selected.channel === "shopify" ? (
                         <label className="mt-3 block">

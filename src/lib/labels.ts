@@ -47,6 +47,38 @@ export const CHANNEL_STATUS_LABEL: Record<ChannelStatus, string> = {
   ready: "Đã nối",
 };
 
+/** Nút OAuth lần đầu — Facebook gắn Fanpage, không phải chat cá nhân. */
+export function oauthConnectLabel(channel: Channel | undefined) {
+  if (channel === "zalo") return "Kết nối với Zalo";
+  if (channel === "instagram") return "Kết nối Instagram";
+  if (channel === "facebook") return "Kết nối Fanpage";
+  if (channel === "shopify") return "Kết nối với Shopify";
+  return "Kết nối";
+}
+
+/** Admin đổi trang Meta khi tài khoản có nhiều Fanpage / IG Business. */
+export function oauthSwitchPageLabel(channel: Channel) {
+  if (channel === "instagram") return "Đổi trang Instagram";
+  if (channel === "facebook") return "Đổi Fanpage";
+  return "Đổi kênh";
+}
+
+export function isCurrentMetaPickerPage(
+  channel: Channel,
+  page: { pageId: string; instagramId?: string },
+  current?: { pageId?: string | null; linkedPageId?: string | null } | null,
+) {
+  if (!current) return false;
+  if (channel === "instagram") {
+    return (
+      (Boolean(page.instagramId) && page.instagramId === current.pageId) ||
+      page.pageId === current.linkedPageId ||
+      page.pageId === current.pageId
+    );
+  }
+  return page.pageId === current.pageId;
+}
+
 /** Nhãn vai trò từ catalog (admin/staff/manager + alias owner). */
 export const STAFF_ROLE_LABEL = ROLE_LABEL;
 export { roleLabel };
