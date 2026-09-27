@@ -2,6 +2,7 @@ import "dotenv/config";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { hash } from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { prismaPgConfig } from "../src/lib/database-url";
 import {
   EXTRA_STAFF,
   PLATFORM_SUPER_ADMIN,
@@ -18,13 +19,8 @@ import { isHosted, resolveSeedMode, resolveSeedScope } from "../src/backend/db-s
 import { syncRbacCatalog } from "../src/backend/rbac-sync";
 import { normalizeRoleCode } from "../src/lib/rbac-catalog";
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error("Thiếu DATABASE_URL");
-}
-
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString }),
+  adapter: new PrismaPg(prismaPgConfig(process.env.DATABASE_URL)),
 });
 
 async function upsertPlatformSuperAdmin() {

@@ -19,7 +19,8 @@ import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
 import { postAuthPath } from "@/lib/shop-setup";
 import { ensureFirstAdminAccount, ensureProductionData } from "@/backend/prod-bootstrap";
 import { resolveIsSuperAdmin } from "@/backend/super-admin";
-import { LOGIN_DB_ERROR, readFirstAdminBootstrap } from "@/lib/first-run";
+import { databaseErrorMessage } from "@/lib/database-url";
+import { readFirstAdminBootstrap } from "@/lib/first-run";
 
 export type AuthActionState = {
   error?: string;
@@ -47,7 +48,7 @@ export async function loginAction(
       await ensureFirstAdminAccount();
     } catch (error) {
       console.error("[loginAction] first admin bootstrap failed", error);
-      return { error: LOGIN_DB_ERROR };
+      return { error: databaseErrorMessage(error) };
     }
   }
   void ensureProductionData().catch((error) => {
@@ -91,7 +92,7 @@ export async function loginAction(
   } catch (error) {
     if (!isPrismaSchemaDriftError(error)) {
       console.error("[loginAction] staff lookup failed", error);
-      return { error: LOGIN_DB_ERROR };
+      return { error: databaseErrorMessage(error) };
     }
     try {
       const basic = await prisma.staff.findUnique({
@@ -109,7 +110,7 @@ export async function loginAction(
       staff = basic ? { ...basic, isSuperAdmin: false } : null;
     } catch (fallbackError) {
       console.error("[loginAction] staff fallback lookup failed", fallbackError);
-      return { error: LOGIN_DB_ERROR };
+      return { error: databaseErrorMessage(fallbackError) };
     }
   }
   if (!staff) {
@@ -185,7 +186,7 @@ export async function loginAction(
   } catch (error) {
     if (!isPrismaSchemaDriftError(error)) {
       console.error("[loginAction] shop lookup failed", error);
-      return { error: LOGIN_DB_ERROR };
+      return { error: databaseErrorMessage(error) };
     }
     console.error("[loginAction] shop.suspendedAt missing — skipping suspend check", error);
   }

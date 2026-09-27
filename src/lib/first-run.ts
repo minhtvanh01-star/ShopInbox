@@ -1,9 +1,6 @@
 import { REGISTER_MIN_PASSWORD_LENGTH } from "@/lib/auth-password";
 import { parseSuperAdminEmails } from "@/lib/super-admin";
 
-export const LOGIN_DB_ERROR =
-  "Không kết nối được dữ liệu. Trên VPS kiểm tra DATABASE_URL (Postgres) rồi triển khai lại.";
-
 /** DB trống — người đầu tiên tạo tài khoản ngay, không chờ SMTP. */
 export function shouldSkipRegisterOtp(staffCount: number) {
   return staffCount === 0;

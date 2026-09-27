@@ -5,6 +5,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginAction, type AuthActionState } from "@/app/login/actions";
 import { GoogleAuthButton } from "@/components/auth/GoogleAuthButton";
+import { DATABASE_ERROR_MESSAGES, type DatabaseErrorCode } from "@/lib/database-url";
 import {
   AUTH_SUCCESS_MESSAGES,
   GOOGLE_AUTH_ERROR_MESSAGES,
@@ -22,6 +23,7 @@ type LoginFormProps = {
   resetSuccess?: boolean;
   idleTimeout?: boolean;
   dbOk?: boolean;
+  dbError?: DatabaseErrorCode | null;
   emptyPlatform?: boolean;
 };
 
@@ -35,6 +37,7 @@ export function LoginForm({
   resetSuccess,
   idleTimeout,
   dbOk = true,
+  dbError = null,
   emptyPlatform = false,
 }: LoginFormProps) {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
@@ -66,8 +69,7 @@ export function LoginForm({
     <>
       {!dbOk ? (
         <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Server chưa kết nối được cơ sở dữ liệu. Trên VPS kiểm tra <span className="font-medium">DATABASE_URL</span>{" "}
-          (Postgres) rồi triển khai lại.
+          {DATABASE_ERROR_MESSAGES[dbError ?? "unknown"]}
         </p>
       ) : emptyPlatform ? (
         <p className="mt-6 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900">

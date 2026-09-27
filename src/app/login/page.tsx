@@ -1,8 +1,10 @@
 import { LoginForm } from "@/components/auth/LoginForm";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { getGoogleOAuthConfig, isLocalGoogleRedirect } from "@/backend/google-oauth";
+import { probeDatabase } from "@/backend/db-status";
 import { prisma } from "@/backend/prisma";
 import { safeInternalPath } from "@/backend/safe-path";
+import { classifyDatabaseError, type DatabaseErrorCode } from "@/lib/database-url";
 
 type LoginPageProps = {
   searchParams: Promise<{
@@ -43,6 +45,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         resetSuccess={params.reset === "1"}
         idleTimeout={params.reason === "idle"}
         dbOk={platform.dbOk}
+        dbError={platform.dbError}
         emptyPlatform={platform.empty}
       />
     </AuthShell>
@@ -50,10 +53,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 }
 
 async function loadLoginPlatformState() {
+  const probe = await probeDatabase();
+  if (!probe.ok) {
+    return { dbOk: false, empty: false, dbError: probe.code };
+  }
   try {
     const staffCount = await prisma.staff.count();
-    return { dbOk: true, empty: staffCount === 0 };
-  } catch {
-    return { dbOk: false, empty: false };
+    return { dbOk: true, empty: staffCount === 0, dbError: null as DatabaseErrorCode | null };
+  } catch (error) {
+    return { dbOk: false, empty: false, dbError: classifyDatabaseError(error) };
   }
 }

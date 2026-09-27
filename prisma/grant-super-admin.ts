@@ -3,15 +3,11 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { hash } from "bcryptjs";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { isHosted } from "../src/backend/db-seed-policy";
+import { prismaPgConfig } from "../src/lib/database-url";
 import { PLATFORM_SUPER_ADMIN } from "../src/lib/mock";
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error("Thiếu DATABASE_URL");
-}
-
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString }),
+  adapter: new PrismaPg(prismaPgConfig(process.env.DATABASE_URL)),
 });
 
 function parseEmailArg(argv: string[]) {

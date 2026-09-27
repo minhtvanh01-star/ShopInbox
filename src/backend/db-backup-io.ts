@@ -4,6 +4,7 @@ import path from "node:path";
 import { backupKeepCount, backupsToDelete } from "@/lib/db-backup-retention";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { prismaPgConfig } from "@/lib/database-url";
 import {
   BACKUP_TABLES,
   BACKUP_VERSION,
@@ -12,11 +13,8 @@ import {
 } from "@/backend/db-backup-plan";
 
 export function createBackupPrisma(connectionString = process.env.DATABASE_URL) {
-  if (!connectionString) {
-    throw new Error("Thiếu DATABASE_URL. Copy .env.example thành .env hoặc truyền URL đích.");
-  }
   return new PrismaClient({
-    adapter: new PrismaPg({ connectionString }),
+    adapter: new PrismaPg(prismaPgConfig(connectionString)),
   });
 }
 
