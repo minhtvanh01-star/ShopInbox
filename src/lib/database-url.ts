@@ -2,6 +2,8 @@ import { isLoopbackHost } from "@/lib/security-headers";
 
 export type DatabaseUrlKind = "unset" | "invalid" | "loopback" | "remote";
 
+export type DatabaseUrlHint = "empty" | "not_postgres_scheme" | "missing_host" | "unparseable" | "ok";
+
 export type DatabaseErrorCode =
   | "missing_url"
   | "invalid_url"
@@ -17,7 +19,8 @@ export type DatabaseErrorCode =
 export const DATABASE_ERROR_MESSAGES: Record<DatabaseErrorCode, string> = {
   missing_url:
     "Thiếu DATABASE_URL trên server. Dán URI Postgres của panel (không dùng 127.0.0.1) rồi triển khai lại.",
-  invalid_url: "DATABASE_URL không phải URI Postgres hợp lệ. Kiểm tra lại chuỗi trên VPS.",
+  invalid_url:
+    "DATABASE_URL phải là postgresql://USER:PASSWORD@HOST:PORT/DBNAME — không dán URL web, mysql, hay chuỗi thiếu postgresql://.",
   loopback:
     "DATABASE_URL đang trỏ localhost. Trên VPS phải dán URI Postgres host cấp, không dùng 127.0.0.1.",
   econnrefused: "Postgres từ chối kết nối. Kiểm tra host, cổng và service đang chạy.",
@@ -30,14 +33,61 @@ export const DATABASE_ERROR_MESSAGES: Record<DatabaseErrorCode, string> = {
     "Server chưa kết nối được cơ sở dữ liệu. Trên VPS kiểm tra DATABASE_URL (Postgres) rồi triển khai lại.",
 };
 
-/** Bỏ ngoặc/khoảng trắng khi dán URI từ panel. */
-export function stripDatabaseUrl(raw: string | undefined | null) {
-  let value = String(raw ?? "").trim();
+function unwrapQuotes(value: string) {
+  const trimmed = value.trim();
   if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'")) ||
+    (trimmed.startsWith("`") && trimmed.endsWith("`"))
   ) {
-    value = value.slice(1, -1).trim();
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
+/** Bỏ BOM, ngoặc, prefix DATABASE_URL= khi dán từ panel. */
+export function stripDatabaseUrl(raw: string | undefined | null) {
+  let value = unwrapQuotes(String(raw ?? "").replace(/^\uFEFF/, "").replace(/[\r\n]+/g, ""));
+  if (/^DATABASE_URL\s*=/i.test(value)) {
+    value = unwrapQuotes(value.replace(/^DATABASE_URL\s*=\s*/i, ""));
+  }
+  return value;
+}
+
+function fromKeywordPairs(value: string) {
+  if (!/\b(?:host|server|hostname)\s*=/i.test(value)) return null;
+  const pairs = new Map<string, string>();
+  for (const part of value.split(/[;\s]+/)) {
+    const eq = part.indexOf("=");
+    if (eq <= 0) continue;
+    pairs.set(part.slice(0, eq).trim().toLowerCase(), part.slice(eq + 1));
+  }
+  const host = pairs.get("host") ?? pairs.get("server") ?? pairs.get("hostname");
+  if (!host) return null;
+  const user = pairs.get("user") ?? pairs.get("username") ?? "postgres";
+  const password = pairs.get("password") ?? "";
+  const db = pairs.get("dbname") ?? pairs.get("database") ?? "postgres";
+  const port = pairs.get("port") ?? "5432";
+  const sslmode = pairs.get("sslmode");
+  const auth = password
+    ? `${encodeURIComponent(user)}:${encodeURIComponent(password)}`
+    : encodeURIComponent(user);
+  const uri = `postgresql://${auth}@${host}:${port}/${encodeURIComponent(db)}`;
+  return sslmode ? `${uri}?sslmode=${encodeURIComponent(sslmode)}` : uri;
+}
+
+/** Đưa chuỗi panel về URI postgresql:// mà `pg` đọc được. */
+export function normalizeDatabaseUrl(raw: string | undefined | null) {
+  let value = stripDatabaseUrl(raw);
+  if (!value) return "";
+  const fromPairs = fromKeywordPairs(value);
+  if (fromPairs) return fromPairs;
+  value = value.replace(/^jdbc:/i, "");
+  if (/^prisma\+postgres(ql)?:/i.test(value)) {
+    value = value.replace(/^prisma\+postgres(ql)?:/i, "postgresql:");
+  }
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(value) && value.includes("@")) {
+    value = `postgresql://${value}`;
   }
   return value;
 }
@@ -46,21 +96,27 @@ export function inspectDatabaseUrl(raw: string | undefined | null): {
   configured: boolean;
   kind: DatabaseUrlKind;
   sslMode: string | null;
+  hint: DatabaseUrlHint;
 } {
-  const value = stripDatabaseUrl(raw);
-  if (!value) return { configured: false, kind: "unset", sslMode: null };
+  const stripped = stripDatabaseUrl(raw);
+  if (!stripped) return { configured: false, kind: "unset", sslMode: null, hint: "empty" };
+  const value = normalizeDatabaseUrl(stripped);
   try {
     const url = new URL(value);
-    if (!/^postgres(ql)?:$/i.test(url.protocol) || !url.hostname) {
-      return { configured: true, kind: "invalid", sslMode: null };
+    if (!/^postgres(ql)?:$/i.test(url.protocol)) {
+      return { configured: true, kind: "invalid", sslMode: null, hint: "not_postgres_scheme" };
+    }
+    if (!url.hostname) {
+      return { configured: true, kind: "invalid", sslMode: null, hint: "missing_host" };
     }
     return {
       configured: true,
       kind: isLoopbackHost(url.hostname) ? "loopback" : "remote",
       sslMode: url.searchParams.get("sslmode")?.toLowerCase() ?? null,
+      hint: "ok",
     };
   } catch {
-    return { configured: true, kind: "invalid", sslMode: null };
+    return { configured: true, kind: "invalid", sslMode: null, hint: "unparseable" };
   }
 }
 
@@ -85,7 +141,7 @@ export function prismaPgConfig(
   raw: string | undefined | null,
   env: Record<string, string | undefined> = process.env,
 ) {
-  const connectionString = stripDatabaseUrl(raw);
+  const connectionString = normalizeDatabaseUrl(raw);
   if (!connectionString) {
     throw new Error("Thiếu DATABASE_URL. Copy .env.example thành .env.");
   }
