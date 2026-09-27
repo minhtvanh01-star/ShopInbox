@@ -1,6 +1,5 @@
 "use server";
 
-import { redirect } from "next/navigation";
 import { writeAudit } from "@/backend/audit";
 import {
   consumeRegisterEmailOtp,
@@ -14,16 +13,19 @@ import { prisma } from "@/backend/prisma";
 import { createOpenRegistrationStaff } from "@/backend/open-registration";
 import { loadStaffSession } from "@/backend/auth";
 import { planOpenRegistration, validateRegisterInput } from "@/backend/register";
+import { ensureFirstSuperAdminGranted } from "@/backend/prod-bootstrap";
 import { setSessionCookie } from "@/backend/session";
 import { toSessionPayload } from "@/backend/session-token";
+import { LOGIN_DB_ERROR, shouldSkipRegisterOtp } from "@/lib/first-run";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
-import { PROFILE_ONBOARD_PATH } from "@/lib/shop-setup";
+import { postAuthPath, PROFILE_ONBOARD_PATH } from "@/lib/shop-setup";
 
 export type RegisterActionState = {
   error?: string;
   step?: "form" | "otp";
   email?: string;
   message?: string;
+  redirectTo?: string;
 };
 
 export async function registerAction(
@@ -43,17 +45,37 @@ export async function registerAction(
 
   const { name, email, password } = validated.data;
 
-  const existing = await prisma.staff.findUnique({ where: { email }, select: { id: true } });
+  let staffCount = 0;
+  let existing: { id: string } | null;
+  try {
+    [staffCount, existing] = await Promise.all([
+      prisma.staff.count(),
+      prisma.staff.findUnique({ where: { email }, select: { id: true } }),
+    ]);
+  } catch (error) {
+    console.error("[registerAction] staff lookup failed", error);
+    return { error: LOGIN_DB_ERROR, step: "form" };
+  }
   const plan = planOpenRegistration({ emailTaken: Boolean(existing) });
   if (!plan.ok) {
     return { error: plan.error, step: "form" };
+  }
+
+  const passwordHash = await hashPassword(password);
+  if (shouldSkipRegisterOtp(staffCount)) {
+    return finishOpenRegistration({
+      email,
+      name,
+      passwordHash,
+      method: "password_first_run",
+    });
   }
 
   try {
     await createRegisterEmailOtp({
       email,
       name,
-      passwordHash: await hashPassword(password),
+      passwordHash,
     });
   } catch (err) {
     return {
@@ -83,35 +105,70 @@ export async function verifyRegisterOtpAction(
     return { error: verified.error, step: "otp", email };
   }
 
-  const created = await createOpenRegistrationStaff({
+  const finished = await finishOpenRegistration({
     email: verified.email,
     name: verified.payload.name,
     passwordHash: verified.payload.passwordHash,
+    method: "password_email_otp",
+  });
+  if (finished.error) {
+    await discardRegisterEmailOtp(verified.email);
+    return { error: finished.error, step: "form", email: verified.email };
+  }
+  await consumeRegisterEmailOtp(verified.challengeId);
+  return finished;
+}
+
+async function finishOpenRegistration(input: {
+  email: string;
+  name: string;
+  passwordHash: string;
+  method: string;
+}): Promise<RegisterActionState> {
+  const created = await createOpenRegistrationStaff({
+    email: input.email,
+    name: input.name,
+    passwordHash: input.passwordHash,
   });
 
   if (!created.ok) {
-    await discardRegisterEmailOtp(verified.email);
-    return { error: created.error, step: "form", email: verified.email };
+    return { error: created.error, step: "form", email: input.email };
   }
 
   const staff = created.staff;
-  await consumeRegisterEmailOtp(verified.challengeId);
+  try {
+    await ensureFirstSuperAdminGranted();
+  } catch (error) {
+    console.error("[registerAction] Super admin grant failed", error);
+  }
 
-  await writeAudit({
-    actor: toSessionPayload(staff),
-    action: AUDIT_ACTIONS.authRegister,
-    entityType: "Staff",
-    entityId: staff.id,
-    metadata: {
-      method: "password_email_otp",
-      roleCode: staff.roleCode,
-      isActive: staff.isActive,
-      shopCreated: true,
-    },
-  });
-
-  await setSessionCookie(await loadStaffSession(staff.id));
-  redirect(PROFILE_ONBOARD_PATH);
+  try {
+    await writeAudit({
+      actor: toSessionPayload(staff),
+      action: AUDIT_ACTIONS.authRegister,
+      entityType: "Staff",
+      entityId: staff.id,
+      metadata: {
+        method: input.method,
+        roleCode: staff.roleCode,
+        isActive: staff.isActive,
+        shopCreated: true,
+      },
+    });
+    const session = await loadStaffSession(staff.id);
+    await setSessionCookie(session);
+    return { redirectTo: postAuthPath(session, PROFILE_ONBOARD_PATH) };
+  } catch (error) {
+    console.error("[registerAction] session after register failed", error);
+    return {
+      error:
+        error instanceof Error && error.message
+          ? error.message
+          : "Tạo tài khoản được nhưng không mở được trang. Đăng nhập lại.",
+      step: "form",
+      email: input.email,
+    };
+  }
 }
 
 export async function resendRegisterOtpAction(

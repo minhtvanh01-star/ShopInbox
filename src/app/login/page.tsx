@@ -1,6 +1,7 @@
 import { LoginForm } from "@/components/auth/LoginForm";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { getGoogleOAuthConfig, isLocalGoogleRedirect } from "@/backend/google-oauth";
+import { prisma } from "@/backend/prisma";
 import { safeInternalPath } from "@/backend/safe-path";
 
 type LoginPageProps = {
@@ -17,6 +18,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const nextPath = safeInternalPath(params.next);
   const google = getGoogleOAuthConfig();
+  const platform = await loadLoginPlatformState();
 
   return (
     <AuthShell
@@ -40,7 +42,18 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         authSuccess={params.auth_success}
         resetSuccess={params.reset === "1"}
         idleTimeout={params.reason === "idle"}
+        dbOk={platform.dbOk}
+        emptyPlatform={platform.empty}
       />
     </AuthShell>
   );
+}
+
+async function loadLoginPlatformState() {
+  try {
+    const staffCount = await prisma.staff.count();
+    return { dbOk: true, empty: staffCount === 0 };
+  } catch {
+    return { dbOk: false, empty: false };
+  }
 }

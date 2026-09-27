@@ -21,6 +21,8 @@ type LoginFormProps = {
   authSuccess?: string;
   resetSuccess?: boolean;
   idleTimeout?: boolean;
+  dbOk?: boolean;
+  emptyPlatform?: boolean;
 };
 
 export function LoginForm({
@@ -32,6 +34,8 @@ export function LoginForm({
   authSuccess,
   resetSuccess,
   idleTimeout,
+  dbOk = true,
+  emptyPlatform = false,
 }: LoginFormProps) {
   const [state, formAction, pending] = useActionState(loginAction, initialState);
   const [showPassword, setShowPassword] = useState(false);
@@ -49,7 +53,7 @@ export function LoginForm({
     ? (GOOGLE_AUTH_ERROR_MESSAGES[authError] ?? "Đăng nhập Google thất bại.")
     : null;
   const successText = authSuccess ? (AUTH_SUCCESS_MESSAGES[authSuccess] ?? null) : null;
-  const hasBanner = Boolean(idleTimeout || resetSuccess || successText);
+  const hasBanner = Boolean(!dbOk || emptyPlatform || idleTimeout || resetSuccess || successText);
   const formError = state.error || oauthErrorText;
 
   useEffect(() => {
@@ -60,6 +64,20 @@ export function LoginForm({
 
   return (
     <>
+      {!dbOk ? (
+        <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Server chưa kết nối được cơ sở dữ liệu. Trên VPS kiểm tra <span className="font-medium">DATABASE_URL</span>{" "}
+          (Postgres) rồi triển khai lại.
+        </p>
+      ) : emptyPlatform ? (
+        <p className="mt-6 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900">
+          Hệ thống chưa có tài khoản.{" "}
+          <Link href="/register" className="font-medium underline">
+            Đăng ký chủ cửa hàng đầu tiên
+          </Link>{" "}
+          — lần này không cần mã email.
+        </p>
+      ) : null}
       {idleTimeout ? (
         <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           Phiên đăng nhập đã hết vì không hoạt động quá 30 phút. Vui lòng đăng nhập lại.

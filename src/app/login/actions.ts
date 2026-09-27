@@ -17,8 +17,9 @@ import { clearSessionCookie, getSession, setSessionCookie } from "@/backend/sess
 import { safeInternalPath } from "@/backend/safe-path";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
 import { postAuthPath } from "@/lib/shop-setup";
-import { ensureProductionData } from "@/backend/prod-bootstrap";
+import { ensureFirstAdminAccount, ensureProductionData } from "@/backend/prod-bootstrap";
 import { resolveIsSuperAdmin } from "@/backend/super-admin";
+import { LOGIN_DB_ERROR, readFirstAdminBootstrap } from "@/lib/first-run";
 
 export type AuthActionState = {
   error?: string;
@@ -40,6 +41,15 @@ export async function loginAction(
     return { error: "Nhập email và mật khẩu." };
   }
 
+  const firstAdmin = readFirstAdminBootstrap(process.env);
+  if (firstAdmin && email === firstAdmin.email) {
+    try {
+      await ensureFirstAdminAccount();
+    } catch (error) {
+      console.error("[loginAction] first admin bootstrap failed", error);
+      return { error: LOGIN_DB_ERROR };
+    }
+  }
   void ensureProductionData().catch((error) => {
     console.error("[loginAction] production data bootstrap failed", error);
   });
@@ -80,21 +90,27 @@ export async function loginAction(
     });
   } catch (error) {
     if (!isPrismaSchemaDriftError(error)) {
-      throw error;
+      console.error("[loginAction] staff lookup failed", error);
+      return { error: LOGIN_DB_ERROR };
     }
-    const basic = await prisma.staff.findUnique({
-      where: { email },
-      select: {
-        id: true,
-        shopId: true,
-        email: true,
-        name: true,
-        roleCode: true,
-        isActive: true,
-        passwordHash: true,
-      },
-    });
-    staff = basic ? { ...basic, isSuperAdmin: false } : null;
+    try {
+      const basic = await prisma.staff.findUnique({
+        where: { email },
+        select: {
+          id: true,
+          shopId: true,
+          email: true,
+          name: true,
+          roleCode: true,
+          isActive: true,
+          passwordHash: true,
+        },
+      });
+      staff = basic ? { ...basic, isSuperAdmin: false } : null;
+    } catch (fallbackError) {
+      console.error("[loginAction] staff fallback lookup failed", fallbackError);
+      return { error: LOGIN_DB_ERROR };
+    }
   }
   if (!staff) {
     await recordLoginFailure(email);
@@ -168,7 +184,8 @@ export async function loginAction(
     shopSuspended = Boolean(shop?.suspendedAt);
   } catch (error) {
     if (!isPrismaSchemaDriftError(error)) {
-      throw error;
+      console.error("[loginAction] shop lookup failed", error);
+      return { error: LOGIN_DB_ERROR };
     }
     console.error("[loginAction] shop.suspendedAt missing — skipping suspend check", error);
   }

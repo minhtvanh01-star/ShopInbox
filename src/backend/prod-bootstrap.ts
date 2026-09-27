@@ -1,6 +1,9 @@
+import { createOpenRegistrationStaff } from "@/backend/open-registration";
+import { hashPassword } from "@/backend/password";
 import { prisma } from "@/backend/prisma";
 import { isPrismaSchemaDriftError } from "@/backend/prisma-errors";
 import { syncRbacCatalog } from "@/backend/rbac-sync";
+import { readFirstAdminBootstrap } from "@/lib/first-run";
 import { pickFirstSuperAdminStaffId } from "@/lib/super-admin";
 
 let bootstrapPromise: Promise<void> | null = null;
@@ -27,10 +30,53 @@ async function runProductionBootstrap() {
   }
 
   try {
+    await ensureFirstAdminAccount();
     await grantFirstSuperAdmin();
   } catch (error) {
     console.error("[ensureProductionData] Super admin grant failed", error);
   }
+}
+
+/** DB trống + SUPER_ADMIN_EMAIL/PASSWORD — tạo Super admin để vào hệ thống. */
+export async function ensureFirstAdminAccount() {
+  const spec = readFirstAdminBootstrap(process.env);
+  if (!spec) return;
+
+  let staffCount = 0;
+  try {
+    staffCount = await prisma.staff.count();
+  } catch (error) {
+    if (!isPrismaSchemaDriftError(error)) {
+      throw error;
+    }
+    console.error("[ensureFirstAdminAccount] staff count failed — skip", error);
+    return;
+  }
+  if (staffCount > 0) return;
+
+  const created = await createOpenRegistrationStaff({
+    email: spec.email,
+    name: spec.name,
+    passwordHash: await hashPassword(spec.password),
+  });
+  if (!created.ok) {
+    console.error("[ensureFirstAdminAccount] create failed", created.error);
+    return;
+  }
+
+  try {
+    await prisma.shop.update({
+      where: { id: created.staff.shopId },
+      data: { setupCompletedAt: new Date() },
+    });
+  } catch (error) {
+    console.error("[ensureFirstAdminAccount] shop setup stamp failed", error);
+  }
+  await grantFirstSuperAdmin();
+}
+
+export async function ensureFirstSuperAdminGranted() {
+  return grantFirstSuperAdmin();
 }
 
 async function grantFirstSuperAdmin() {

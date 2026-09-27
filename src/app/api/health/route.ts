@@ -5,8 +5,8 @@ import { prisma } from "@/backend/prisma";
 export async function GET() {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, db: true });
   } catch {
-    return NextResponse.json({ ok: false }, { status: 503 });
+    return NextResponse.json({ ok: false, db: false }, { status: 503 });
   }
 }
