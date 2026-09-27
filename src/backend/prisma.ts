@@ -14,7 +14,7 @@ const PRISMA_SCHEMA_EPOCH = 4;
 
 function createPrismaClient() {
   const pool = new Pool({
-    ...prismaPgConfig(process.env.DATABASE_URL),
+    ...prismaPgConfig(),
     connectionTimeoutMillis: 8_000,
   });
   pool.on("error", (error) => {

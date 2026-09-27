@@ -5,6 +5,9 @@ import {
   inspectDatabaseUrl,
   normalizeDatabaseUrl,
   prismaPgConfig,
+  repairPostgresUri,
+  resolveDatabaseUrl,
+  resolveDatabaseUrlDetails,
   shouldUseDatabaseSsl,
   stripDatabaseUrl,
 } from "@/lib/database-url";
@@ -35,6 +38,26 @@ describe("normalizeDatabaseUrl", () => {
     expect(
       normalizeDatabaseUrl("host=db.example.com port=5432 user=u password=p#x dbname=app"),
     ).toBe("postgresql://u:p%23x@db.example.com:5432/app");
+    expect(
+      normalizeDatabaseUrl("User ID=u;Password=p@ss;Host=db.example.com;Port=5432;Database=app"),
+    ).toBe("postgresql://u:p%40ss@db.example.com:5432/app");
+    expect(normalizeDatabaseUrl("postgresql://u:100%@db.example.com:5432/app")).toBe(
+      "postgresql://u:100%25@db.example.com:5432/app",
+    );
+    expect(
+      inspectDatabaseUrl(
+        '{"host":"db.example.com","port":5432,"user":"u","password":"p","database":"app"}',
+      ).kind,
+    ).toBe("remote");
+  });
+});
+
+describe("repairPostgresUri", () => {
+  it("encodes a raw percent in the password so URL() can parse it", () => {
+    expect(repairPostgresUri("postgresql://shop:100%@vays-db:54322/shopinbox_db")).toBe(
+      "postgresql://shop:100%25@vays-db:54322/shopinbox_db",
+    );
+    expect(inspectDatabaseUrl("postgresql://shop:100%@vays-db:54322/shopinbox_db").hint).toBe("ok");
   });
 });
 
@@ -62,6 +85,30 @@ describe("inspectDatabaseUrl", () => {
       hint: "ok",
     });
     expect(inspectDatabaseUrl("u:p@db.example.com:5432/app").kind).toBe("remote");
+  });
+});
+
+describe("resolveDatabaseUrl", () => {
+  it("skips an invalid DATABASE_URL and uses DB_URI or composed DB_* vars", () => {
+    expect(
+      resolveDatabaseUrl({
+        DATABASE_URL: "https://shopinbox.n2.tinhgon.xyz",
+        DB_URI: "postgresql://u:p@db.example.com:5432/app",
+      }),
+    ).toBe("postgresql://u:p@db.example.com:5432/app");
+    expect(
+      resolveDatabaseUrlDetails({
+        DATABASE_URL: "not-a-url",
+        DB_HOST: "vays-db-c42eeb128-postgresql-54322",
+        DB_PORT: "54322",
+        DB_NAME: "shopinbox_db",
+        DB_PASSWORD: "s3cret%",
+        DB_USER: "shopinbox",
+      }),
+    ).toEqual({
+      source: "composed",
+      url: "postgresql://shopinbox:s3cret%25@vays-db-c42eeb128-postgresql-54322:54322/shopinbox_db",
+    });
   });
 });
 
