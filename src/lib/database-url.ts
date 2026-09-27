@@ -1,4 +1,7 @@
-import { isLoopbackHost } from "@/lib/security-headers";
+/** Không import @/ — prisma.config.ts load file này lúc `prisma generate`. */
+function isLoopbackDatabaseHost(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
 
 export type DatabaseUrlKind = "unset" | "invalid" | "loopback" | "remote";
 
@@ -212,7 +215,7 @@ export function inspectDatabaseUrl(raw: string | undefined | null): {
     }
     return {
       configured: true,
-      kind: isLoopbackHost(url.hostname) ? "loopback" : "remote",
+      kind: isLoopbackDatabaseHost(url.hostname) ? "loopback" : "remote",
       sslMode: url.searchParams.get("sslmode")?.toLowerCase() ?? null,
       hint: "ok",
     };
