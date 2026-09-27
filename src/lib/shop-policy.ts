@@ -6,7 +6,8 @@ export const DEFAULT_MAX_USERS_PER_SHOP = 3;
 export const REPLY_CLAIM_TTL_MIN = 5;
 export const REPLY_CLAIM_TTL_MAX = 120;
 export const MAX_USERS_PER_SHOP_MIN = 1;
-export const MAX_USERS_PER_SHOP_MAX = 50;
+/** Trần bản chạy thử — khớp MAX_USERS_PER_SHOP. */
+export const MAX_USERS_PER_SHOP_MAX = 5;
 
 export type ShopPolicy = {
   replyClaimTtlMinutes: number;

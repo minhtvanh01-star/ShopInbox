@@ -22,10 +22,13 @@ describe("shop-policy", () => {
   });
 
   it("validates max users range", () => {
+    expect(DEFAULT_SHOP_POLICY.maxUsersPerShop).toBe(3);
     expect(normalizeMaxUsersPerShop(1)).toBe(1);
-    expect(normalizeMaxUsersPerShop(50)).toBe(50);
+    expect(normalizeMaxUsersPerShop(3)).toBe(3);
+    expect(normalizeMaxUsersPerShop(5)).toBe(5);
     expect(normalizeMaxUsersPerShop(0)).toBeNull();
-    expect(normalizeMaxUsersPerShop(999)).toBeNull();
+    expect(normalizeMaxUsersPerShop(6)).toBeNull();
+    expect(normalizeMaxUsersPerShop(50)).toBeNull();
   });
 
   it("parses policy input", () => {

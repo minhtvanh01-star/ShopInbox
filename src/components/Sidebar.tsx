@@ -10,7 +10,7 @@ import type { InboxNoticeItem, InboxNoticeSummary } from "@/lib/inbox-notices";
 import { INBOX_NOTICES_REFRESH_EVENT } from "@/lib/inbox-notices";
 import { LAYOUT_CLASS, STORAGE_KEYS } from "@/lib/ui-layout";
 import { usePersistedState } from "@/lib/use-persisted-state";
-import { PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { canViewAuditLog, PERMISSION_CODES } from "@/lib/rbac-catalog";
 import { SUPER_ADMIN_HOME } from "@/lib/super-admin";
 import { StaffAvatar } from "@/components/staff/StaffAvatar";
 import { NexoMark, NexoWordmark } from "@/components/brand/NexoMark";
@@ -48,6 +48,7 @@ type SidebarProps = {
   staffName: string;
   staffAvatarUrl?: string | null;
   roleLabel: string;
+  roleCode?: string | null;
   permissions: string[];
   isSuperAdmin?: boolean;
   inboxNotices: InboxNoticeSummary;
@@ -58,6 +59,7 @@ export function Sidebar({
   staffName,
   staffAvatarUrl,
   roleLabel,
+  roleCode,
   permissions,
   isSuperAdmin = false,
   inboxNotices,
@@ -68,6 +70,7 @@ export function Sidebar({
       return item.superAdminOnly || item.href === "/settings/profile";
     }
     if (item.superAdminOnly) return false;
+    if (item.href === "/audit" && !canViewAuditLog(roleCode)) return false;
     if (item.anyPermission?.length) {
       return item.anyPermission.some((code) => permissions.includes(code));
     }
@@ -144,7 +147,11 @@ export function Sidebar({
     : permissions.includes(PERMISSION_CODES.inboxRead)
       ? "/inbox"
       : "/settings/profile";
-  const homeLabel = isSuperAdmin ? "Về trang quản lý shop" : "Về Inbox";
+  const homeLabel = isSuperAdmin
+    ? "Về trang quản lý shop"
+    : permissions.includes(PERMISSION_CODES.inboxRead)
+      ? "Về Inbox"
+      : "Về hồ sơ";
   const unreadBadge =
     summary.unreadTotal > 99 ? "99+" : summary.unreadTotal > 0 ? String(summary.unreadTotal) : null;
   // Khớp prefix dài nhất — tránh `/settings/profile` sáng cả `/settings`.
@@ -181,7 +188,8 @@ export function Sidebar({
         } ${mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}`}
       >
         <div
-          className={`border-b border-border ${iconOnly ? "flex flex-col items-center gap-2 px-2 py-3" : "px-3 py-3"}`}
+          ref={panelRef}
+          className={`relative border-b border-border ${iconOnly ? "flex flex-col items-center gap-2 px-2 py-3" : "px-3 py-3"}`}
         >
           <div className={`flex ${iconOnly ? "flex-col items-center gap-2" : "items-start gap-2"}`}>
             <Link
@@ -205,78 +213,32 @@ export function Sidebar({
             ) : null}
             <div className={`flex shrink-0 items-center gap-0.5 ${iconOnly ? "flex-col" : "ml-auto"}`}>
               {!isSuperAdmin && permissions.includes(PERMISSION_CODES.inboxRead) ? (
-                <div className="relative" ref={panelRef}>
-                  <button
-                    type="button"
-                    aria-label="Thông báo inbox"
-                    aria-expanded={noticesOpen}
-                    title="Thông báo"
-                    onClick={() => setNoticesOpen((open) => !open)}
-                    className="group relative icon-btn shrink-0"
-                  >
-                    <BellIcon />
-                    {unreadBadge ? (
-                      <span
-                        role="status"
-                        aria-live="polite"
-                        aria-atomic="true"
-                        className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[10px] font-bold text-white"
-                      >
-                        <span className="sr-only">{summary.unreadTotal} tin chưa đọc</span>
-                        <span aria-hidden="true">{unreadBadge}</span>
-                      </span>
-                    ) : null}
-                    {iconOnly ? (
-                      <span className="pointer-events-none absolute left-full z-50 ml-2 hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-lg group-hover:block">
-                        Thông báo
-                      </span>
-                    ) : null}
-                  </button>
-                  {noticesOpen ? (
-                    <div className="absolute left-full top-0 z-50 ml-2 w-80 overflow-hidden rounded-xl border border-border bg-surface shadow-elevated">
-                      <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
-                        <p className="text-sm font-semibold text-slate-900">Thông báo</p>
-                        <span className="text-[11px] text-slate-500">
-                          {pending ? "Đang cập nhật…" : `${summary.unreadConversations} hội thoại`}
-                        </span>
-                      </div>
-                      <ul className="max-h-80 overflow-y-auto">
-                        {summary.notices.length === 0 ? (
-                          <li className="px-3 py-8 text-center text-sm text-slate-500">
-                            Không có tin chưa đọc
-                          </li>
-                        ) : (
-                          summary.notices.map((item) => (
-                            <li key={item.conversationId} className="border-b border-border last:border-b-0">
-                              <Link
-                                href={`/inbox?c=${encodeURIComponent(item.conversationId)}`}
-                                onClick={() => {
-                                  setNoticesOpen(false);
-                                  setMobileOpen(false);
-                                }}
-                                className="block px-3 py-2.5 transition-colors hover:bg-surface-muted"
-                              >
-                                <NoticeRow item={item} />
-                              </Link>
-                            </li>
-                          ))
-                        )}
-                      </ul>
-                      <div className="border-t border-border px-3 py-2">
-                        <Link
-                          href="/inbox"
-                          onClick={() => {
-                            setNoticesOpen(false);
-                            setMobileOpen(false);
-                          }}
-                          className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
-                        >
-                          Mở Inbox
-                        </Link>
-                      </div>
-                    </div>
+                <button
+                  type="button"
+                  aria-label="Thông báo inbox"
+                  aria-expanded={noticesOpen}
+                  title="Thông báo"
+                  onClick={() => setNoticesOpen((open) => !open)}
+                  className="group relative icon-btn shrink-0"
+                >
+                  <BellIcon />
+                  {unreadBadge ? (
+                    <span
+                      role="status"
+                      aria-live="polite"
+                      aria-atomic="true"
+                      className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-orange-600 px-1 text-[10px] font-bold text-white"
+                    >
+                      <span className="sr-only">{summary.unreadTotal} tin chưa đọc</span>
+                      <span aria-hidden="true">{unreadBadge}</span>
+                    </span>
                   ) : null}
-                </div>
+                  {iconOnly ? (
+                    <span className="pointer-events-none absolute left-full z-50 ml-2 hidden whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs font-medium text-white shadow-lg group-hover:block">
+                      Thông báo
+                    </span>
+                  ) : null}
+                </button>
               ) : null}
               {!iconOnly ? (
                 <button
@@ -310,6 +272,72 @@ export function Sidebar({
               </button>
             </div>
           </div>
+          {noticesOpen && !isSuperAdmin && permissions.includes(PERMISSION_CODES.inboxRead) ? (
+            <div
+              role="dialog"
+              aria-label="Thông báo hội thoại chưa đọc"
+              className={`z-50 overflow-hidden rounded-xl border border-border bg-surface shadow-elevated ${
+                iconOnly
+                  ? "fixed left-16 top-16 w-[min(20rem,calc(100vw-5rem))]"
+                  : "absolute left-2 right-2 top-full mt-1"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900">Thông báo</p>
+                  <p className="text-[11px] text-slate-500">
+                    {pending
+                      ? "Đang cập nhật…"
+                      : summary.notices.length === 0
+                        ? "Không có tin chưa đọc"
+                        : `${summary.unreadConversations} hội thoại chưa đọc`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="icon-btn shrink-0"
+                  aria-label="Đóng thông báo"
+                  onClick={() => setNoticesOpen(false)}
+                >
+                  <CloseIcon />
+                </button>
+              </div>
+              <ul className="max-h-72 overflow-y-auto">
+                {summary.notices.length === 0 ? (
+                  <li className="px-3 py-6 text-center text-sm text-slate-500">
+                    Inbox đang trống tin mới.
+                  </li>
+                ) : (
+                  summary.notices.map((item) => (
+                    <li key={item.conversationId} className="border-b border-border last:border-b-0">
+                      <Link
+                        href={`/inbox?c=${encodeURIComponent(item.conversationId)}`}
+                        onClick={() => {
+                          setNoticesOpen(false);
+                          setMobileOpen(false);
+                        }}
+                        className="block px-3 py-2.5 transition-colors hover:bg-surface-muted"
+                      >
+                        <NoticeRow item={item} />
+                      </Link>
+                    </li>
+                  ))
+                )}
+              </ul>
+              <div className="border-t border-border px-3 py-2">
+                <Link
+                  href="/inbox"
+                  onClick={() => {
+                    setNoticesOpen(false);
+                    setMobileOpen(false);
+                  }}
+                  className="text-xs font-medium text-teal-700 hover:text-teal-800 hover:underline"
+                >
+                  Mở Inbox
+                </Link>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <nav className={`flex flex-1 flex-col gap-1 py-4 ${iconOnly ? "px-2" : "px-3"}`}>

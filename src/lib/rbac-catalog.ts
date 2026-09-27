@@ -227,6 +227,16 @@ export function isAdminRole(code: string | null | undefined): boolean {
   return normalizeRoleCode(code) === ROLE_CODES.admin;
 }
 
+/** Nhân viên thường — không xem nhật ký hoạt động. */
+export function isStaffRole(code: string | null | undefined): boolean {
+  return normalizeRoleCode(code) === ROLE_CODES.staff;
+}
+
+export function canViewAuditLog(code: string | null | undefined): boolean {
+  if (!code?.trim()) return true;
+  return normalizeRoleCode(code) !== ROLE_CODES.staff;
+}
+
 export function roleLabel(code: string | null | undefined): string {
   const canonical = normalizeRoleCode(code);
   return ROLE_LABEL[canonical] ?? ROLE_LABEL[code ?? ""] ?? canonical;

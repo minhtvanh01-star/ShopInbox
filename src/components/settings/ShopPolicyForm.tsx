@@ -12,6 +12,7 @@ import {
   REPLY_CLAIM_TTL_MIN,
 } from "@/lib/shop-policy";
 import { SHOP_NAME_MAX } from "@/lib/shop-name";
+import { trialPlanSeatWarning } from "@/lib/shop-seats";
 
 type ShopPolicyFormProps = {
   shopName: string;
@@ -36,6 +37,12 @@ export function ShopPolicyForm({
       <h2 className="text-sm font-semibold text-slate-900">Cấu hình cửa hàng</h2>
       <p className="mt-1 text-xs text-slate-500">
         Chỉ Admin mới đổi được. Tên shop, nhả hội thoại, và giới hạn nhân viên của shop này.
+      </p>
+      <p
+        role="status"
+        className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm leading-6 text-amber-950"
+      >
+        {trialPlanSeatWarning()}
       </p>
 
       <form
@@ -93,7 +100,7 @@ export function ShopPolicyForm({
             className="input-field-sm"
           />
           <p className="text-[11px] text-slate-400">
-            Giới hạn tài khoản đang hoạt động ({MAX_USERS_PER_SHOP_MIN}–{MAX_USERS_PER_SHOP_MAX}).
+            Bản chạy thử: tối đa {MAX_USERS_PER_SHOP_MAX} người đang hoạt động.
           </p>
         </div>
 

@@ -22,7 +22,7 @@ export const GOOGLE_AUTH_ERROR_MESSAGES: Record<string, string> = {
   inactive:
     "Tài khoản chưa được kích hoạt hoặc đã bị tắt. Liên hệ quản trị viên để phê duyệt và phân quyền.",
   shop_seat_full:
-    "Shop đã đủ số thành viên đang hoạt động. Liên hệ admin để giải phóng ghế trước khi đăng ký thêm.",
+    "Shop đã đủ ghế đang hoạt động. Admin có thể tăng hạn tối đa 5 người trên bản chạy thử, hoặc vô hiệu hóa một tài khoản.",
   shop_suspended: "Cửa hàng đang bị tạm khóa. Liên hệ Super admin.",
 };
 

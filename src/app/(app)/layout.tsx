@@ -40,6 +40,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         staffName={shop.staffName}
         staffAvatarUrl={shop.staffAvatarUrl}
         roleLabel={shop.roleLabel}
+        roleCode={shop.role}
         permissions={shop.permissions}
         isSuperAdmin={shop.isSuperAdmin}
         inboxNotices={inboxNotices}
