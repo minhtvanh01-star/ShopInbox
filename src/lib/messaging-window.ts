@@ -44,7 +44,7 @@ export function getMessagingWindowInfo(input: {
       banner:
         channel === "zalo"
           ? "Chưa có tin khách trên Zalo trong hội thoại này — gửi có thể thất bại nếu thiếu ID khách."
-          : "Chưa thấy tin khách gần đây. Meta chỉ cho trả lời tự do trong 24 giờ sau tin khách.",
+          : "Chưa thấy tin khách gần đây. Facebook chỉ cho trả lời tự do trong 24 giờ sau tin khách.",
     };
   }
 
@@ -62,7 +62,7 @@ export function getMessagingWindowInfo(input: {
       return {
         kind: "human_agent",
         banner:
-          "Đã quá 48 giờ kể từ tin khách. Cửa sổ Tin tư vấn miễn phí của Zalo đã hết — OpenAPI có thể gửi thêm ≤7 ngày nếu OA đủ điều kiện; nếu lỗi, nhờ khách nhắn lại.",
+          "Đã quá 48 giờ kể từ tin khách. Cửa sổ miễn phí của Zalo đã hết — vẫn có thể gửi thêm trong 7 ngày nếu OA đủ điều kiện. Nếu lỗi, nhờ khách nhắn lại.",
       };
     }
     return {
@@ -79,7 +79,7 @@ export function getMessagingWindowInfo(input: {
     return {
       kind: "human_agent",
       banner:
-        "Đã quá 24 giờ kể từ tin khách. Facebook có thể gửi bằng thẻ Human Agent (≤7 ngày) nếu app đã được Meta duyệt — nếu lỗi, nhờ khách nhắn lại.",
+        "Đã quá 24 giờ kể từ tin khách. Facebook có thể cho gửi thêm trong 7 ngày — nếu lỗi, nhờ khách nhắn lại.",
     };
   }
 
@@ -95,7 +95,7 @@ export function getMessagingWindowInfo(input: {
     return {
       kind: "closed",
       banner:
-        "Đã quá 7 ngày kể từ tin khách. Messenger không cho gửi thêm — cần khách nhắn lại.",
+        "Đã quá 7 ngày kể từ tin khách. Messenger không cho gửi thêm — nhờ khách nhắn lại.",
     };
   }
 

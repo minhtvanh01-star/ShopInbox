@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CUSTOMER_ADDRESS_MAX,
   customerMatchesQuery,
+  customerProfileChecklist,
   parseCustomerProfileInput,
   parseOrderDeliveryInput,
 } from "./customer-profile";
@@ -47,6 +48,18 @@ describe("parseOrderDeliveryInput", () => {
     expect(parseOrderDeliveryInput({ address: "a".repeat(CUSTOMER_ADDRESS_MAX + 1) }).ok).toBe(
       false,
     );
+  });
+});
+
+describe("customerProfileChecklist", () => {
+  it("một hàng: SĐT / địa chỉ / ghi chú", () => {
+    expect(
+      customerProfileChecklist({ phone: "0901", address: "", note: "Size M" }),
+    ).toEqual([
+      { id: "phone", label: "SĐT", done: true },
+      { id: "address", label: "Địa chỉ", done: false },
+      { id: "note", label: "Ghi chú", done: true },
+    ]);
   });
 });
 

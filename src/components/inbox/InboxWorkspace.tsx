@@ -813,7 +813,6 @@ export function InboxWorkspace({
   function claimReply() {
     if (!selected || sendBusy || replyLockedByOther || claimBusy) return;
     // Event handler — Date.now() (không dùng nowMs lệch tick; countdown 5:00).
-    // eslint-disable-next-line react-hooks/purity -- click handler, not render
     const atMs = Date.now();
     setNowMs(atMs);
     const claimedAt = new Date(atMs).toISOString();
@@ -966,7 +965,6 @@ export function InboxWorkspace({
       return;
     }
 
-    // eslint-disable-next-line react-hooks/purity -- click/submit handler, not render
     const atMs = Date.now();
     setNowMs(atMs);
     const body = text.trim();
@@ -1113,7 +1111,6 @@ export function InboxWorkspace({
   function sendImage(file: File) {
     if (!selected || sendBusy || !canCompose || nowMs === null) return;
 
-    // eslint-disable-next-line react-hooks/purity -- click handler, not render
     const atMs = Date.now();
     setNowMs(atMs);
     const tempId = `temp-${crypto.randomUUID()}`;
@@ -1696,14 +1693,12 @@ export function InboxWorkspace({
                   {messagingWindow.banner}
                 </p>
               ) : null}
-              {isAdmin ? (
-                <p className="mb-3 flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs text-teal-800">
+              {isAdmin && claimActive && !replyIsMine && selected.replyStaffName ? (
+                <p className="mb-3 flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-3 py-2 text-xs leading-5 text-teal-800">
                   <span className="activity-dot activity-dot-mine" aria-hidden />
                   <span>
-                    Admin: trả lời mọi lúc, không bị khóa và không khóa hội thoại khi gửi tin
-                    {claimActive && !replyIsMine && selected.replyStaffName
-                      ? ` · ${selected.replyStaffName} đang giữ (bấm Tiếp quản chỉ khi cần chiếm claim).`
-                      : "."}
+                    {selected.replyStaffName} đang giữ hội thoại. Bạn vẫn gửi được — chỉ bấm
+                    Tiếp quản khi cần lấy quyền trả lời.
                   </span>
                 </p>
               ) : replyLockedByOther ? (
@@ -1784,14 +1779,22 @@ export function InboxWorkspace({
                     aria-describedby="composer-count"
                     placeholder={
                       isAdmin || replyIsMine
-                        ? "Nhập tin nhắn… (Enter gửi, Shift+Enter xuống dòng)"
+                        ? "Nhập tin nhắn…"
                         : replyLockedByOther
                           ? "Đang bị khóa..."
                           : "Nhận hội thoại để trả lời..."
                     }
+                    title={
+                      isAdmin || replyIsMine ? "Enter gửi · Shift+Enter xuống dòng" : undefined
+                    }
                     disabled={!canCompose}
                     className="input-field-sm min-h-11 w-full resize-none py-2.5"
                   />
+                  {canCompose && (isAdmin || replyIsMine) ? (
+                    <p className="mt-1 text-[11px] leading-4 text-slate-400">
+                      Enter gửi · Shift+Enter xuống dòng
+                    </p>
+                  ) : null}
                   {draft.length >= MESSAGE_TEXT_MAX - 200 ? (
                     <p
                       id="composer-count"
@@ -1868,7 +1871,9 @@ export function InboxWorkspace({
               />
               <div className="min-w-0">
                 <p className="truncate text-lg font-semibold text-slate-900">{customer.name}</p>
-                <p className="mt-0.5 text-sm text-slate-600">{customer.phone ?? "Chưa có SĐT"}</p>
+                {!canUpdateCustomer ? (
+                  <p className="mt-0.5 text-sm text-slate-600">{customer.phone ?? "Chưa có SĐT"}</p>
+                ) : null}
               </div>
             </div>
             {canUpdateCustomer ? (
@@ -1905,8 +1910,8 @@ export function InboxWorkspace({
                 >
                   Tạo đơn
                 </button>
-                <p className="mt-2 text-center text-[11px] text-slate-400">
-                  Lưu đơn vào PostgreSQL, gắn với hội thoại này
+                <p className="mt-2 text-center text-[11px] leading-4 text-slate-500">
+                  Đơn gắn với hội thoại này
                 </p>
               </>
             )}

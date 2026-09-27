@@ -38,7 +38,7 @@ export function getInboxChannelFilters(activeChannels?: Iterable<Channel>): Inbo
 export function inboxChannelsSubtitle(filters: InboxChannelFilter[]) {
   const names = filters.filter((item) => item.id !== "all").map((item) => item.label);
   if (names.length === 0) return "Chưa có kênh nào";
-  return `Tin nhắn đồng bộ từ ${names.join(", ")}`;
+  return `Hội thoại từ ${names.join(", ")}`;
 }
 
 export const CHANNEL_STATUS_LABEL: Record<ChannelStatus, string> = {

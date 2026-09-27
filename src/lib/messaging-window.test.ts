@@ -40,7 +40,7 @@ describe("getMessagingWindowInfo", () => {
       now,
     });
     expect(info.kind).toBe("human_agent");
-    expect(info.banner).toMatch(/Human Agent/i);
+    expect(info.banner).toMatch(/24 giờ|7 ngày/i);
   });
 
   it("IG quá 24h → closed (không HUMAN_AGENT)", () => {
@@ -69,14 +69,14 @@ describe("getMessagingWindowInfo", () => {
     expect(info.banner).toBeNull();
   });
 
-  it("Zalo 48h–7 ngày → cửa sổ OpenAPI", () => {
+  it("Zalo 48h–7 ngày → cửa sổ tư vấn kéo dài", () => {
     const info = getMessagingWindowInfo({
       channel: "zalo",
       lastCustomerMessageAt: "2026-09-12T12:00:00.000Z",
       now,
     });
     expect(info.kind).toBe("human_agent");
-    expect(info.banner).toMatch(/48 giờ|OpenAPI/i);
+    expect(info.banner).toMatch(/48 giờ|7 ngày/i);
   });
 
   it("Zalo quá 7 ngày → closed", () => {
