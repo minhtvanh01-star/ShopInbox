@@ -12,7 +12,17 @@ const EMPTY_INBOX_NOTICES: InboxNoticeSummary = {
 };
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
-  const shop = await getShopContext();
+  let shop: Awaited<ReturnType<typeof getShopContext>>;
+  try {
+    shop = await getShopContext();
+  } catch (error) {
+    console.error("[AppLayout] getShopContext failed — rendering without shop chrome", error);
+    return (
+      <main id="main-content" className="flex min-h-screen min-w-0 flex-1 flex-col">
+        {children}
+      </main>
+    );
+  }
   let inboxNotices = EMPTY_INBOX_NOTICES;
   if (!shop.isSuperAdmin && shop.permissions.includes(PERMISSION_CODES.inboxRead)) {
     try {

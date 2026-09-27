@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { loginAction, type AuthActionState } from "@/app/login/actions";
 import { GoogleAuthButton } from "@/components/auth/GoogleAuthButton";
 import {
@@ -36,6 +37,13 @@ export function LoginForm({
   const [showPassword, setShowPassword] = useState(false);
   const errorRef = useRef<HTMLParagraphElement>(null);
   const errorId = "login-form-error";
+  const router = useRouter();
+
+  useEffect(() => {
+    if (state.redirectTo) {
+      router.replace(state.redirectTo);
+    }
+  }, [state.redirectTo, router]);
 
   const oauthErrorText = authError
     ? (GOOGLE_AUTH_ERROR_MESSAGES[authError] ?? "Đăng nhập Google thất bại.")
@@ -141,11 +149,11 @@ export function LoginForm({
 
         <button
           type="submit"
-          disabled={pending}
+          disabled={pending || Boolean(state.redirectTo)}
           aria-busy={pending}
           className="btn-primary w-full"
         >
-          {pending ? "Đang đăng nhập…" : `Đăng nhập ${shopName}`}
+          {pending || state.redirectTo ? "Đang đăng nhập…" : `Đăng nhập ${shopName}`}
         </button>
       </form>
 
