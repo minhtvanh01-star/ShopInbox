@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canAddActiveShopSeat,
+  formatShopSeatUsage,
   MAX_USERS_PER_SHOP,
   shopSeatLimitMessage,
 } from "@/lib/shop-seats";
@@ -23,5 +24,10 @@ describe("shop seats", () => {
   it("returns a clear Vietnamese limit message", () => {
     expect(shopSeatLimitMessage()).toMatch(/3 thành viên/);
     expect(shopSeatLimitMessage()).toMatch(/vô hiệu hóa/);
+  });
+
+  it("formats seats used against the shop plan limit", () => {
+    expect(formatShopSeatUsage(1, 3)).toBe("1/3");
+    expect(formatShopSeatUsage(5, 10)).toBe("5/10");
   });
 });

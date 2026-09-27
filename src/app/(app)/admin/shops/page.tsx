@@ -35,10 +35,10 @@ export default async function AdminShopsPage() {
           setupDone: Boolean(shop.setupCompletedAt),
           suspended: Boolean(shop.suspendedAt),
           staffCount: shop.staffCount,
+          seatLimit: shop.seatLimit,
           channelCount: shop.channelCount,
           orderCount: shop.orderCount,
           ownerName: shop.owner?.name ?? null,
-          ownerEmail: shop.owner?.email ?? null,
           planCode: shop.planCode,
           supportStatus: shop.supportStatus,
         }))}

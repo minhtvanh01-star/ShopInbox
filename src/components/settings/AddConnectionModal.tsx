@@ -50,13 +50,7 @@ type AddConnectionModalProps = {
   canConnect: boolean;
   metaOAuthConfigured: boolean;
   zaloOAuthConfigured: boolean;
-  metaMissingEnvVars: string[];
-  zaloMissingEnvVars: string[];
-  metaOAuthRedirectUri: string;
-  zaloOAuthRedirectUri: string;
-  metaWebhookUrl: string;
-  zaloWebhookUrl: string;
-  metaWebhookVerifyToken: string;
+  shopifyOAuthConfigured: boolean;
   pendingMetaPages: { channel: Channel; pages: MetaPagePickerOption[] } | null;
   initialPlatformId?: string;
   onClose: () => void;
@@ -93,6 +87,9 @@ function oauthStartUrl(platform: PlatformOption) {
   if (platform.channel === "facebook" || platform.channel === "instagram") {
     return `/api/connect/meta/start?channel=${platform.channel}`;
   }
+  if (platform.channel === "shopify") {
+    return "/api/connect/shopify/start";
+  }
   return null;
 }
 
@@ -100,7 +97,8 @@ function oauthConnectLabel(channel: Channel | undefined) {
   if (channel === "zalo") return "Kết nối với Zalo";
   if (channel === "instagram") return "Kết nối với Instagram";
   if (channel === "facebook") return "Kết nối với Facebook";
-  return "Kết nối OAuth";
+  if (channel === "shopify") return "Kết nối với Shopify";
+  return "Kết nối";
 }
 
 function statusBadgeClass(status: ChannelStatus) {
@@ -135,28 +133,19 @@ function CopyButton({ value, label }: { value: string; label?: string }) {
 
 function SetupChecklist({
   oauthDone,
-  webhookUrlReady,
   messagesSynced,
   provider,
 }: {
   oauthDone: boolean;
-  webhookUrlReady: boolean;
   messagesSynced: boolean;
   provider: "meta" | "zalo";
 }) {
-  const providerLabel = provider === "zalo" ? "Zalo" : "Meta";
+  const providerLabel = provider === "zalo" ? "Zalo" : "Facebook / Instagram";
   const items = [
-    { done: oauthDone, label: "OAuth — đăng nhập & lưu token" },
-    {
-      done: webhookUrlReady,
-      label:
-        provider === "zalo"
-          ? "Webhook URL sẵn sàng — dán vào Zalo OA Admin"
-          : "Webhook URL sẵn sàng — dán vào Meta và bật field messages",
-    },
+    { done: oauthDone, label: `Đã đăng nhập ${providerLabel}` },
     {
       done: messagesSynced,
-      label: `Đã nhận event từ ${providerLabel} (tin mới hoặc thử nghiệm)`,
+      label: `Đã nhận tin từ ${providerLabel}`,
     },
   ];
 
@@ -183,20 +172,14 @@ export function AddConnectionModal({
   canConnect,
   metaOAuthConfigured,
   zaloOAuthConfigured,
-  metaMissingEnvVars,
-  zaloMissingEnvVars,
-  metaOAuthRedirectUri,
-  zaloOAuthRedirectUri,
-  metaWebhookUrl,
-  zaloWebhookUrl,
-  metaWebhookVerifyToken,
+  shopifyOAuthConfigured,
   pendingMetaPages,
   initialPlatformId,
   onClose,
 }: AddConnectionModalProps) {
   const [selectedId, setSelectedId] = useState(initialPlatformId ?? "facebook");
   const [search, setSearch] = useState("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [shopifyShop, setShopifyShop] = useState("");
   const [disconnecting, setDisconnecting] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<{ ok: boolean; text: string } | null>(null);
@@ -256,14 +239,16 @@ export function AddConnectionModal({
       ? zaloOAuthConfigured
       : selected.channel === "facebook" || selected.channel === "instagram"
         ? metaOAuthConfigured
-        : false;
-  const missingOAuthEnvVars =
-    selected.channel === "zalo"
-      ? zaloMissingEnvVars
-      : selected.channel === "facebook" || selected.channel === "instagram"
-        ? metaMissingEnvVars
-        : [];
-  const oauthUrl = oauthStartUrl(selected);
+        : selected.channel === "shopify"
+          ? shopifyOAuthConfigured
+          : false;
+  const shopifyHost = (shopifyShop || account?.pageId || "").trim();
+  const oauthUrl =
+    selected.channel === "shopify"
+      ? shopifyHost
+        ? `/api/connect/shopify/start?shop=${encodeURIComponent(shopifyHost)}`
+        : null
+      : oauthStartUrl(selected);
   const connectLabel = oauthConnectLabel(selected.channel);
   const showPagePicker =
     pendingMetaPages &&
@@ -271,23 +256,10 @@ export function AddConnectionModal({
     pendingMetaPages.channel === selected.channel &&
     pendingMetaPages.pages.length > 1;
 
-  const webhookUrl =
-    selected.channel === "zalo"
-      ? zaloWebhookUrl
-      : selected.channel === "facebook" || selected.channel === "instagram"
-        ? metaWebhookUrl
-        : null;
-  const oauthRedirectUri =
-    selected.channel === "zalo"
-      ? zaloOAuthRedirectUri
-      : selected.channel === "facebook" || selected.channel === "instagram"
-        ? metaOAuthRedirectUri
-        : null;
-
   async function handleDisconnect() {
     if (!account || !canConnect || disconnecting) return;
     const confirmed = window.confirm(
-      "Ngắt kết nối kênh này? Token OAuth sẽ bị xóa. Hội thoại kênh này sẽ ẩn khỏi Inbox đến khi nối lại.",
+      "Ngắt kết nối kênh này? Hội thoại kênh này sẽ ẩn khỏi Inbox đến khi nối lại.",
     );
     if (!confirmed) return;
     setDisconnecting(true);
@@ -331,7 +303,7 @@ export function AddConnectionModal({
             <h2 id="add-connection-title" className="text-base font-semibold text-slate-900">
               Thêm kết nối
             </h2>
-            <p className="mt-1 text-xs text-slate-500">Đăng nhập OAuth hoặc cấu hình thủ công</p>
+              <p className="mt-1 text-xs text-slate-500">Đăng nhập Facebook, Instagram hoặc Zalo</p>
           </div>
           <div className="flex-1 overflow-y-auto p-2">
             {filteredPlatforms.map((platform) => {
@@ -376,10 +348,7 @@ export function AddConnectionModal({
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Kết nối kênh</h3>
               <p className="mt-1 text-sm text-slate-500">
-                Bấm nút OAuth để đăng nhập Meta/Zalo. Hướng dẫn chi tiết:{" "}
-                <code className="rounded bg-surface-muted px-1.5 py-0.5 text-xs text-slate-700">
-                  docs/ket-noi-kenh.md
-                </code>
+                Chọn Facebook, Instagram, Zalo hoặc widget website, rồi đăng nhập.
               </p>
             </div>
             <button
@@ -413,11 +382,20 @@ export function AddConnectionModal({
                   {PLATFORM_AVAILABILITY_LABEL[selected.availability] || "Chưa mở"}
                 </span>
                 {selected.id === "shopify" ? (
-                  <p className="mt-4 max-w-sm text-xs leading-5 text-slate-500">
-                    Chat trên storefront Shopify: mở <span className="font-medium">Chat website</span>,
-                    lưu domain cửa hàng, dán snippet vào theme. Shopify Inbox native chưa mở — không
-                    có OAuth giả.
-                  </p>
+                  <div className="mt-4 max-w-sm space-y-3">
+                    <p className="text-xs leading-5 text-slate-500">
+                      Inbox sẵn trong Shopify (Shopify Inbox) chưa mở — cần app Partner và duyệt.
+                      Chat trên theme storefront thì dùng <span className="font-medium">Chat website</span>:
+                      lưu domain shop, dán snippet vào theme.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId("web")}
+                      className="btn-primary"
+                    >
+                      Dùng Chat website
+                    </button>
+                  </div>
                 ) : null}
                 {selected.id === "whatsapp" ? (
                   <p className="mt-4 max-w-sm text-xs leading-5 text-slate-500">
@@ -427,7 +405,7 @@ export function AddConnectionModal({
                 ) : null}
                 {selected.id === "tiktok" ? (
                   <p className="mt-4 max-w-sm text-xs leading-5 text-slate-500">
-                    TikTok Messaging chỉ khi có quyền đối tác API. Giữ Sắp có, không làm OAuth giả.
+                    TikTok Messaging chỉ khi có quyền đối tác API. Giữ Sắp có.
                   </p>
                 ) : null}
               </div>
@@ -440,7 +418,7 @@ export function AddConnectionModal({
                     </p>
                     <p className="mt-1 text-xs text-slate-500">
                       {isOAuthPlatform
-                        ? "Bấm nút kết nối bên dưới để bắt đầu OAuth — hệ thống sẽ tạo kênh tự động."
+                        ? "Bấm nút kết nối bên dưới — hệ thống sẽ tạo kênh tự động."
                         : "Dùng form bên dưới để lưu cấu hình (hoặc liên hệ admin nếu không có quyền)."}
                     </p>
                   </div>
@@ -479,8 +457,8 @@ export function AddConnectionModal({
                             ? "Widget key đã tạo — dán snippet vào website"
                             : "Điền domain website để bật widget"
                           : account.hasOAuthToken
-                            ? "Đã lưu token OAuth trên server"
-                            : "Chưa kết nối OAuth"}
+                            ? "Đã kết nối"
+                            : "Chưa kết nối"}
                       </p>
                       {account.connectedAt ? (
                         <p className="mt-1 text-xs text-slate-400">
@@ -523,7 +501,6 @@ export function AddConnectionModal({
                     <p className="section-label mb-3">Tiến độ thiết lập</p>
                     <SetupChecklist
                       oauthDone={Boolean(account.hasOAuthToken)}
-                      webhookUrlReady={Boolean(account.hasOAuthToken && webhookUrl)}
                       messagesSynced={Boolean(account.lastWebhookAt)}
                       provider={selected.channel === "zalo" ? "zalo" : "meta"}
                     />
@@ -532,27 +509,16 @@ export function AddConnectionModal({
                         Tin nhắn gần nhất: {formatDateTime(account.lastWebhookAt)}
                       </p>
                     ) : account.hasOAuthToken ? (
-                      selected.channel === "zalo" ? (
-                        <p className="mt-3 text-xs text-amber-700">
-                          Zalo chưa gửi event tới ShopInbox. Dán Webhook URL vào Zalo OA Admin, bật sự
-                          kiện tin nhắn, rồi nhắn thử từ Zalo vào OA.
-                        </p>
-                      ) : (
-                        <p className="mt-3 text-xs text-amber-700">
-                          Meta chưa gửi event tới ShopInbox. App phải{" "}
-                          <span className="font-medium">phát hành</span>, hoặc bấm{" "}
-                          <span className="font-medium">Thử nghiệm</span> trên field{" "}
-                          <code className="text-[11px]">messages</code> (chọn đúng Fanpage{" "}
-                          {account.displayName ?? "đã nối"}).
-                        </p>
-                      )
+                      <p className="mt-3 text-xs text-amber-700">
+                        Đã nối kênh. Inbox sẽ có tin khi khách nhắn vào trang này.
+                      </p>
                     ) : null}
                   </div>
                 ) : null}
 
                 {!canConnect ? (
                   <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800 ring-1 ring-amber-200">
-                    Bạn không có quyền kết nối OAuth hoặc lưu cấu hình kênh.
+                    Bạn không có quyền kết nối kênh.
                   </p>
                 ) : null}
 
@@ -611,26 +577,26 @@ export function AddConnectionModal({
                 {isOAuthPlatform ? (
                   <div className="mt-4 space-y-4">
                     <div className="rounded-xl border border-border bg-surface-muted/60 p-4">
-                      <p className="text-sm font-medium text-slate-900">Bước 1 — Đăng nhập OAuth</p>
+                      <p className="text-sm font-medium text-slate-900">Kết nối kênh</p>
                       <p className="mt-1 text-xs text-slate-500">
                         {selected.channel === "zalo"
-                          ? "Đăng nhập Zalo OA và cấp quyền cho ứng dụng ShopInbox."
-                          : "Đăng nhập Facebook (admin Fanpage / Instagram Business) và cấp quyền."}
+                          ? "Đăng nhập Zalo OA và cấp quyền cho ShopInbox."
+                          : selected.channel === "shopify"
+                            ? "Nhập domain *.myshopify.com rồi đăng nhập admin Shopify để cấp quyền."
+                            : "Đăng nhập Facebook (admin Fanpage / Instagram Business) và cấp quyền."}
                       </p>
-                      {oauthRedirectUri ? (
-                        <div className="mt-3">
-                          <p className="text-xs text-slate-500">
-                            {selected.channel === "zalo"
-                              ? "Redirect URI (dán vào Zalo Developers):"
-                              : "OAuth Redirect URI (dán vào Meta → Facebook Login → Valid OAuth Redirect URIs):"}
-                          </p>
-                          <div className="mt-1 flex items-start gap-2 rounded bg-surface px-2 py-2">
-                            <code className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700">
-                              {oauthRedirectUri}
-                            </code>
-                            <CopyButton value={oauthRedirectUri} />
-                          </div>
-                        </div>
+                      {selected.channel === "shopify" ? (
+                        <label className="mt-3 block">
+                          <span className="label">Domain Shopify</span>
+                          <input
+                            type="text"
+                            value={shopifyShop || account?.pageId || ""}
+                            onChange={(event) => setShopifyShop(event.target.value)}
+                            placeholder="cuahang.myshopify.com"
+                            disabled={!canConnect || account?.status === "ready"}
+                            className="input-field-sm disabled:bg-surface-muted"
+                          />
+                        </label>
                       ) : null}
                       {canConnect && oauthConfigured && oauthUrl ? (
                         <a href={oauthUrl} className="btn-primary mt-3 inline-flex">
@@ -642,88 +608,36 @@ export function AddConnectionModal({
                             type="button"
                             disabled
                             className="btn-primary inline-flex cursor-not-allowed opacity-50"
-                            title={
-                              !canConnect
-                                ? "Thiếu quyền channels.connect"
-                                : "Thiếu biến OAuth trên server"
-                            }
                           >
                             {connectLabel}
                           </button>
                           {canConnect ? (
                             <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 ring-1 ring-amber-200">
-                              Chưa cấu hình OAuth trên server. Thiếu biến môi trường:{" "}
-                              <span className="font-semibold">
-                                {(missingOAuthEnvVars.length > 0
-                                  ? missingOAuthEnvVars
-                                  : selected.channel === "zalo"
-                                    ? ["ZALO_APP_ID", "ZALO_APP_SECRET", "ZALO_REDIRECT_URI"]
-                                    : ["META_APP_ID", "META_APP_SECRET"]
-                                ).join(", ")}
-                              </span>
-                              . Điền trong <code className="text-xs">.env</code> (xem{" "}
-                              <code className="text-xs">.env.example</code> và{" "}
-                              <code className="text-xs">docs/ket-noi-kenh.md</code>) rồi restart{" "}
-                              <code className="text-xs">npm run dev</code>.
+                              Kết nối kênh này chưa sẵn sàng trên hệ thống. Liên hệ quản trị.
                             </p>
                           ) : null}
                         </div>
                       )}
                     </div>
 
-                    {account?.status === "ready" && webhookUrl ? (
-                      <div className="rounded-xl border border-border bg-surface-muted/60 p-4">
-                        <p className="text-sm font-medium text-slate-900">Bước 2 — Webhook</p>
-                        <p className="mt-1 text-xs text-slate-500">
-                          Copy URL và đăng ký trong Meta / Zalo Developers (cần HTTPS công khai).
-                        </p>
-                        <div className="mt-2 flex items-start gap-2 rounded bg-surface px-2 py-2">
-                          <code className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700">
-                            {webhookUrl}
-                          </code>
-                          <CopyButton value={webhookUrl} />
-                        </div>
-                        {(selected.channel === "facebook" || selected.channel === "instagram") &&
-                        metaWebhookVerifyToken ? (
-                          <div className="mt-3">
-                            <p className="text-xs text-slate-500">Verify token (Meta):</p>
-                            <div className="mt-1 flex items-start gap-2 rounded bg-surface px-2 py-2">
-                              <code className="min-w-0 flex-1 break-all font-mono text-xs text-slate-700">
-                                {metaWebhookVerifyToken}
-                              </code>
-                              <CopyButton value={metaWebhookVerifyToken} label="Copy token" />
-                            </div>
-                          </div>
-                        ) : null}
-                        {selected.channel === "facebook" ? (
-                          <p className="mt-2 text-xs text-teal-700">
-                            Facebook: app tự thử đăng ký webhook page sau OAuth (nếu token cho phép).
+                    {(selected.channel === "facebook" || selected.channel === "instagram") &&
+                    account?.status === "ready" &&
+                    account.hasOAuthToken ? (
+                      <div className="space-y-2">
+                        <button
+                          type="button"
+                          onClick={handleSyncMeta}
+                          disabled={!canConnect || syncing}
+                          className="btn-secondary"
+                        >
+                          {syncing ? "Đang đồng bộ..." : "Đồng bộ tin nhắn gần đây"}
+                        </button>
+                        {syncMessage ? (
+                          <p
+                            className={`text-xs ${syncMessage.ok ? "text-emerald-600" : "text-amber-700"}`}
+                          >
+                            {syncMessage.text}
                           </p>
-                        ) : null}
-                        {(selected.channel === "facebook" || selected.channel === "instagram") &&
-                        account.hasOAuthToken ? (
-                          <div className="mt-3 space-y-2">
-                            <button
-                              type="button"
-                              onClick={handleSyncMeta}
-                              disabled={!canConnect || syncing}
-                              className="btn-secondary"
-                            >
-                              {syncing ? "Đang đồng bộ..." : "Đồng bộ tin nhắn gần đây"}
-                            </button>
-                            {syncMessage ? (
-                              <p
-                                className={`text-xs ${syncMessage.ok ? "text-emerald-600" : "text-amber-700"}`}
-                              >
-                                {syncMessage.text}
-                              </p>
-                            ) : (
-                              <p className="text-xs text-slate-500">
-                                OAuth không kéo tin cũ. Bấm đồng bộ để lấy hội thoại gần đây từ
-                                Facebook, rồi nhắn thử để kiểm tra webhook.
-                              </p>
-                            )}
-                          </div>
                         ) : null}
                       </div>
                     ) : null}
@@ -740,37 +654,19 @@ export function AddConnectionModal({
                         {disconnecting ? "Đang ngắt kết nối..." : "Ngắt kết nối kênh"}
                       </button>
                     ) : null}
-
-                    {account && isOAuthPlatform ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowAdvanced((value) => !value)}
-                        className="text-sm font-medium text-teal-700 hover:text-teal-900"
-                      >
-                        {showAdvanced ? "Ẩn cấu hình nâng cao (dev)" : "Cấu hình nâng cao (dev)"}
-                      </button>
-                    ) : null}
                   </div>
                 ) : null}
 
-                {selected.fields.length > 0 &&
-                selected.channel &&
-                (selected.channel === "web" || (account && (showAdvanced || !isOAuthPlatform))) ? (
+                {selected.fields.length > 0 && selected.channel === "web" ? (
                   <form action={saveAction} className="mt-4 space-y-4">
                     <input type="hidden" name="channel" value={account?.channel ?? selected.channel} />
 
-                    {isOAuthPlatform ? (
-                      <p className="text-xs text-slate-500">
-                        Chỉ dùng khi dev local không có OAuth app — không khuyến nghị production.
-                      </p>
-                    ) : selected.channel === "web" ? (
-                      <ol className="list-decimal space-y-1 pl-4 text-xs leading-5 text-slate-500">
-                        <li>Dán link website (đúng domain sẽ gắn chat).</li>
-                        <li>Bấm Kiểm tra website — xem HTML đã có widget / chat khác chưa.</li>
-                        <li>Lưu &amp; kết nối để lấy snippet, dán trước thẻ đóng body.</li>
-                        <li>Kiểm tra lại, hoặc Thử chat tại đây / Inbox kênh Web.</li>
-                      </ol>
-                    ) : null}
+                    <ol className="list-decimal space-y-1 pl-4 text-xs leading-5 text-slate-500">
+                      <li>Dán link website (đúng domain sẽ gắn chat).</li>
+                      <li>Bấm Kiểm tra website — xem HTML đã có widget / chat khác chưa.</li>
+                      <li>Lưu &amp; kết nối để lấy snippet, dán trước thẻ đóng body.</li>
+                      <li>Kiểm tra lại, hoặc Thử chat tại đây / Inbox kênh Web.</li>
+                    </ol>
 
                     {selected.fields.map((field) => {
                       const formChannel = account?.channel ?? selected.channel;

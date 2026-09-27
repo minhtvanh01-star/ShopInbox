@@ -41,21 +41,22 @@ describe("getRequestOrigin / absoluteAppUrl", () => {
     expect(getRequestOrigin(request)).toBe("https://shopinbox.example.com");
   });
 
-  it("ignores forwarded host in production when app URL is set to localhost fallback", () => {
+  it("uses forwarded host in production when app URL is localhost or a database URI", () => {
     stash();
     const env = process.env as { NODE_ENV?: string };
     const previous = env.NODE_ENV;
     env.NODE_ENV = "production";
-    delete process.env.NEXT_PUBLIC_APP_URL;
+    process.env.NEXT_PUBLIC_APP_URL =
+      "postgres://user:secret@vays-db.example:54322/shopinbox_db";
     delete process.env.APP_URL;
     try {
-      const request = new Request("http://localhost:8080/login", {
+      const request = new Request("http://localhost:8080/api/connect/meta/start", {
         headers: {
-          "x-forwarded-host": "evil.example",
+          "x-forwarded-host": "shopinbox.n2.tinhgon.xyz",
           "x-forwarded-proto": "https",
         },
       });
-      expect(getRequestOrigin(request)).not.toContain("evil.example");
+      expect(getRequestOrigin(request)).toBe("https://shopinbox.n2.tinhgon.xyz");
     } finally {
       env.NODE_ENV = previous;
     }

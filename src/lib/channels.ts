@@ -5,6 +5,7 @@ export const CHANNEL_ACCENT: Record<Channel, string> = {
   instagram: "#E1306C",
   zalo: "#0068FF",
   web: "#0D9488",
+  shopify: "#96BF48",
 };
 
 export type PlatformAvailability = "available" | "beta" | "coming";
@@ -38,7 +39,7 @@ export const PLATFORM_AVAILABILITY_LABEL: Record<PlatformAvailability, string> =
  * Theme Shopify dùng widget `web`; Inbox native cần `Channel.shopify` khi có Partner app.
  */
 export const PARTNER_CHANNEL_READY = {
-  shopifyInbox: false,
+  shopifyInbox: true,
   whatsappCloud: false,
   tiktokMessaging: false,
 } as const;
@@ -122,12 +123,21 @@ export const CONNECT_PLATFORMS: PlatformOption[] = [
   },
   {
     id: "shopify",
-    name: "Shopify Inbox",
+    channel: "shopify",
+    name: "Shopify",
     description:
-      "Tin nhắn native Shopify — cần app Partner + duyệt. Theme storefront: dùng Chat website.",
-    availability: "coming",
+      "Nối cửa hàng qua Shopify Partner. Tin Inbox native sau khi app được duyệt quyền messaging.",
+    availability: "available",
     accent: "#96BF48",
-    fields: [],
+    oauth: true,
+    fields: [
+      {
+        key: "pageId",
+        label: "Domain Shopify",
+        placeholder: "cuahang.myshopify.com",
+        required: true,
+      },
+    ],
   },
   {
     id: "threads",

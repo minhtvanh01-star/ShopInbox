@@ -1,5 +1,5 @@
 /** Shared domain types — frontend và backend cùng dùng (Channel, Order, ChannelAccount, …). */
-export type Channel = "facebook" | "zalo" | "instagram" | "web";
+export type Channel = "facebook" | "zalo" | "instagram" | "web" | "shopify";
 export type ChannelStatus = "disconnected" | "connecting" | "ready";
 /** Mã vai trò lấy từ bảng `roles` / catalog — không hardcode enum UI. */
 export type StaffRole = string;

@@ -1,17 +1,11 @@
 import { NextResponse } from "next/server";
 import { requirePermissionApi } from "@/backend/rbac";
 import { markChannelConnecting } from "@/backend/channel-connect";
-import { buildMetaOAuthUrl } from "@/backend/meta-oauth";
-import { getMetaOAuthConfig, isUsableOAuthRedirectUri } from "@/backend/oauth-config";
-import {
-  OAUTH_STATE_COOKIE,
-  createOAuthStateToken,
-} from "@/backend/oauth-state";
+import { getShopifyOAuthConfig, isUsableOAuthRedirectUri } from "@/backend/oauth-config";
+import { OAUTH_STATE_COOKIE, createOAuthStateToken } from "@/backend/oauth-state";
 import { absoluteAppUrl, getRequestOrigin } from "@/backend/public-url";
-import type { Channel } from "@/lib/types";
+import { buildShopifyOAuthUrl, normalizeShopifyShopDomain } from "@/backend/shopify-oauth";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
-
-const META_CHANNELS: Channel[] = ["facebook", "instagram"];
 
 export async function GET(request: Request) {
   const session = await requirePermissionApi(PERMISSION_CODES.channelsConnect);
@@ -19,30 +13,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Không có quyền kết nối kênh" }, { status: 403 });
   }
 
-  const config = getMetaOAuthConfig(getRequestOrigin(request));
+  const config = getShopifyOAuthConfig(getRequestOrigin(request));
   if (!config || !isUsableOAuthRedirectUri(config.redirectUri)) {
     return NextResponse.redirect(
-      absoluteAppUrl(request, "/settings?oauth_error=meta_not_configured"),
+      absoluteAppUrl(request, "/settings?oauth_error=shopify_not_configured"),
     );
   }
 
-  const { searchParams } = new URL(request.url);
-  const channel = searchParams.get("channel");
-  if (!channel || !META_CHANNELS.includes(channel as Channel)) {
-    return NextResponse.json({ error: "Kênh Meta không hợp lệ" }, { status: 400 });
+  const shopDomain = normalizeShopifyShopDomain(new URL(request.url).searchParams.get("shop"));
+  if (!shopDomain) {
+    return NextResponse.redirect(absoluteAppUrl(request, "/settings?oauth_error=shopify_invalid"));
   }
 
-  await markChannelConnecting(session.shopId, channel as Channel);
+  await markChannelConnecting(session.shopId, "shopify");
 
   const state = await createOAuthStateToken({
     shopId: session.shopId,
-    channel: channel as Channel,
+    channel: "shopify",
     nonce: crypto.randomUUID(),
+    shopDomain,
   });
 
-  const response = NextResponse.redirect(
-    buildMetaOAuthUrl(config, state, channel as Channel),
-  );
+  const response = NextResponse.redirect(buildShopifyOAuthUrl(config, shopDomain, state));
   response.cookies.set(OAUTH_STATE_COOKIE, state, {
     httpOnly: true,
     sameSite: "lax",
@@ -50,6 +42,5 @@ export async function GET(request: Request) {
     path: "/",
     maxAge: 60 * 15,
   });
-
   return response;
 }

@@ -3,7 +3,11 @@ import { requireSession } from "@/backend/auth";
 import { prisma } from "@/backend/prisma";
 import { isPrismaSchemaDriftError } from "@/backend/prisma-errors";
 import type { SessionPayload } from "@/backend/session-token";
-import { isSuperAdminSession, shouldBootstrapSuperAdmin } from "@/lib/super-admin";
+import {
+  isSuperAdminSession,
+  PLATFORM_SHOP_ID,
+  shouldBootstrapSuperAdmin,
+} from "@/lib/super-admin";
 
 async function countSuperAdmins() {
   try {
@@ -16,7 +20,7 @@ async function countSuperAdmins() {
   }
 }
 
-/** Gán Super admin lần đầu: SUPER_ADMIN_EMAIL hoặc chủ shop đầu tiên. */
+/** Gán Super admin lần đầu: chỉ SUPER_ADMIN_EMAIL, không lấy chủ shop. */
 export async function resolveIsSuperAdmin(staff: {
   id: string;
   email: string;
@@ -36,7 +40,9 @@ export async function resolveIsSuperAdmin(staff: {
   try {
     const granted = await prisma.$executeRaw`
       UPDATE "staff"
-      SET "isSuperAdmin" = true
+      SET "isSuperAdmin" = true,
+          "shopId" = ${PLATFORM_SHOP_ID},
+          "sessionVersion" = "sessionVersion" + 1
       WHERE id = ${staff.id}
         AND "isSuperAdmin" = false
         AND NOT EXISTS (SELECT 1 FROM "staff" WHERE "isSuperAdmin" = true)

@@ -162,10 +162,7 @@ async function finishOpenRegistration(input: {
   } catch (error) {
     console.error("[registerAction] session after register failed", error);
     return {
-      error:
-        error instanceof Error && error.message
-          ? error.message
-          : "Tạo tài khoản được nhưng không mở được trang. Đăng nhập lại.",
+      error: "Tạo tài khoản được nhưng không mở được trang. Đăng nhập lại.",
       step: "form",
       email: input.email,
     };

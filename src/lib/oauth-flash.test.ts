@@ -7,13 +7,13 @@ import {
 
 describe("hintFromMetaGraphMessage", () => {
   it("nhận Redirect URI", () => {
-    expect(hintFromMetaGraphMessage("Invalid redirect_uri")).toMatch(/Redirect URI/i);
+    expect(hintFromMetaGraphMessage("Invalid redirect_uri")).toMatch(/quản trị/i);
   });
 
   it("nhận lỗi miền tiếng Việt", () => {
     expect(
       hintFromMetaGraphMessage("Miền của URL này không được đưa vào miền của ứng dụng"),
-    ).toMatch(/App Domains/i);
+    ).toMatch(/tên miền/i);
   });
 
   it("trả null khi không khớp", () => {
@@ -28,18 +28,19 @@ describe("formatOAuthFlashError", () => {
     expect(view.hint).toMatch(/liên kết/i);
   });
 
-  it("meta_failed kèm detail Graph", () => {
+  it("meta_failed không lộ chi tiết Graph", () => {
     const view = formatOAuthFlashError(
       "meta_failed",
       "Can't load URL: The domain of this URL isn't included in the app's domains",
     );
-    expect(view.detail).toMatch(/domain/i);
-    expect(view.hint).toMatch(/App Domains/i);
+    expect(view.detail).toBeUndefined();
+    expect(view.hint).toMatch(/tên miền/i);
   });
 });
 
 describe("formatOAuthFlashSuccess", () => {
-  it("gợi ý bước tiếp theo sau Facebook", () => {
-    expect(formatOAuthFlashSuccess("facebook")).toMatch(/webhook/i);
+  it("xác nhận đã nối Facebook, không nhắc webhook", () => {
+    expect(formatOAuthFlashSuccess("facebook")).toMatch(/Facebook/i);
+    expect(formatOAuthFlashSuccess("facebook")).not.toMatch(/webhook/i);
   });
 });

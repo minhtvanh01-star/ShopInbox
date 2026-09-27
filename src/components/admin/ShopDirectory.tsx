@@ -25,10 +25,10 @@ export type ShopDirectoryRow = {
   setupDone: boolean;
   suspended: boolean;
   staffCount: number;
+  seatLimit: number;
   channelCount: number;
   orderCount: number;
   ownerName: string | null;
-  ownerEmail: string | null;
   planCode: ShopPlanCode;
   supportStatus: ShopSupportStatusCode;
 };
@@ -78,7 +78,7 @@ export function ShopDirectory({ shops }: { shops: ShopDirectoryRow[] }) {
       if (plan !== "all" && shop.planCode !== plan) return false;
       if (support !== "all" && shop.supportStatus !== support) return false;
       if (!needle) return true;
-      const haystack = [shop.name, shop.ownerName, shop.ownerEmail]
+      const haystack = [shop.name, shop.ownerName]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -116,7 +116,7 @@ export function ShopDirectory({ shops }: { shops: ShopDirectoryRow[] }) {
               type="search"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Tên shop, tên hoặc email chủ shop"
+              placeholder="Tên shop hoặc tên chủ shop"
               className="input-field-sm min-h-11"
             />
           </label>
@@ -160,7 +160,7 @@ export function ShopDirectory({ shops }: { shops: ShopDirectoryRow[] }) {
                 <th className="px-4 py-3 font-semibold">Chủ shop / người dùng</th>
                 <th className="px-4 py-3 font-semibold">Gói</th>
                 <th className="px-4 py-3 font-semibold">Hỗ trợ</th>
-                <th className="px-4 py-3 font-semibold">Nhân viên</th>
+                <th className="px-4 py-3 font-semibold">Nhân viên / gói</th>
                 <th className="px-4 py-3 font-semibold">Trạng thái</th>
                 <th className="px-4 py-3 font-semibold"> </th>
               </tr>
@@ -201,9 +201,6 @@ export function ShopDirectory({ shops }: { shops: ShopDirectoryRow[] }) {
                     </td>
                     <td className="px-4 py-3">
                       <p className="max-w-[14rem] truncate text-slate-800">{shop.ownerName ?? "—"}</p>
-                      <p className="max-w-[14rem] truncate text-xs text-slate-500">
-                        {shop.ownerEmail ?? ""}
-                      </p>
                     </td>
                     <td className="px-4 py-3 text-slate-700">
                       <span className="inline-flex whitespace-nowrap rounded-full bg-teal-50 px-2 py-0.5 text-[11px] font-semibold text-teal-800 ring-1 ring-teal-200">
@@ -217,7 +214,9 @@ export function ShopDirectory({ shops }: { shops: ShopDirectoryRow[] }) {
                         {SHOP_SUPPORT_STATUS_LABEL[shop.supportStatus]}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-slate-700">{shop.staffCount}</td>
+                    <td className="px-4 py-3 text-slate-700">
+                      {shop.staffCount}/{shop.seatLimit}
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${statusClass(shop)}`}

@@ -10,6 +10,7 @@ export const CHANNEL_LABEL: Record<Channel, string> = {
   zalo: "Zalo",
   instagram: "Instagram",
   web: "Web",
+  shopify: "Shopify",
 };
 
 /** Thứ tự kênh trong catalog — nguồn cho bộ lọc Inbox (không hardcode ở UI). */

@@ -4,8 +4,6 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CHANNEL_ACCENT, CONNECT_PLATFORMS } from "@/lib/channels";
 import { CHANNEL_STATUS_LABEL, formatDateTime } from "@/lib/labels";
-import { STORAGE_KEYS } from "@/lib/ui-layout";
-import { usePersistedState } from "@/lib/use-persisted-state";
 import {
   AddConnectionModal,
   type ChannelAccountView,
@@ -40,13 +38,7 @@ type SettingsWorkspaceProps = {
   checklistTemplates: ChecklistTemplateView[];
   metaOAuthConfigured: boolean;
   zaloOAuthConfigured: boolean;
-  metaMissingEnvVars: string[];
-  zaloMissingEnvVars: string[];
-  metaOAuthRedirectUri: string;
-  zaloOAuthRedirectUri: string;
-  metaWebhookUrl: string;
-  zaloWebhookUrl: string;
-  metaWebhookVerifyToken: string;
+  shopifyOAuthConfigured: boolean;
   pendingMetaPages: PendingMetaPages | null;
   oauthFlash?: {
     success?: string;
@@ -136,13 +128,7 @@ export function SettingsWorkspace({
   checklistTemplates,
   metaOAuthConfigured,
   zaloOAuthConfigured,
-  metaMissingEnvVars,
-  zaloMissingEnvVars,
-  metaOAuthRedirectUri,
-  zaloOAuthRedirectUri,
-  metaWebhookUrl,
-  zaloWebhookUrl,
-  metaWebhookVerifyToken,
+  shopifyOAuthConfigured,
   pendingMetaPages,
   oauthFlash,
 }: SettingsWorkspaceProps) {
@@ -161,11 +147,6 @@ export function SettingsWorkspace({
   const router = useRouter();
 
   const connectedCount = channels.filter((item) => item.status === "ready").length;
-  const defaultDevUrlsOpen = connectedCount < 1;
-  const [devUrlsOpen, setDevUrlsOpen] = usePersistedState(
-    STORAGE_KEYS.settingsDevUrlsOpen,
-    defaultDevUrlsOpen,
-  );
 
   const flashMessage = useMemo(() => {
     if (oauthFlash?.success) {
@@ -192,10 +173,10 @@ export function SettingsWorkspace({
     const isCancelOAuth = target?.status === "connecting";
     const confirmed = window.confirm(
       isCancelOAuth
-        ? "Hủy phiên OAuth đang chờ? Bạn có thể kết nối lại sau."
+        ? "Hủy phiên đang chờ? Bạn có thể kết nối lại sau."
         : channel === "web"
           ? "Ngắt kênh web? Widget trên website sẽ ngừng nhận tin. Hội thoại web ẩn khỏi Inbox đến khi nối lại."
-          : "Ngắt kết nối kênh này? Token OAuth sẽ bị xóa. Hội thoại kênh này sẽ ẩn khỏi Inbox đến khi nối lại.",
+          : "Ngắt kết nối kênh này? Hội thoại kênh này sẽ ẩn khỏi Inbox đến khi nối lại.",
     );
     if (!confirmed) return;
 
@@ -246,7 +227,7 @@ export function SettingsWorkspace({
         <div>
           <h1 className="page-title">Cài đặt kênh</h1>
           <p className="page-subtitle">
-            Kết nối Facebook, Instagram, Zalo OA qua OAuth, hoặc gắn widget chat lên website.
+            Nối Facebook, Instagram, Zalo OA, hoặc gắn widget chat lên website.
           </p>
           {channels.length > 0 ? (
             <p className="mt-2 text-xs font-medium text-teal-800">
@@ -274,116 +255,10 @@ export function SettingsWorkspace({
           {flashMessage.type === "error" && flashMessage.hint ? (
             <p className="mt-1 text-xs leading-5 text-amber-800/90">{flashMessage.hint}</p>
           ) : null}
-          {flashMessage.type === "error" && flashMessage.detail ? (
-            <p className="mt-1 font-mono text-[11px] leading-4 text-amber-700/80 break-all">
-              {flashMessage.detail}
-            </p>
-          ) : null}
         </div>
       ) : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="border-b border-border bg-accent-muted/50 px-6 py-3.5">
-          <p className="text-sm leading-6 text-slate-600">
-            Thiết lập OAuth & webhook Meta:{" "}
-            <span className="font-semibold text-teal-800">docs/ket-noi-meta-fb-ig.md</span>
-            {" · "}
-            tổng quan kênh:{" "}
-            <span className="font-semibold text-teal-800">docs/ket-noi-kenh.md</span>
-            {!metaOAuthConfigured || !zaloOAuthConfigured ? (
-              <span className="mt-1.5 block rounded-lg border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-800">
-                Một số biến OAuth chưa cấu hình trên server
-                {[...metaMissingEnvVars, ...zaloMissingEnvVars].length > 0
-                  ? `: ${[...metaMissingEnvVars, ...zaloMissingEnvVars].join(", ")}`
-                  : ""}
-                . Nút kết nối sẽ bị khóa cho đến khi điền đủ trong{" "}
-                <code className="rounded bg-white/80 px-1">.env</code> rồi restart server.
-              </span>
-            ) : null}
-          </p>
-        </div>
-
-        {canConnect ? (
-          <div className="mx-6 mt-6">
-            <button
-              type="button"
-              className="flex w-full items-center justify-between gap-3 rounded-xl border border-border bg-surface-muted/50 px-4 py-3 text-left"
-              aria-expanded={devUrlsOpen}
-              aria-controls="settings-dev-urls"
-              onClick={() => setDevUrlsOpen((prev) => !prev)}
-            >
-              <span>
-                <span className="block text-sm font-semibold text-slate-900">
-                  URL OAuth & webhook (Meta / Zalo)
-                </span>
-                <span className="mt-0.5 block text-xs text-slate-500">
-                  Dùng khi cấu hình Developers — có thể thu gọn sau khi kênh đã nối.
-                </span>
-              </span>
-              <span className="shrink-0 text-xs font-medium text-teal-800">
-                {devUrlsOpen ? "Thu gọn" : "Mở rộng"}
-              </span>
-            </button>
-
-            {devUrlsOpen ? (
-              <div id="settings-dev-urls" className="mt-4 grid gap-4 lg:grid-cols-2">
-                <section className="rounded-xl border border-border bg-surface-muted/50 p-4">
-                  <h2 className="text-sm font-semibold text-slate-900">
-                    URL dán vào Meta Developers
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Copy từng dòng → dán đúng ô trên Meta. Local cần ngrok HTTPS.
-                  </p>
-                  <div className="mt-3 space-y-3">
-                    <CopyRow
-                      title="OAuth Redirect URI"
-                      hint="Facebook Login → Settings → Valid OAuth Redirect URIs"
-                      value={metaOAuthRedirectUri}
-                    />
-                    <CopyRow
-                      title="Webhook Callback URL"
-                      hint="Messenger → Settings → Webhooks → Callback URL"
-                      value={metaWebhookUrl}
-                    />
-                    <CopyRow
-                      title="Verify token"
-                      hint="Cùng giá trị META_WEBHOOK_VERIFY_TOKEN trong .env"
-                      value={metaWebhookVerifyToken}
-                    />
-                    {!metaWebhookVerifyToken ? (
-                      <p className="text-xs text-amber-700">
-                        Chưa có verify token — thêm <code>META_WEBHOOK_VERIFY_TOKEN</code> vào{" "}
-                        <code>.env</code> rồi restart.
-                      </p>
-                    ) : null}
-                  </div>
-                </section>
-
-                <section className="rounded-xl border border-border bg-surface-muted/50 p-4">
-                  <h2 className="text-sm font-semibold text-slate-900">
-                    URL dán vào Zalo Developers
-                  </h2>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Redirect URI trên app Zalo; webhook trên OA Admin.
-                  </p>
-                  <div className="mt-3 space-y-3">
-                    <CopyRow
-                      title="OAuth Redirect URI"
-                      hint="Zalo app → Redirect URI"
-                      value={zaloOAuthRedirectUri}
-                    />
-                    <CopyRow
-                      title="Webhook URL"
-                      hint="Zalo OA Admin → Webhook"
-                      value={zaloWebhookUrl}
-                    />
-                  </div>
-                </section>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-
         {canUpdateSettings ? (
           <div className="mx-6 mt-6 space-y-6">
             <ShopPolicyForm
@@ -403,7 +278,7 @@ export function SettingsWorkspace({
             <p className="text-base font-medium text-slate-700">Chưa có kênh nào</p>
             <p className="mt-1 max-w-sm text-sm text-slate-500">
               {canConnect
-                ? 'Bấm "Thêm kết nối" để bắt đầu OAuth và nhận tin vào Inbox.'
+                ? 'Bấm "Thêm kết nối" để nối Facebook, Instagram, Zalo hoặc widget website.'
                 : "Liên hệ admin shop để kết nối kênh."}
             </p>
             {canConnect ? (
@@ -483,38 +358,9 @@ export function SettingsWorkspace({
                         Webhook gần nhất: {formatDateTime(channel.lastWebhookAt)}
                       </p>
                     ) : channel.status === "ready" ? (
-                      <div className="mt-2 space-y-2">
-                        <p className="text-xs leading-5 text-amber-700">
-                          {channel.channel === "zalo"
-                            ? "OAuth đã nối. Checklist chỉ xanh khi Zalo POST webhook tin nhắn tới server — dán URL webhook vào Zalo OA Admin rồi nhắn thử vào OA."
-                            : "OAuth đã nối. Checklist webhook chỉ xanh khi Meta POST event tới server — verify URL trên Meta chưa đủ. App chưa phát hành thì chỉ nhận được sự kiện thử từ dashboard (field messages → Thử nghiệm, chọn đúng Fanpage)."}
-                        </p>
-                        {(channel.channel === "facebook" || channel.channel === "instagram") &&
-                        metaWebhookUrl ? (
-                          <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2.5">
-                            <div className="space-y-2">
-                              <CopyRow
-                                title="OAuth Redirect (Meta)"
-                                value={metaOAuthRedirectUri}
-                              />
-                              <CopyRow
-                                title="Webhook URL (Messenger → Webhooks)"
-                                value={metaWebhookUrl}
-                              />
-                              {metaWebhookVerifyToken ? (
-                                <CopyRow title="Verify token" value={metaWebhookVerifyToken} />
-                              ) : null}
-                            </div>
-                          </div>
-                        ) : channel.channel === "zalo" && zaloWebhookUrl ? (
-                          <div className="rounded-xl border border-amber-200/80 bg-amber-50/90 px-3 py-2.5">
-                            <div className="space-y-2">
-                              <CopyRow title="OAuth Redirect (Zalo)" value={zaloOAuthRedirectUri} />
-                              <CopyRow title="Webhook URL (Zalo OA Admin)" value={zaloWebhookUrl} />
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
+                      <p className="mt-2 text-xs leading-5 text-amber-700">
+                        Đã nối kênh. Inbox sẽ có tin khi khách nhắn vào trang đã kết nối.
+                      </p>
                     ) : null}
 
                     {syncFlash?.channel === channel.channel ? (
@@ -560,7 +406,7 @@ export function SettingsWorkspace({
                           {disconnecting === channel.channel
                             ? "Đang hủy..."
                             : channel.status === "connecting"
-                              ? "Hủy OAuth"
+                              ? "Hủy kết nối"
                               : "Ngắt kết nối"}
                         </button>
                       ) : null}
@@ -590,13 +436,7 @@ export function SettingsWorkspace({
           canConnect={canConnect}
           metaOAuthConfigured={metaOAuthConfigured}
           zaloOAuthConfigured={zaloOAuthConfigured}
-          metaMissingEnvVars={metaMissingEnvVars}
-          zaloMissingEnvVars={zaloMissingEnvVars}
-          metaOAuthRedirectUri={metaOAuthRedirectUri}
-          zaloOAuthRedirectUri={zaloOAuthRedirectUri}
-          metaWebhookUrl={metaWebhookUrl}
-          zaloWebhookUrl={zaloWebhookUrl}
-          metaWebhookVerifyToken={metaWebhookVerifyToken}
+          shopifyOAuthConfigured={shopifyOAuthConfigured}
           pendingMetaPages={pendingMetaPages}
           initialPlatformId={initialPlatformId}
           onClose={() => setOpen(false)}

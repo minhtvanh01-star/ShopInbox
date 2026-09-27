@@ -55,16 +55,23 @@ describe("channelHasCredentials", () => {
 });
 
 describe("partner channel catalog", () => {
-  it("keeps Shopify Inbox separate from the web widget and closed", () => {
+  it("opens Shopify Partner OAuth separately from the web widget", () => {
     const web = CONNECT_PLATFORMS.find((item) => item.id === "web");
     const shopify = CONNECT_PLATFORMS.find((item) => item.id === "shopify");
     expect(web?.channel).toBe("web");
     expect(web?.availability).toBe("available");
-    expect(shopify?.channel).toBeUndefined();
-    expect(shopify?.oauth).toBeFalsy();
-    expect(shopify?.availability).toBe("coming");
-    expect(shopify?.fields).toEqual([]);
-    expect(PARTNER_CHANNEL_READY.shopifyInbox).toBe(false);
+    expect(shopify?.channel).toBe("shopify");
+    expect(shopify?.oauth).toBe(true);
+    expect(shopify?.availability).toBe("available");
+    expect(shopify?.fields.some((field) => field.key === "pageId")).toBe(true);
+    expect(PARTNER_CHANNEL_READY.shopifyInbox).toBe(true);
+  });
+
+  it("requires token and shop domain for shopify", () => {
+    expect(channelHasCredentials("shopify", { accessToken: "tok", pageId: "a.myshopify.com" })).toBe(
+      true,
+    );
+    expect(channelHasCredentials("shopify", { pageId: "a.myshopify.com" })).toBe(false);
   });
 
   it("keeps WhatsApp and TikTok gated without OAuth", () => {

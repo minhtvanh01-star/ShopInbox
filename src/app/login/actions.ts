@@ -221,12 +221,7 @@ export async function loginAction(
     return { redirectTo: postAuthPath(session, nextPath) };
   } catch (error) {
     console.error("[loginAction] session after password failed", error);
-    return {
-      error:
-        error instanceof Error && error.message
-          ? error.message
-          : "Đăng nhập được nhưng không mở được trang. Thử lại.",
-    };
+    return { error: "Đăng nhập được nhưng không mở được trang. Thử lại." };
   }
 }
 

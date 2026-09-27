@@ -33,7 +33,7 @@ export function getMessagingWindowInfo(input: {
   now?: Date;
 }): MessagingWindowInfo {
   const { channel } = input;
-  if (channel === "web") {
+  if (channel === "web" || channel === "shopify") {
     return { kind: "local", banner: null };
   }
 

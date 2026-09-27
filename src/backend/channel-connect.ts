@@ -218,6 +218,7 @@ const CHANNEL_DRAFT_NAME: Record<Channel, string> = {
   instagram: "Instagram DM",
   zalo: "Zalo OA",
   web: "Chat website",
+  shopify: "Shopify",
 };
 
 /** Đánh dấu đang OAuth; tạo nháp ChannelAccount nếu shop chưa có hàng cho kênh. */
