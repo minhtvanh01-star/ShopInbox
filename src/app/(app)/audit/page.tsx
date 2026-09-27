@@ -2,6 +2,7 @@ import { prisma } from "@/backend/prisma";
 import { requirePermission } from "@/backend/rbac";
 import { AuditLogTable, type AuditRow } from "@/components/audit/AuditLogTable";
 import { formatDateTimeVN, parseVnDayEnd, parseVnDayStart } from "@/lib/labels";
+import { maskEmail } from "@/lib/mask-email";
 import { AUDIT_ACTION_LABEL, PERMISSION_CODES } from "@/lib/rbac-catalog";
 
 type AuditPageProps = {
@@ -74,7 +75,7 @@ export default async function AuditPage({ searchParams }: AuditPageProps) {
             <option value="">Tất cả</option>
             {actors.map((actor) => (
               <option key={actor.id} value={actor.id}>
-                {actor.name} ({actor.email})
+                {actor.name} ({maskEmail(actor.email)})
               </option>
             ))}
           </select>

@@ -23,7 +23,11 @@ import {
   syncMetaChannelAction,
 } from "@/app/(app)/settings/actions";
 import type { PendingMetaPages } from "@/lib/oauth-types";
-import { formatOAuthFlashError, formatOAuthFlashSuccess } from "@/lib/oauth-flash";
+import {
+  formatOAuthFlashError,
+  formatOAuthFlashSuccess,
+  formatOAuthFlashWarning,
+} from "@/lib/oauth-flash";
 import type { QuickReply } from "@/lib/types";
 
 type SettingsWorkspaceProps = {
@@ -44,6 +48,7 @@ type SettingsWorkspaceProps = {
     success?: string;
     error?: string;
     errorMessage?: string;
+    warning?: string;
     pickChannel?: string;
   };
 };
@@ -153,6 +158,7 @@ export function SettingsWorkspace({
       return {
         type: "success" as const,
         title: formatOAuthFlashSuccess(oauthFlash.success),
+        hint: oauthFlash.warning ? formatOAuthFlashWarning(oauthFlash.warning) : undefined,
       };
     }
     if (oauthFlash?.error) {
@@ -252,7 +258,7 @@ export function SettingsWorkspace({
           }`}
         >
           <p className="font-medium">{flashMessage.title}</p>
-          {flashMessage.type === "error" && flashMessage.hint ? (
+          {flashMessage.hint ? (
             <p className="mt-1 text-xs leading-5 text-amber-800/90">{flashMessage.hint}</p>
           ) : null}
         </div>

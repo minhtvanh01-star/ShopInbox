@@ -140,6 +140,7 @@ model Staff {
   shop          Shop           @relation(fields: [shopId], references: [id], onDelete: Cascade)
   name          String
   email         String         @unique
+  emailVerifiedAt DateTime?
   passwordHash  String?
   googleId      String?        @unique
   avatarUrl     String?

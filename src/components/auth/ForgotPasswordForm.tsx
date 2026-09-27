@@ -9,6 +9,7 @@ import {
   type ForgotPasswordActionState,
 } from "@/app/forgot-password/actions";
 import { REGISTER_MIN_PASSWORD_LENGTH } from "@/lib/auth-password";
+import { maskEmail } from "@/lib/mask-email";
 
 const initialState: ForgotPasswordActionState = { step: "form" };
 const RESEND_COOLDOWN_SEC = 60;
@@ -126,7 +127,7 @@ export function ForgotPasswordForm({
     return (
       <div className="mt-6 space-y-5">
         <p className="rounded-lg bg-surface-muted px-4 py-3 text-sm leading-6 text-slate-600">
-          Nhập mã 6 số đã gửi tới <strong className="text-slate-800">{otpEmail}</strong>.
+          Nhập mã 6 số đã gửi tới <strong className="text-slate-800">{maskEmail(otpEmail)}</strong>.
           Mã có hiệu lực 10 phút.
         </p>
         {otpMessage ? (

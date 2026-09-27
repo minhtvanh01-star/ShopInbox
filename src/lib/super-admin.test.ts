@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  canAssignPlatformSuperAdmin,
   canShopStaffMutateMember,
   isPlatformAdminPath,
   isSuperAdminAllowedPath,
@@ -39,6 +40,8 @@ describe("super admin emails", () => {
   it("does not treat the platform shop as a tenant shop", () => {
     expect(isPlatformShopId("platform")).toBe(true);
     expect(isPlatformShopId("shop1")).toBe(false);
+    expect(canAssignPlatformSuperAdmin("platform")).toBe(true);
+    expect(canAssignPlatformSuperAdmin("shop1")).toBe(false);
   });
 
   it("bootstraps SUPER_ADMIN_EMAIL only when no super admin exists", () => {

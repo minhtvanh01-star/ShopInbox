@@ -9,9 +9,9 @@ export default function ForgotPasswordPage() {
       subtitle="Đặt lại mật khẩu"
       intro={
         <>
-          Nhập email và mật khẩu mới. Hệ thống gửi <strong>mã 6 số qua Gmail</strong> (cùng cơ chế
-          đăng ký) để xác minh trước khi đổi mật khẩu. Tài khoản chỉ đăng nhập Google (không có mật
-          khẩu) không dùng được luồng này.
+          Nhập email và mật khẩu mới. Hệ thống gửi <strong>mã 6 số qua email</strong> để xác minh
+          trước khi đổi hoặc thêm mật khẩu. Tài khoản chỉ đăng nhập Google cũng dùng được luồng này
+          để thêm mật khẩu đăng nhập ngoài.
         </>
       }
     >

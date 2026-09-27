@@ -18,6 +18,7 @@ import {
   REGISTER_MIN_PASSWORD_LENGTH,
   REGISTER_NAME_MAX,
 } from "@/lib/auth-password";
+import { maskEmail } from "@/lib/mask-email";
 import { assertShopHasActiveSeat } from "@/backend/shop-seats";
 import {
   LAST_SUPER_ADMIN_DISABLE_BLOCKED,
@@ -109,7 +110,7 @@ export async function createStaffAction(
   });
 
   revalidatePath("/staff");
-  return { success: `Đã thêm tài khoản ${email}.` };
+  return { success: `Đã thêm tài khoản ${maskEmail(email)}.` };
 }
 
 export async function updateStaffAction(
@@ -238,8 +239,8 @@ export async function updateStaffAction(
   revalidatePath("/staff");
   return {
     success: updated.isActive
-      ? `Đã cập nhật ${updated.email}.`
-      : `Đã vô hiệu hóa ${updated.email}.`,
+      ? `Đã cập nhật ${maskEmail(updated.email)}.`
+      : `Đã vô hiệu hóa ${maskEmail(updated.email)}.`,
   };
 }
 
@@ -293,7 +294,7 @@ export async function resetStaffPasswordAction(
   });
 
   revalidatePath("/staff");
-  return { success: `Đã đặt mật khẩu mới cho ${target.email}.` };
+  return { success: `Đã đặt mật khẩu mới cho ${maskEmail(target.email)}.` };
 }
 
 export type InviteActionState = {
@@ -329,7 +330,7 @@ export async function createStaffInviteAction(
   revalidatePath("/staff");
   return {
     success: result.invite.email
-      ? `Đã tạo lời mời cho ${result.invite.email}. Gửi link bên dưới.`
+      ? `Đã tạo lời mời cho ${maskEmail(result.invite.email)}. Gửi link bên dưới.`
       : "Đã tạo link mời. Gửi cho nhân viên — họ sẽ vào đúng shop này.",
     inviteUrl: result.url,
   };

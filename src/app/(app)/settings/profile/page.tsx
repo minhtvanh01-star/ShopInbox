@@ -1,7 +1,9 @@
 import { requireSession } from "@/backend/auth";
+import { canSendEmailOtp } from "@/backend/email";
 import { getGoogleOAuthConfig } from "@/backend/google-oauth";
 import { prisma } from "@/backend/prisma";
 import { ProfileForm } from "@/components/settings/ProfileForm";
+import { maskEmail } from "@/lib/mask-email";
 
 type ProfilePageProps = {
   searchParams: Promise<{
@@ -21,16 +23,19 @@ export default async function ProfilePage({ searchParams }: ProfilePageProps) {
   const hasPassword = Boolean(staff.passwordHash);
   const hasGoogle = Boolean(staff.googleId);
   const authMethod = hasPassword && hasGoogle ? "both" : hasGoogle ? "google" : "email";
+  const emailVerified = Boolean(staff.emailVerifiedAt || staff.googleId);
 
   return (
     <ProfileForm
       profile={{
         name: staff.name,
-        email: staff.email,
+        emailMasked: maskEmail(staff.email),
         phone: staff.phone ?? "",
         avatarUrl: staff.avatarUrl ?? "",
         authMethod,
-        canChangePassword: hasPassword,
+        emailVerified,
+        hasPassword,
+        canSendEmailOtp: canSendEmailOtp(),
         canLinkGoogle: hasPassword && !hasGoogle,
         googleOAuthConfigured: Boolean(getGoogleOAuthConfig()),
       }}

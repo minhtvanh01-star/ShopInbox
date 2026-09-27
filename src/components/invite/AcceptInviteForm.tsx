@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { acceptInviteAction, type AcceptInviteState } from "@/app/invite/[token]/actions";
 import { REGISTER_MIN_PASSWORD_LENGTH } from "@/lib/auth-password";
+import { maskEmail } from "@/lib/mask-email";
 
 const initial: AcceptInviteState = {};
 
@@ -43,16 +44,30 @@ export function AcceptInviteForm({
         <label htmlFor="email" className="label mb-0">
           Email
         </label>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          required
-          className="input-field"
-          autoComplete="email"
-          defaultValue={lockedEmail ?? ""}
-          readOnly={Boolean(lockedEmail)}
-        />
+        {lockedEmail ? (
+          <>
+            <input type="hidden" name="email" value={lockedEmail} />
+            <input
+              id="email"
+              type="text"
+              readOnly
+              value={maskEmail(lockedEmail)}
+              className="input-field bg-surface-muted text-slate-600"
+            />
+            <p className="mt-1 text-xs text-slate-400">
+              Email lời mời đã che. Sau khi vào shop, xác nhận hồ sơ bằng OTP trên trang hồ sơ.
+            </p>
+          </>
+        ) : (
+          <input
+            id="email"
+            name="email"
+            type="email"
+            required
+            className="input-field"
+            autoComplete="email"
+          />
+        )}
       </div>
       <div className="field-group">
         <label htmlFor="password" className="label mb-0">

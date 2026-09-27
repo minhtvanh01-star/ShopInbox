@@ -5,11 +5,20 @@ import { writeAudit } from "@/backend/audit";
 import { bumpStaffSessionVersion, loadStaffSession } from "@/backend/auth";
 import { requirePermission } from "@/backend/rbac";
 import { validateProfileInput } from "@/backend/google-auth";
+import { publicOtpSendError } from "@/backend/email";
+import {
+  consumeProfileEmailOtp,
+  createProfilePasswordEmailOtp,
+  createProfileVerifyEmailOtp,
+  verifyProfilePasswordEmailOtp,
+  verifyProfileVerifyEmailOtp,
+} from "@/backend/email-otp";
 import { hashPassword, verifyPassword } from "@/backend/password";
 import { prisma } from "@/backend/prisma";
 import { setSessionCookie } from "@/backend/session";
 import { saveShopImageUpload } from "@/backend/upload-store";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
+import { maskEmail } from "@/lib/mask-email";
 import { validateStaffAvatarFile } from "@/lib/staff-avatar";
 
 export type ProfileActionState = {
@@ -107,54 +116,166 @@ export async function updateAvatarAction(
   return { success: "Đã lưu ảnh đại diện." };
 }
 
-export async function changePasswordAction(
-  _prev: ProfileActionState,
+export type ProfileOtpActionState = ProfileActionState & {
+  step?: "form" | "otp";
+  message?: string;
+};
+
+export async function requestProfileVerifyOtpAction(): Promise<ProfileOtpActionState> {
+  const session = await requirePermission(PERMISSION_CODES.profileUpdate);
+  const staff = await prisma.staff.findUniqueOrThrow({
+    where: { id: session.staffId },
+    select: { id: true, email: true, emailVerifiedAt: true, googleId: true },
+  });
+
+  if (staff.emailVerifiedAt || staff.googleId) {
+    if (!staff.emailVerifiedAt) {
+      await prisma.staff.update({
+        where: { id: staff.id },
+        data: { emailVerifiedAt: new Date() },
+      });
+      revalidatePath("/settings/profile");
+    }
+    return { success: "Email đã được xác nhận." };
+  }
+
+  try {
+    await createProfileVerifyEmailOtp({ email: staff.email, staffId: staff.id });
+  } catch (err) {
+    return { error: publicOtpSendError(err, "Không gửi được mã xác nhận. Thử lại sau.") };
+  }
+
+  return {
+    step: "otp",
+    message: `Đã gửi mã 6 số tới ${maskEmail(staff.email)}. Kiểm tra hộp thư (và Spam).`,
+  };
+}
+
+export async function confirmProfileVerifyOtpAction(
+  _prev: ProfileOtpActionState,
   formData: FormData,
-): Promise<ProfileActionState> {
+): Promise<ProfileOtpActionState> {
+  const session = await requirePermission(PERMISSION_CODES.profileUpdate);
+  const staff = await prisma.staff.findUniqueOrThrow({
+    where: { id: session.staffId },
+    select: { id: true, email: true },
+  });
+  const code = String(formData.get("code") ?? "");
+
+  const verified = await verifyProfileVerifyEmailOtp({ email: staff.email, code });
+  if (!verified.ok) {
+    return { error: verified.error, step: "otp" };
+  }
+  if (verified.payload.staffId !== session.staffId) {
+    return { error: "Phiên xác minh không khớp tài khoản.", step: "otp" };
+  }
+
+  await prisma.staff.update({
+    where: { id: staff.id },
+    data: { emailVerifiedAt: new Date() },
+  });
+  await consumeProfileEmailOtp(verified.challengeId);
+
+  await writeAudit({
+    actor: session,
+    action: AUDIT_ACTIONS.profileEmailVerify,
+    entityType: "Profile",
+    entityId: staff.id,
+  });
+
+  revalidatePath("/settings/profile");
+  return { success: "Đã xác nhận email hồ sơ." };
+}
+
+export async function requestProfilePasswordOtpAction(
+  _prev: ProfileOtpActionState,
+  formData: FormData,
+): Promise<ProfileOtpActionState> {
   const session = await requirePermission(PERMISSION_CODES.profileUpdate);
   const staff = await prisma.staff.findUniqueOrThrow({ where: { id: session.staffId } });
-
-  if (!staff.passwordHash) {
-    return { error: "Tài khoản Google không đổi mật khẩu tại đây." };
-  }
 
   const currentPassword = String(formData.get("currentPassword") ?? "");
   const newPassword = String(formData.get("newPassword") ?? "");
   const confirmPassword = String(formData.get("confirmPassword") ?? "");
 
-  if (!currentPassword || !newPassword) {
-    return { error: "Nhập mật khẩu hiện tại và mật khẩu mới." };
+  if (!newPassword) {
+    return { error: "Nhập mật khẩu mới." };
   }
-
-  const ok = await verifyPassword(currentPassword, staff.passwordHash);
-  if (!ok) {
-    return { error: "Mật khẩu hiện tại không đúng." };
-  }
-
   if (newPassword.length < 8) {
     return { error: "Mật khẩu mới tối thiểu 8 ký tự." };
   }
-
   if (newPassword !== confirmPassword) {
     return { error: "Mật khẩu xác nhận không khớp." };
   }
 
-  await prisma.staff.update({
-    where: { id: session.staffId },
-    data: {
+  if (staff.passwordHash) {
+    if (!currentPassword) {
+      return { error: "Nhập mật khẩu hiện tại." };
+    }
+    const ok = await verifyPassword(currentPassword, staff.passwordHash);
+    if (!ok) {
+      return { error: "Mật khẩu hiện tại không đúng." };
+    }
+  }
+
+  try {
+    await createProfilePasswordEmailOtp({
+      email: staff.email,
+      staffId: staff.id,
       passwordHash: await hashPassword(newPassword),
+    });
+  } catch (err) {
+    return { error: publicOtpSendError(err, "Không gửi được mã xác minh. Thử lại sau.") };
+  }
+
+  return {
+    step: "otp",
+    message: `Đã gửi mã 6 số tới ${maskEmail(staff.email)}. Nhập mã để ${staff.passwordHash ? "đổi" : "thêm"} mật khẩu.`,
+  };
+}
+
+export async function confirmProfilePasswordOtpAction(
+  _prev: ProfileOtpActionState,
+  formData: FormData,
+): Promise<ProfileOtpActionState> {
+  const session = await requirePermission(PERMISSION_CODES.profileUpdate);
+  const staff = await prisma.staff.findUniqueOrThrow({
+    where: { id: session.staffId },
+    select: { id: true, email: true, passwordHash: true },
+  });
+  const code = String(formData.get("code") ?? "");
+
+  const verified = await verifyProfilePasswordEmailOtp({ email: staff.email, code });
+  if (!verified.ok) {
+    return { error: verified.error, step: "otp" };
+  }
+  if (verified.payload.staffId !== session.staffId || !verified.payload.passwordHash) {
+    return { error: "Phiên đổi mật khẩu không hợp lệ. Hãy gửi lại mã.", step: "form" };
+  }
+
+  await prisma.staff.update({
+    where: { id: staff.id },
+    data: {
+      passwordHash: verified.payload.passwordHash,
+      emailVerifiedAt: new Date(),
     },
   });
   await bumpStaffSessionVersion(session.staffId);
   await setSessionCookie(await loadStaffSession(session.staffId));
+  await consumeProfileEmailOtp(verified.challengeId);
 
   await writeAudit({
     actor: session,
     action: AUDIT_ACTIONS.profilePasswordChange,
     entityType: "Profile",
     entityId: staff.id,
+    metadata: { via: "email_otp", added: !staff.passwordHash },
   });
 
   revalidatePath("/settings/profile");
-  return { success: "Đã đổi mật khẩu." };
+  return {
+    success: staff.passwordHash
+      ? "Đã đổi mật khẩu. Có thể đăng nhập bằng email và mật khẩu."
+      : "Đã thêm mật khẩu. Có thể đăng nhập bằng email mà không cần Google.",
+  };
 }

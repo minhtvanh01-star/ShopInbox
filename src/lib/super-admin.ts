@@ -8,6 +8,11 @@ export function isPlatformShopId(shopId: string) {
   return shopId === PLATFORM_SHOP_ID;
 }
 
+/** Super admin chỉ được gán trên shop nền tảng — không kéo chủ shop khách sang `platform`. */
+export function canAssignPlatformSuperAdmin(shopId: string) {
+  return isPlatformShopId(shopId);
+}
+
 export function parseSuperAdminEmails(raw = process.env.SUPER_ADMIN_EMAIL) {
   return String(raw ?? "")
     .split(/[,;\s]+/)

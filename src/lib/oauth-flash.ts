@@ -22,6 +22,13 @@ export const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   shopify_failed: "Kết nối Shopify thất bại. Thử lại sau.",
 };
 
+export function formatOAuthFlashWarning(code: string): string | undefined {
+  if (code === "shopify_webhook") {
+    return "Cửa hàng đã nối nhưng webhook gỡ app chưa đăng ký được. Kiểm tra URL công khai rồi nối lại.";
+  }
+  return undefined;
+}
+
 const OAUTH_ERROR_HINTS: Record<string, string> = {
   meta_denied: "Bấm kết nối lại và chọn Cho phép khi Facebook hỏi quyền.",
   meta_state: "Tắt chặn cookie bên thứ ba cho domain app, rồi kết nối lại ngay (trong ~15 phút).",

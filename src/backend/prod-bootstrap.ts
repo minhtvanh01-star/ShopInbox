@@ -4,6 +4,7 @@ import { isPrismaSchemaDriftError } from "@/backend/prisma-errors";
 import { syncRbacCatalog } from "@/backend/rbac-sync";
 import { readFirstAdminBootstrap } from "@/lib/first-run";
 import {
+  canAssignPlatformSuperAdmin,
   PLATFORM_SHOP_ID,
   PLATFORM_SHOP_NAME,
   parseSuperAdminEmails,
@@ -86,7 +87,7 @@ async function parkSuperAdminsOnPlatformShop() {
   }
   await prisma.staff.updateMany({
     where: { isSuperAdmin: true, shopId: { not: PLATFORM_SHOP_ID } },
-    data: { shopId: PLATFORM_SHOP_ID, sessionVersion: { increment: 1 } },
+    data: { isSuperAdmin: false, sessionVersion: { increment: 1 } },
   });
 }
 
@@ -110,11 +111,16 @@ export async function ensureFirstAdminAccount() {
     select: { id: true, shopId: true, isSuperAdmin: true },
   });
   if (existing) {
-    if (existing.shopId !== PLATFORM_SHOP_ID || !existing.isSuperAdmin) {
+    if (!canAssignPlatformSuperAdmin(existing.shopId)) {
+      console.warn(
+        "[ensureFirstAdminAccount] SUPER_ADMIN_EMAIL đang là tài khoản shop khách — không chuyển. Dùng email riêng cho Super admin.",
+      );
+      return;
+    }
+    if (!existing.isSuperAdmin) {
       await prisma.staff.update({
         where: { id: existing.id },
         data: {
-          shopId: PLATFORM_SHOP_ID,
           isSuperAdmin: true,
           sessionVersion: { increment: 1 },
         },
@@ -155,7 +161,7 @@ async function grantFirstSuperAdmin() {
 
   const staff = await prisma.staff.findMany({
     where: { isActive: true },
-    select: { id: true, email: true, roleCode: true, createdAt: true },
+    select: { id: true, email: true, roleCode: true, createdAt: true, shopId: true },
     orderBy: { createdAt: "asc" },
   });
   const staffId = pickFirstSuperAdminStaffId({
@@ -165,11 +171,18 @@ async function grantFirstSuperAdmin() {
   });
   if (!staffId) return;
 
+  const chosen = staff.find((row) => row.id === staffId);
+  if (!chosen || !canAssignPlatformSuperAdmin(chosen.shopId)) {
+    console.warn(
+      "[grantFirstSuperAdmin] Bỏ qua — email Super admin đang thuộc shop khách.",
+    );
+    return;
+  }
+
   await prisma.staff.update({
     where: { id: staffId },
     data: {
       isSuperAdmin: true,
-      shopId: PLATFORM_SHOP_ID,
       sessionVersion: { increment: 1 },
     },
   });

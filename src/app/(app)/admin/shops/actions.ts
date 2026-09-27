@@ -5,6 +5,7 @@ import { writeAudit } from "@/backend/audit";
 import { requireSuperAdmin } from "@/backend/super-admin";
 import { setShopSuspended, setStaffSuperAdmin, updateShopOps } from "@/backend/platform-shops";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
+import { maskEmail } from "@/lib/mask-email";
 import { parseShopOpsInput } from "@/lib/shop-ops";
 
 export type PlatformShopActionState = {
@@ -55,7 +56,11 @@ export async function toggleSuperAdminAction(
   });
 
   revalidatePath("/admin/shops");
-  return { success: grant ? `Đã gán Super admin cho ${result.email}.` : `Đã gỡ Super admin của ${result.email}.` };
+  return {
+    success: grant
+      ? `Đã gán Super admin cho ${maskEmail(result.email)}.`
+      : `Đã gỡ Super admin của ${maskEmail(result.email)}.`,
+  };
 }
 
 export async function updateShopOpsAction(

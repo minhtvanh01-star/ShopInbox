@@ -28,6 +28,19 @@ describe("processShopifyWebhook", () => {
     );
   });
 
+  it("disconnects the shop on shop/redact", async () => {
+    vi.mocked(prisma.channelAccount.updateMany).mockResolvedValue({ count: 1 } as never);
+    await expect(
+      processShopifyWebhook({ topic: "shop/redact", shopDomain: "cuahang.myshopify.com" }),
+    ).resolves.toEqual({ handled: true });
+    expect(prisma.channelAccount.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { channel: "shopify", pageId: "cuahang.myshopify.com" },
+        data: expect.objectContaining({ status: "disconnected", accessToken: null }),
+      }),
+    );
+  });
+
   it("acknowledges GDPR topics without writing PII", async () => {
     await expect(
       processShopifyWebhook({ topic: "customers/redact", shopDomain: "cuahang.myshopify.com" }),

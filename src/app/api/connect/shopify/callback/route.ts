@@ -85,19 +85,29 @@ export async function GET(request: Request) {
       accessToken: token.accessToken,
       pageId: shopDomain,
     });
-    await registerShopifyAppUninstalledWebhook({
+    const webhookRegistered = await registerShopifyAppUninstalledWebhook({
       shopDomain,
       accessToken: token.accessToken,
-      address: getShopifyWebhookUrl(),
+      address: getShopifyWebhookUrl(origin),
     });
     await writeAudit({
       ...auditMetaFromRequest(request),
       actor: session,
       action: AUDIT_ACTIONS.channelConnect,
       entityType: "ChannelAccount",
-      metadata: { channel: "shopify", displayName, via: "shopify_oauth" },
+      metadata: {
+        channel: "shopify",
+        displayName,
+        via: "shopify_oauth",
+        webhookRegistered,
+      },
     });
-    const response = NextResponse.redirect(settingsUrl(request, { oauth_success: "shopify" }));
+    const response = NextResponse.redirect(
+      settingsUrl(request, {
+        oauth_success: "shopify",
+        ...(webhookRegistered ? {} : { oauth_warning: "shopify_webhook" }),
+      }),
+    );
     response.cookies.delete(OAUTH_STATE_COOKIE);
     return response;
   } catch (err) {

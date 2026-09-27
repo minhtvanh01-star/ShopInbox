@@ -112,6 +112,17 @@ export async function fetchShopifyShopName(shopDomain: string, accessToken: stri
   }
 }
 
+export function isShopifyOAuthTimestampFresh(
+  timestamp: string | null | undefined,
+  nowMs = Date.now(),
+  maxAgeMs = 5 * 60 * 1000,
+) {
+  const ts = Number(timestamp);
+  if (!Number.isFinite(ts) || ts <= 0) return false;
+  const tsMs = ts < 1e12 ? ts * 1000 : ts;
+  return Math.abs(nowMs - tsMs) <= maxAgeMs;
+}
+
 export async function registerShopifyAppUninstalledWebhook(input: {
   shopDomain: string;
   accessToken: string;
@@ -133,5 +144,8 @@ export async function registerShopifyAppUninstalledWebhook(input: {
       },
     }),
   });
-  return response.ok || response.status === 422;
+  if (response.ok) return true;
+  if (response.status !== 422) return false;
+  const body = await response.text();
+  return /already been taken|already exists/i.test(body);
 }
