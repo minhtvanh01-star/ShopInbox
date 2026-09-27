@@ -10,7 +10,8 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "ShopInbox",
+  title: "Nexo",
+  applicationName: "Nexo",
   description: "Hộp thư đa kênh cho cửa hàng — trả lời tin nhắn và lưu đơn hàng.",
 };
 

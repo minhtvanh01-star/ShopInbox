@@ -30,7 +30,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
       }
     >
       <LoginForm
-        shopName="ShopInbox"
+        shopName="Nexo"
         nextPath={nextPath}
         googleOAuthConfigured={Boolean(google)}
         googleLocalRedirect={Boolean(
