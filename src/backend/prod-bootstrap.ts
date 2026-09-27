@@ -7,6 +7,24 @@ import { readFirstAdminBootstrap } from "@/lib/first-run";
 import { pickFirstSuperAdminStaffId } from "@/lib/super-admin";
 
 let bootstrapPromise: Promise<void> | null = null;
+let readyPromise: Promise<void> | null = null;
+
+/** Migrate + RBAC + Super admin — chạy lúc boot, không cần terminal VPS. */
+export async function ensureDatabaseReady() {
+  if (!readyPromise) {
+    readyPromise = runDatabaseReady().catch((error) => {
+      readyPromise = null;
+      throw error;
+    });
+  }
+  return readyPromise;
+}
+
+async function runDatabaseReady() {
+  const { deployPendingMigrations } = await import("@/backend/migrate-deploy");
+  await deployPendingMigrations();
+  await ensureProductionData();
+}
 
 /** RBAC + Super admin lần đầu. Không seed hội thoại / mật khẩu demo. */
 export async function ensureProductionData() {

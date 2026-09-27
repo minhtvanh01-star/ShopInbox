@@ -3,6 +3,7 @@ import { AuthShell } from "@/components/auth/AuthShell";
 import { getGoogleOAuthConfig, isLocalGoogleRedirect } from "@/backend/google-oauth";
 import { probeDatabase } from "@/backend/db-status";
 import { prisma } from "@/backend/prisma";
+import { ensureDatabaseReady } from "@/backend/prod-bootstrap";
 import { safeInternalPath } from "@/backend/safe-path";
 import { classifyDatabaseError, type DatabaseErrorCode } from "@/lib/database-url";
 
@@ -53,7 +54,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 }
 
 async function loadLoginPlatformState() {
-  const probe = await probeDatabase();
+  let probe = await probeDatabase();
+  if (!probe.ok && (probe.code === "schema" || probe.code === "unknown")) {
+    try {
+      await ensureDatabaseReady();
+      probe = await probeDatabase();
+    } catch (error) {
+      console.error("[login] ensureDatabaseReady failed", error);
+    }
+  }
   if (!probe.ok) {
     return { dbOk: false, empty: false, dbError: probe.code };
   }
