@@ -1,17 +1,36 @@
 import { redirect } from "next/navigation";
 import { requireSession } from "@/backend/auth";
 import { prisma } from "@/backend/prisma";
+import { isPrismaSchemaDriftError } from "@/backend/prisma-errors";
 import type { SessionPayload } from "@/backend/session-token";
 import { isSuperAdminSession, shouldBootstrapSuperAdmin } from "@/lib/super-admin";
 
-/** Gán Super admin lần đầu từ SUPER_ADMIN_EMAIL khi DB chưa có ai — atomic. */
+async function countSuperAdmins() {
+  try {
+    return await prisma.staff.count({ where: { isSuperAdmin: true } });
+  } catch (error) {
+    if (!isPrismaSchemaDriftError(error)) {
+      throw error;
+    }
+    return 0;
+  }
+}
+
+/** Gán Super admin lần đầu: SUPER_ADMIN_EMAIL hoặc chủ shop đầu tiên. */
 export async function resolveIsSuperAdmin(staff: {
   id: string;
   email: string;
   isSuperAdmin: boolean;
+  roleCode?: string;
 }) {
   if (staff.isSuperAdmin) return true;
-  if (!shouldBootstrapSuperAdmin({ ...staff, existingSuperAdminCount: 0 })) {
+  const existingSuperAdminCount = await countSuperAdmins();
+  if (
+    !shouldBootstrapSuperAdmin({
+      ...staff,
+      existingSuperAdminCount,
+    })
+  ) {
     return false;
   }
   try {
@@ -24,8 +43,11 @@ export async function resolveIsSuperAdmin(staff: {
     `;
     return Number(granted) === 1;
   } catch (error) {
-    console.error("[resolveIsSuperAdmin] could not write flag — using email allowlist", error);
-    return shouldBootstrapSuperAdmin({ ...staff, existingSuperAdminCount: 0 });
+    console.error("[resolveIsSuperAdmin] could not write flag — using bootstrap rule", error);
+    return shouldBootstrapSuperAdmin({
+      ...staff,
+      existingSuperAdminCount,
+    });
   }
 }
 

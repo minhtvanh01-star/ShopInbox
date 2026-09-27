@@ -87,7 +87,7 @@ Chi tiết: [dang-nhap-google.md](./dang-nhap-google.md).
 | Đăng nhập Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
 | Backup production | Tự chạy khi `NODE_ENV=production`. Volume: `BACKUP_DIR`. Cron: `CRON_SECRET` |
 | Cloudflare | DNS cam + SSL Full (strict) + Bot Fight Mode. `CLOUDFLARE_ONLY=1` khi đã proxy |
-| Super admin | `SUPER_ADMIN_EMAIL` = email login của bạn (bootstrap khi chưa có Super admin). Hoặc `npx tsx prisma/grant-super-admin.ts ban@email.com`. Vào `/admin/shops` — không dùng `admin@lily.vn` (đó là chủ shop). |
+| Super admin | App tự đồng bộ quyền + gán Super admin lần đầu (email `SUPER_ADMIN_EMAIL` hoặc chủ shop đầu). Hoặc `npx tsx prisma/grant-super-admin.ts ban@email.com`. Vào `/admin/shops`. |
 
 ## VPS / VibeHost
 

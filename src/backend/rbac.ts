@@ -3,7 +3,7 @@ import { requireSession } from "@/backend/auth";
 import { prisma } from "@/backend/prisma";
 import { getSession } from "@/backend/session";
 import type { SessionPayload } from "@/backend/session-token";
-import { isAdminRole, normalizeRoleCode } from "@/lib/rbac-catalog";
+import { catalogPermissionsForRole, isAdminRole, normalizeRoleCode } from "@/lib/rbac-catalog";
 
 const CACHE_TTL_MS = 15_000;
 
@@ -38,6 +38,7 @@ async function loadStaffPermissions(staffId: string): Promise<PermissionCacheEnt
     select: {
       shopId: true,
       isActive: true,
+      roleCode: true,
       role: {
         select: {
           isActive: true,
@@ -49,10 +50,13 @@ async function loadStaffPermissions(staffId: string): Promise<PermissionCacheEnt
 
   if (!staff || !staff.isActive) return null;
 
-  const codes =
+  let codes =
     staff.role?.isActive === true
       ? staff.role.permissions.map((item) => item.permissionCode)
       : [];
+  if (codes.length === 0) {
+    codes = [...catalogPermissionsForRole(staff.roleCode)];
+  }
 
   const entry: PermissionCacheEntry = {
     shopId: staff.shopId,

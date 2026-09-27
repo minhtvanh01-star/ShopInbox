@@ -17,6 +17,7 @@ import { clearSessionCookie, getSession, setSessionCookie } from "@/backend/sess
 import { safeInternalPath } from "@/backend/safe-path";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
 import { postAuthPath } from "@/lib/shop-setup";
+import { ensureProductionData } from "@/backend/prod-bootstrap";
 import { resolveIsSuperAdmin } from "@/backend/super-admin";
 
 export type AuthActionState = {
@@ -36,6 +37,12 @@ export async function loginAction(
 
   if (!email || !password) {
     return { error: "Nhập email và mật khẩu." };
+  }
+
+  try {
+    await ensureProductionData();
+  } catch (error) {
+    console.error("[loginAction] production data bootstrap failed", error);
   }
 
   if (await isLoginEmailThrottled(email)) {

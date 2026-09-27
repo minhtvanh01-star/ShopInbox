@@ -9,11 +9,24 @@ type InboxPageProps = {
 
 export default async function InboxPage({ searchParams }: InboxPageProps) {
   const params = await searchParams;
-  const [data, accounts, shop] = await Promise.all([
-    getInboxData(),
-    getChannelAccounts(),
-    getShopContext(),
-  ]);
+  const shop = await getShopContext();
+  let data: Awaited<ReturnType<typeof getInboxData>>;
+  let accounts: Awaited<ReturnType<typeof getChannelAccounts>> = [];
+  try {
+    [data, accounts] = await Promise.all([getInboxData(), getChannelAccounts()]);
+  } catch (error) {
+    console.error("[InboxPage] inbox data failed — empty workspace", error);
+    data = {
+      currentStaffId: shop.staffId,
+      replyClaimTtlMinutes: shop.replyClaimTtlMinutes,
+      conversations: [],
+      messages: [],
+      customers: [],
+      orders: [],
+      products: [],
+      quickReplies: [],
+    };
+  }
 
   const activeChannels = visibleInboxChannels(accounts);
 
@@ -22,7 +35,6 @@ export default async function InboxPage({ searchParams }: InboxPageProps) {
       ? params.c
       : undefined;
 
-  // roleCode + quyền admin-only (staff.manage) — tránh lệch casing / seed quyền.
   const isAdmin =
     isAdminRole(shop.role) || shop.permissions.includes(PERMISSION_CODES.staffManage);
 

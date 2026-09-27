@@ -19,6 +19,7 @@ import {
 import { prisma } from "@/backend/prisma";
 import { isPrismaSchemaDriftError } from "@/backend/prisma-errors";
 import { loadStaffSession } from "@/backend/auth";
+import { ensureProductionData } from "@/backend/prod-bootstrap";
 import { resolveIsSuperAdmin } from "@/backend/super-admin";
 import { getSession, setSessionCookie } from "@/backend/session";
 import { auditMetaFromRequest, writeAudit } from "@/backend/audit";
@@ -77,6 +78,12 @@ async function createSessionForStaff(staffId: string) {
 }
 
 export async function GET(request: Request) {
+  try {
+    await ensureProductionData();
+  } catch (error) {
+    console.error("[googleCallback] production data bootstrap failed", error);
+  }
+
   const config = getGoogleOAuthConfig();
   if (!config) {
     return redirectWithError(request, "google_not_configured", "login");

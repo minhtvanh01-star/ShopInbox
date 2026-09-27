@@ -15,12 +15,8 @@ import {
   quickReplies,
 } from "../src/lib/mock";
 import { isHosted, resolveSeedMode, resolveSeedScope } from "../src/backend/db-seed-policy";
-import {
-  PERMISSIONS,
-  ROLE_PERMISSIONS,
-  ROLES,
-  normalizeRoleCode,
-} from "../src/lib/rbac-catalog";
+import { syncRbacCatalog } from "../src/backend/rbac-sync";
+import { normalizeRoleCode } from "../src/lib/rbac-catalog";
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) {
@@ -30,53 +26,6 @@ if (!connectionString) {
 const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString }),
 });
-
-async function syncRbacCatalog() {
-  for (const role of ROLES) {
-    await prisma.role.upsert({
-      where: { code: role.code },
-      create: {
-        code: role.code,
-        name: role.name,
-        description: role.description,
-        isSystem: role.isSystem,
-        isActive: role.isActive,
-        sortOrder: role.sortOrder,
-      },
-      update: {
-        name: role.name,
-        description: role.description,
-        isSystem: role.isSystem,
-        isActive: role.isActive,
-        sortOrder: role.sortOrder,
-      },
-    });
-  }
-
-  for (const permission of PERMISSIONS) {
-    await prisma.permission.upsert({
-      where: { code: permission.code },
-      create: {
-        code: permission.code,
-        name: permission.name,
-        description: permission.description,
-        group: permission.group,
-      },
-      update: {
-        name: permission.name,
-        description: permission.description,
-        group: permission.group,
-      },
-    });
-  }
-
-  await prisma.rolePermission.deleteMany();
-  await prisma.rolePermission.createMany({
-    data: Object.entries(ROLE_PERMISSIONS).flatMap(([roleCode, codes]) =>
-      codes.map((permissionCode) => ({ roleCode, permissionCode })),
-    ),
-  });
-}
 
 async function upsertPlatformSuperAdmin() {
   const admin = PLATFORM_SUPER_ADMIN;
@@ -174,7 +123,7 @@ async function main() {
   const scope = resolveSeedScope(process.env, process.argv);
   const lockAccounts = process.argv.includes("--lock") || process.env.SEED_LOCK === "1";
 
-  await syncRbacCatalog();
+  await syncRbacCatalog(prisma);
 
   if (lockAccounts) {
     if (isHosted(process.env) && process.env.SEED_FORCE !== "1") {
