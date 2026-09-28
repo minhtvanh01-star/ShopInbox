@@ -3,8 +3,10 @@
 import { redirect } from "next/navigation";
 import { writeAudit } from "@/backend/audit";
 import { requireSession } from "@/backend/auth";
+import { abandonIncompleteShopRegistration } from "@/backend/abandon-shop-registration";
 import { validateProfileInput } from "@/backend/google-auth";
 import { prisma } from "@/backend/prisma";
+import { clearSessionCookie } from "@/backend/session";
 import { AUDIT_ACTIONS } from "@/lib/rbac-catalog";
 import { SHOP_SETUP_PATH } from "@/lib/shop-setup";
 
@@ -57,4 +59,26 @@ export async function completeRegisterProfileAction(
   });
 
   redirect(SHOP_SETUP_PATH);
+}
+
+export async function abandonShopRegistrationAction(
+  _prev: RegisterProfileState,
+  _formData: FormData,
+): Promise<RegisterProfileState> {
+  const session = await requireSession();
+  const result = await abandonIncompleteShopRegistration(session);
+  if (!result.ok) {
+    return { error: result.error };
+  }
+
+  await writeAudit({
+    actorEmail: session.email,
+    actorRole: session.role,
+    action: AUDIT_ACTIONS.authRegisterAbandon,
+    entityType: "Shop",
+    entityId: result.shopId,
+    metadata: { staffId: session.staffId, abandonedShopId: result.shopId },
+  });
+  await clearSessionCookie();
+  redirect("/login?auth_success=registration_cancelled");
 }

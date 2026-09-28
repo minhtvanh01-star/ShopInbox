@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { completeShopSetupAction, type SetupShopState } from "@/app/setup/actions";
+import { AbandonShopRegistrationButton } from "@/components/auth/AbandonShopRegistrationButton";
 import { logoutAction } from "@/app/login/actions";
 import {
   DEFAULT_MAX_USERS_PER_SHOP,
@@ -91,6 +92,7 @@ export function SetupShopForm({
           {pending ? "Đang lưu…" : "Lưu và tiếp tục kết nối kênh"}
         </button>
       </form>
+      <AbandonShopRegistrationButton />
       <form action={logoutAction}>
         <button type="submit" className="w-full text-center text-sm text-slate-500 hover:underline">
           Đăng xuất

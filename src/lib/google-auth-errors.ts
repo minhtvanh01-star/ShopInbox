@@ -30,4 +30,5 @@ export const GOOGLE_AUTH_ERROR_MESSAGES: Record<string, string> = {
 export const AUTH_SUCCESS_MESSAGES: Record<string, string> = {
   pending_approval:
     "Tài khoản đã tạo. Chờ quản trị viên phê duyệt và phân quyền trước khi đăng nhập.",
+  registration_cancelled: "Đã hủy đăng ký cửa hàng. Có thể đăng nhập hoặc đăng ký lại.",
 };
