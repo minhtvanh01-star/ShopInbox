@@ -174,14 +174,16 @@ Khách nhắn trên widget → Inbox kênh `web`. Shop trả lời trong Inbox; 
 - CORS chỉ cho đúng host đã lưu. Key nằm trong HTML (public) — **Đổi widget key** nếu lộ / đổi site.
 - Theme Shopify: dán snippet như website thường (không phải Shopify Inbox API).
 
-### Tiện ích Chrome (xem thử trên trang đang mở)
+### Tiện ích Chrome (Inbox + xem thử chat website)
 
-Thư mục `extensions/web-widget`. Load unpacked từ `chrome://extensions`.
+Thư mục `extensions/web-widget`. Load unpacked từ `chrome://extensions`. **Không đọc Facebook.**
 
-1. Cài đặt → Chat website → lưu domain → **Gửi sang tiện ích Chrome**.
-2. Bấm icon Nexo trên **đúng tab Cài đặt** → **Xác nhận gắn ShopInbox này** (tiện ích không nhận lệnh từ trang lạ).
-3. Mở đúng website → icon tiện ích → **Hiện nút Chat trên trang này**.
+1. Mở Nexo trên tab → icon **Nexo** → **Gắn tab Nexo này** → **Mở Inbox**.
+2. Chat website: Cài đặt → lưu domain → **Gửi sang tiện ích** → trên tab Cài đặt **Xác nhận gắn chat website**.
+3. Mở đúng website shop → **Hiện nút Chat trên trang này**.
 4. **Copy snippet** rồi dán vào HTML/theme — không thì chỉ máy bạn thấy chat.
+
+Inbox mở tab Nexo (cookie đăng nhập). Không nhúng iframe.
 
 **Nối domain trang này** mở Cài đặt với host tab đang xem.
 

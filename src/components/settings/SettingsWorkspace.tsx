@@ -245,6 +245,11 @@ export function SettingsWorkspace({
           <p className="page-subtitle">
             Nối Facebook, Instagram, Zalo OA, hoặc gắn widget chat lên website.
           </p>
+          <p className="mt-2 max-w-xl text-xs leading-5 text-slate-500">
+            Tiện ích Chrome: <span className="font-medium text-slate-700">chrome://extensions</span> →
+            Load unpacked thư mục <code className="text-[11px]">extensions/web-widget</code>. Icon
+            Nexo trên tab này → Gắn tab Nexo này → Mở Inbox.
+          </p>
           {channels.length > 0 ? (
             <p className="mt-2 text-xs font-medium text-teal-800">
               {connectedCount}/{channels.length} kênh đã nối

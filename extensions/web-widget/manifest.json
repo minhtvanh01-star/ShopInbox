@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "Nexo Chat website",
-  "version": "0.1.1",
-  "description": "Nối domain đang mở với ShopInbox và hiện thử nút Chat. Khách thật cần snippet trong HTML.",
+  "name": "Nexo",
+  "version": "0.2.0",
+  "description": "Mở Inbox Nexo trên Chrome. Có thể gắn thử chat website. Không đọc Facebook.",
   "permissions": ["storage", "activeTab", "scripting"],
   "action": {
     "default_popup": "popup.html",
-    "default_title": "Nexo Chat website"
+    "default_title": "Nexo"
   },
   "background": {
     "service_worker": "background.js"
