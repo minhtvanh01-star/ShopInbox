@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Plus_Jakarta_Sans } from "next/font/google";
+import { NexoExtensionMarker } from "@/components/NexoExtensionMarker";
 import "./globals.css";
 
 const plusJakarta = Plus_Jakarta_Sans({
@@ -19,6 +20,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="vi" className={`${plusJakarta.variable} h-full antialiased`}>
       <body className="min-h-full font-sans">
+        <NexoExtensionMarker />
         <a href="#main-content" className="skip-link">
           Bỏ qua đến nội dung chính
         </a>

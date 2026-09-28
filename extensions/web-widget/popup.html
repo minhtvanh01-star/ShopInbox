@@ -2,7 +2,7 @@
 <html lang="vi">
   <head>
     <meta charset="utf-8" />
-    <title>Nexo Chat website</title>
+    <title>Nexo</title>
     <style>
       :root {
         color-scheme: light;
@@ -30,6 +30,11 @@
       }
       .warn {
         color: #b45309;
+      }
+      hr {
+        border: 0;
+        border-top: 1px solid #ccfbf1;
+        margin: 10px 0;
       }
       button,
       a.btn {
@@ -60,9 +65,12 @@
   </head>
   <body>
     <main>
-      <h1>Nexo Chat website</h1>
+      <h1>Nexo</h1>
       <p id="status">Đang đọc tab…</p>
-      <button id="confirm" type="button" hidden>Xác nhận gắn ShopInbox này</button>
+      <button id="openInbox" type="button">Mở Inbox</button>
+      <button id="attachOrigin" class="secondary" type="button" hidden>Gắn tab Nexo này</button>
+      <button id="confirm" class="secondary" type="button" hidden>Xác nhận gắn chat website</button>
+      <hr />
       <button id="connect" class="secondary" type="button" hidden>Nối domain trang này</button>
       <button id="inject" type="button" hidden>Hiện nút Chat trên trang này</button>
       <button id="copy" class="secondary" type="button" hidden>Copy snippet</button>

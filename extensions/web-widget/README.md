@@ -1,18 +1,21 @@
-# Tiện ích Chrome — Chat website
+# Tiện ích Chrome — Nexo
 
-Gắn thử nút Chat Nexo lên **website đang mở**. Không dùng cho Facebook / Zalo.
+Mở **Inbox Nexo** từ icon trên thanh Chrome. Không đọc Facebook / Zalo. Không phải app cài Windows.
 
-Khách vào site trên máy khác **không** thấy nút nếu chưa dán snippet vào HTML / theme.
+Chat website (xem thử nút trên tab shop) vẫn có trong cùng tiện ích. Khách thật cần snippet HTML.
 
 ## Cài (unpacked)
 
 1. Chrome → `chrome://extensions` → bật **Developer mode**.
 2. **Load unpacked** → chọn thư mục `extensions/web-widget`.
-3. ShopInbox → **Cài đặt → Chat website**: lưu domain, **Gửi sang tiện ích Chrome**.
-4. Bấm icon Nexo trên **đúng tab Cài đặt** → **Xác nhận gắn ShopInbox này**.
-5. Mở đúng website đó → bấm icon tiện ích → **Hiện nút Chat trên trang này**.
-6. **Copy snippet** rồi dán trước `</body>` (hoặc `theme.liquid`) để khách thật thấy chat.
+3. Mở Nexo trên tab (login / Inbox) → bấm icon **Nexo** → **Gắn tab Nexo này**.
+4. Lần sau bấm icon → **Mở Inbox** (đăng nhập cookie trên domain Nexo).
 
-Tiện ích không lắng nghe `postMessage` từ mọi trang. Chỉ đọc marker trên tab Cài đặt khi bạn mở popup.
+Inbox không nhúng trong popup (trang Nexo chặn iframe). Tiện ích chỉ mở tab.
 
-**Nối domain trang này** mở Cài đặt với host tab đang xem — lưu rồi gửi lại tiện ích.
+## Chat website (tuỳ chọn)
+
+1. Cài đặt → Chat website → **Gửi sang tiện ích Chrome**.
+2. Icon Nexo trên **tab Cài đặt** → **Xác nhận gắn chat website**.
+3. Mở đúng website shop → **Hiện nút Chat trên trang này**.
+4. **Copy snippet** rồi dán vào HTML/theme.
