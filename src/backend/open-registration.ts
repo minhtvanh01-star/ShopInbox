@@ -4,7 +4,7 @@ import { planOpenRegistration } from "@/backend/register";
 import { defaultShopNameFromOwner } from "@/lib/shop-name";
 import { BOOTSTRAP_ROLE_CODE, normalizeRoleCode } from "@/lib/rbac-catalog";
 
-const OPEN_REGISTRATION_LOCK_KEY = 87231001;
+export const OPEN_REGISTRATION_LOCK_KEY = 87231001;
 
 async function withOpenRegistrationLock<T>(fn: (tx: Prisma.TransactionClient) => Promise<T>) {
   return prisma.$transaction(async (tx) => {
