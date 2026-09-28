@@ -23,7 +23,7 @@ export default async function SetupShopPage() {
       <AuthShell
         title="Chờ cấu hình shop"
         subtitle="Cửa hàng chưa sẵn sàng"
-        intro="Chủ shop đang hoàn tất tên cửa hàng và cấu hình vận hành. Bạn đăng nhập lại sau khi bước đó xong."
+        intro="Chủ shop đang đặt tên cửa hàng. Đăng nhập lại sau khi xong."
       >
         <form action={logoutAction} className="mt-6">
           <button type="submit" className="btn-primary w-full">
@@ -38,12 +38,6 @@ export default async function SetupShopPage() {
     <AuthShell
       title="Cấu hình cửa hàng"
       subtitle="Bước 2 — đặt tên shop"
-      intro={
-        <>
-          Đây là cửa hàng của bạn, tách biệt với shop khác trên hệ thống. Đặt tên và giới hạn nhân
-          viên trước. Bước tiếp theo: kết nối Facebook / Instagram / Zalo, rồi mời nhân viên.
-        </>
-      }
     >
       <SetupShopForm
         defaultName={shop.name}

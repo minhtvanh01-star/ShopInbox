@@ -29,6 +29,7 @@ import type { Channel, ChannelStatus } from "@/lib/types";
 import type { MetaPagePickerOption } from "@/lib/oauth-types";
 import { OAUTH_ERROR_MESSAGES } from "@/lib/oauth-flash";
 import { WebWidgetCheckControls } from "./WebWidgetCheckControls";
+import { WebWidgetExtensionControls } from "./WebWidgetExtensionControls";
 
 export type ChannelAccountView = {
   id: string;
@@ -60,6 +61,7 @@ type AddConnectionModalProps = {
   shopifyOAuthConfigured: boolean;
   pendingMetaPages: { channel: Channel; pages: MetaPagePickerOption[] } | null;
   initialPlatformId?: string;
+  suggestedWebHost?: string;
   onClose: () => void;
 };
 
@@ -174,6 +176,7 @@ export function AddConnectionModal({
   shopifyOAuthConfigured,
   pendingMetaPages,
   initialPlatformId,
+  suggestedWebHost,
   onClose,
 }: AddConnectionModalProps) {
   const [selectedId, setSelectedId] = useState(initialPlatformId ?? "facebook");
@@ -493,6 +496,14 @@ export function AddConnectionModal({
                       </code>
                       <CopyButton value={account.widgetSnippet} />
                     </div>
+                    {account.widgetKey ? (
+                      <div className="mt-3">
+                        <WebWidgetExtensionControls
+                          widgetKey={account.widgetKey}
+                          websiteHost={account.pageId ?? ""}
+                        />
+                      </div>
+                    ) : null}
                     {account.lastWebhookAt ? (
                       <p className="mt-3 text-xs text-emerald-600">
                         Tin widget gần nhất: {formatDateTime(account.lastWebhookAt)}
@@ -628,9 +639,18 @@ export function AddConnectionModal({
                         </label>
                       ) : null}
                       {canConnect && oauthConfigured && oauthUrl ? (
-                        <a href={oauthUrl} className="btn-primary mt-3 inline-flex">
-                          {connectLabel}
-                        </a>
+                        <>
+                          {(selected.channel === "facebook" || selected.channel === "instagram") ? (
+                            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
+                              Nick Facebook dùng để nối phải là Tester / Admin trên Meta App. Nick
+                              khác sẽ bị Facebook chặn («Ứng dụng không hoạt động»). Tin nhắn và
+                              đồng bộ cũng chỉ chạy với nick trong Roles khi app còn Development.
+                            </p>
+                          ) : null}
+                          <a href={oauthUrl} className="btn-primary mt-3 inline-flex">
+                            {connectLabel}
+                          </a>
+                        </>
                       ) : (
                         <div className="mt-3 space-y-2">
                           <button
@@ -727,7 +747,16 @@ export function AddConnectionModal({
                                 ? "•••••••• (đã lưu — để trống nếu giữ)"
                                 : field.placeholder
                             }
-                            defaultValue={isSecret ? "" : existingNonSecret}
+                            defaultValue={
+                              isSecret
+                                ? ""
+                                : existingNonSecret ||
+                                  (field.key === "pageId" &&
+                                  selected.channel === "web" &&
+                                  suggestedWebHost
+                                    ? `https://${suggestedWebHost}`
+                                    : "")
+                            }
                             disabled={!canConnect}
                             className="input-field-sm disabled:bg-surface-muted"
                           />

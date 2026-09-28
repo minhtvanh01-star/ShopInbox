@@ -29,7 +29,6 @@ export function RegisterProfileForm({
         <StaffAvatar name={defaultName || maskEmail(email)} avatarUrl={avatarUrl} size="md" />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-slate-800">{maskEmail(email)}</p>
-          <p className="text-xs text-slate-500">Email lấy từ Google hoặc đăng ký — không đổi ở bước này.</p>
         </div>
       </div>
 
@@ -70,7 +69,6 @@ export function RegisterProfileForm({
           defaultValue={defaultPhone}
           className="input-field"
         />
-        <p className="text-xs text-slate-500">Dùng để liên hệ hỗ trợ shop. Bắt buộc trước khi cấu hình cửa hàng.</p>
       </div>
 
       <button type="submit" disabled={pending} aria-busy={pending} className="btn-primary w-full">

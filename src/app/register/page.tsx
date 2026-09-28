@@ -20,12 +20,6 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
     <AuthShell
       title="Đăng ký"
       subtitle="Tạo cửa hàng của bạn"
-      intro={
-        <>
-          Đăng ký bằng Google hoặc email. Bạn trở thành <strong>chủ shop</strong>: nhập thông tin
-          cá nhân, rồi cấu hình tên cửa hàng trước khi kết nối kênh hay dùng Inbox.
-        </>
-      }
     >
       <RegisterForm
         nextPath={nextPath}

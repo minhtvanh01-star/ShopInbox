@@ -540,3 +540,14 @@ model AutoReplyRule {
   @@index([shopId, enabled])
   @@map("auto_reply_rules")
 }
+
+/** Một dòng — Super admin chỉnh quét đồng bộ kênh. */
+model PlatformSetting {
+  id                     String    @id
+  channelSyncEnabled     Boolean   @default(true)
+  channelSyncIntervalSec Int       @default(240)
+  channelSyncLastRunAt   DateTime?
+  updatedAt              DateTime  @updatedAt
+
+  @@map("platform_settings")
+}

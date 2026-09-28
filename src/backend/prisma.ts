@@ -10,7 +10,7 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 /** Tăng khi schema Prisma thêm model/field mà next dev còn giữ client cũ. */
-const PRISMA_SCHEMA_EPOCH = 4;
+const PRISMA_SCHEMA_EPOCH = 5;
 
 function createPrismaClient() {
   const pool = new Pool({
@@ -25,7 +25,10 @@ function createPrismaClient() {
   });
 }
 
-function hasDelegate(client: PrismaClient, name: "productGroup" | "authLoginThrottle") {
+function hasDelegate(
+  client: PrismaClient,
+  name: "productGroup" | "authLoginThrottle" | "platformSetting",
+) {
   const delegate = (client as PrismaClient & Record<string, { findMany?: unknown; findUnique?: unknown }>)[
     name
   ];
@@ -35,7 +38,11 @@ function hasDelegate(client: PrismaClient, name: "productGroup" | "authLoginThro
 function isStaleClient(client: PrismaClient | undefined) {
   if (!client) return true;
   if (globalForPrisma.prismaSchemaEpoch !== PRISMA_SCHEMA_EPOCH) return true;
-  return !hasDelegate(client, "productGroup") || !hasDelegate(client, "authLoginThrottle");
+  return (
+    !hasDelegate(client, "productGroup") ||
+    !hasDelegate(client, "authLoginThrottle") ||
+    !hasDelegate(client, "platformSetting")
+  );
 }
 
 function getPrisma() {

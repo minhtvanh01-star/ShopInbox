@@ -197,7 +197,7 @@ export function RegisterForm({
               aria-invalid={otpError ? true : undefined}
               aria-describedby={otpError ? otpErrorId : undefined}
             />
-            <p className="text-xs text-slate-500">Dán mã từ email được. Không cần gõ tay từng số.</p>
+            <p className="text-xs text-slate-500">Mã 6 số gửi về email.</p>
           </div>
           <button
             type="submit"
@@ -241,10 +241,6 @@ export function RegisterForm({
             href={`/api/auth/google/start?mode=register&next=${encodeURIComponent(nextPath)}`}
             label="Đăng ký với Google"
           />
-          <p className="mt-2 text-xs leading-5 text-slate-500">
-            Chọn Google để tạo shop. Sau đó bạn nhập họ tên và số điện thoại, rồi mới cấu hình cửa
-            hàng.
-          </p>
         </div>
       ) : (
         <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
@@ -346,7 +342,7 @@ export function RegisterForm({
             aria-describedby={formAlert ? `${formErrorId} password-hint` : "password-hint"}
           />
           <p id="password-hint" className="text-xs text-slate-500">
-            Tối thiểu 8 ký tự. Trình quản lý mật khẩu được phép điền sẵn.
+            Tối thiểu 8 ký tự.
           </p>
         </div>
         <div className="field-group">

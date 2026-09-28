@@ -32,7 +32,7 @@ export default async function InvitePage({ params }: InvitePageProps) {
     <AuthShell
       title="Tham gia cửa hàng"
       subtitle={invite.shop.name}
-      intro="Tạo tài khoản nhân viên trên đúng shop đã mời bạn. Không tạo shop mới."
+      intro="Tạo tài khoản trên shop đã mời bạn."
     >
       <AcceptInviteForm
         token={token}

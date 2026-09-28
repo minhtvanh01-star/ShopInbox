@@ -52,8 +52,7 @@ export function StaffInvitePanel({
     <section className="card-padded">
       <h2 className="text-base font-semibold tracking-tight text-teal-950">Mời vào shop này</h2>
       <p className="mt-1 text-sm leading-6 text-slate-500">
-        Nhân viên không đăng ký công khai. Gửi link — họ tạo tài khoản và được gắn đúng cửa hàng
-        của bạn.
+        Nhân viên không đăng ký công khai. Gửi link — họ vào đúng shop này.
       </p>
       <p
         role="status"

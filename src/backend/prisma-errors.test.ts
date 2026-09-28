@@ -48,6 +48,9 @@ describe("isMissingDbColumnError", () => {
 describe("isPrismaSchemaDriftError", () => {
   it("detects missing enum types from shop-ops migrate", () => {
     expect(isPrismaSchemaDriftError(new Error('type "ShopPlan" does not exist'))).toBe(true);
+    expect(isPrismaSchemaDriftError(new Error("relation \"platform_settings\" does not exist"))).toBe(
+      true,
+    );
     expect(isPrismaSchemaDriftError(new Error("Unique constraint failed"))).toBe(false);
   });
 });

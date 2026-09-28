@@ -4,6 +4,7 @@ import {
   formatOAuthFlashSuccess,
   formatOAuthFlashWarning,
   hintFromMetaGraphMessage,
+  metaCallbackErrorCode,
 } from "./oauth-flash";
 
 describe("hintFromMetaGraphMessage", () => {
@@ -19,6 +20,19 @@ describe("hintFromMetaGraphMessage", () => {
 
   it("trả null khi không khớp", () => {
     expect(hintFromMetaGraphMessage("something else")).toBeNull();
+  });
+});
+
+describe("metaCallbackErrorCode", () => {
+  it("nhận màn Facebook «Ứng dụng không hoạt động»", () => {
+    expect(
+      metaCallbackErrorCode({
+        error: "access_denied",
+        errorDescription: "Ứng dụng này hiện không thể truy cập được",
+      }),
+    ).toBe("meta_app_unavailable");
+    expect(metaCallbackErrorCode({ error: "access_denied" })).toBe("meta_denied");
+    expect(formatOAuthFlashError("meta_app_unavailable").title).toMatch(/Tester/i);
   });
 });
 

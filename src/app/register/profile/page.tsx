@@ -35,7 +35,7 @@ export default async function RegisterProfilePage() {
     <AuthShell
       title="Thông tin cá nhân"
       subtitle="Bước 1 — hồ sơ chủ shop"
-      intro="Xác nhận họ tên và số điện thoại. Bước tiếp theo bạn sẽ đặt tên cửa hàng, rồi mới vào kết nối kênh và các chức năng khác."
+      intro="Họ tên và số điện thoại."
     >
       <RegisterProfileForm
         email={staff.email}

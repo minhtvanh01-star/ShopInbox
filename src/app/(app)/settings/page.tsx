@@ -10,6 +10,7 @@ import { requireSession } from "@/backend/auth";
 import { hasPermission } from "@/backend/rbac";
 import { PERMISSION_CODES } from "@/lib/rbac-catalog";
 import { redirect } from "next/navigation";
+import { normalizeWebsiteHost } from "@/lib/web-widget";
 
 type SettingsPageProps = {
   searchParams: Promise<{
@@ -18,6 +19,8 @@ type SettingsPageProps = {
     oauth_message?: string;
     oauth_warning?: string;
     oauth_pick?: string;
+    connect?: string;
+    web_host?: string;
   }>;
 };
 
@@ -89,6 +92,8 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
         zaloOAuthConfigured={Boolean(zaloConfig)}
         shopifyOAuthConfigured={Boolean(shopifyConfig)}
         pendingMetaPages={pendingMetaPages}
+        initialConnect={params.connect === "web" ? "web" : undefined}
+        suggestedWebHost={normalizeWebsiteHost(params.web_host) ?? undefined}
         oauthFlash={{
           success: params.oauth_success,
           error: params.oauth_error,
