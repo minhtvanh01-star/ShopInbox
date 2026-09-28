@@ -14,6 +14,8 @@ export const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   meta_no_instagram:
     "Không thấy Instagram Business gắn với Fanpage. Liên kết IG Professional với Page rồi thử lại.",
   meta_failed: "Kết nối Facebook/Instagram thất bại. Thử lại sau.",
+  meta_app_unavailable:
+    "Facebook chưa cho nick này dùng app. Thêm nick đó làm Tester trên Meta Developers → Roles, hoặc đưa app sang Live.",
   zalo_failed: "Kết nối Zalo thất bại. Thử lại sau.",
   shopify_not_configured: "Kết nối Shopify chưa sẵn sàng trên hệ thống. Liên hệ quản trị.",
   shopify_denied: "Bạn đã hủy cấp quyền trên Shopify.",
@@ -35,6 +37,8 @@ const OAUTH_ERROR_HINTS: Record<string, string> = {
   meta_no_pages: "Dùng tài khoản là quản trị viên Fanpage cần nối.",
   meta_no_instagram:
     "Meta Business Suite / Page settings → liên kết Instagram Professional với đúng Fanpage.",
+  meta_app_unavailable:
+    "App còn Development thì chỉ Admin / Developer / Tester nối và nhắn được. Nick ngoài Roles sẽ thấy «Ứng dụng không hoạt động».",
 };
 
 /**
@@ -58,7 +62,32 @@ export function hintFromMetaGraphMessage(message: string): string | null {
   if (/(#10)|outside|cửa sổ|khoảng thời gian cho phép|messaging window/i.test(message)) {
     return "Tin gửi ngoài cửa sổ messaging của Meta. Để khách nhắn lại rồi trả lời, hoặc dùng luồng HUMAN_AGENT nếu app đủ điều kiện.";
   }
+  if (isMetaAppUnavailableText(message)) {
+    return OAUTH_ERROR_HINTS.meta_app_unavailable;
+  }
   return null;
+}
+
+export function isMetaAppUnavailableText(raw: string) {
+  const text = raw.toLowerCase();
+  return (
+    /app (is )?not (available|active)/.test(text) ||
+    /this app isn't available/.test(text) ||
+    /không hoạt động/.test(text) ||
+    /ứng dụng này hiện không thể/.test(text) ||
+    /in development mode/.test(text) ||
+    /has not been approved/.test(text)
+  );
+}
+
+export function metaCallbackErrorCode(input: {
+  error?: string | null;
+  errorDescription?: string | null;
+  errorReason?: string | null;
+}) {
+  const blob = [input.error, input.errorDescription, input.errorReason].filter(Boolean).join(" ");
+  if (isMetaAppUnavailableText(blob)) return "meta_app_unavailable";
+  return "meta_denied";
 }
 
 export type OAuthFlashErrorView = {

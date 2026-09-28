@@ -30,10 +30,7 @@ export default async function StaffPage() {
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="page-header bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)]">
         <h1 className="page-title">Nhân viên</h1>
-        <p className="page-subtitle">
-          Mời nhân viên vào đúng shop này, hoặc tạo tài khoản trực tiếp. Gán vai trò và bật/tắt
-          đăng nhập.
-        </p>
+        <p className="page-subtitle">Mời hoặc thêm người vào shop.</p>
         <p
           role="status"
           className="mt-3 max-w-2xl rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm leading-6 text-amber-950"

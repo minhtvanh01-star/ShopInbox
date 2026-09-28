@@ -25,5 +25,7 @@ export function isMissingDbColumnError(error: unknown, columnHint?: string) {
 export function isPrismaSchemaDriftError(error: unknown) {
   if (isMissingDbColumnError(error)) return true;
   const message = error instanceof Error ? error.message : String(error);
-  return /ShopPlan|ShopSupportStatus|ShopSupportTopic/i.test(message);
+  return /ShopPlan|ShopSupportStatus|ShopSupportTopic|platform_settings|PlatformSetting/i.test(
+    message,
+  );
 }

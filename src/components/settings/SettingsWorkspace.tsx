@@ -9,6 +9,7 @@ import {
   type ChannelAccountView,
 } from "./AddConnectionModal";
 import { WebWidgetCheckControls } from "./WebWidgetCheckControls";
+import { WebWidgetExtensionControls } from "./WebWidgetExtensionControls";
 import { QuickReplyManager } from "./QuickReplyManager";
 import { AutoReplyManager, type AutoReplyRuleView } from "./AutoReplyManager";
 import {
@@ -44,6 +45,8 @@ type SettingsWorkspaceProps = {
   zaloOAuthConfigured: boolean;
   shopifyOAuthConfigured: boolean;
   pendingMetaPages: PendingMetaPages | null;
+  initialConnect?: "web";
+  suggestedWebHost?: string;
   oauthFlash?: {
     success?: string;
     error?: string;
@@ -135,13 +138,20 @@ export function SettingsWorkspace({
   zaloOAuthConfigured,
   shopifyOAuthConfigured,
   pendingMetaPages,
+  initialConnect,
+  suggestedWebHost,
   oauthFlash,
 }: SettingsWorkspaceProps) {
   const [open, setOpen] = useState(
-    Boolean(oauthFlash?.pickChannel || oauthFlash?.success || oauthFlash?.error),
+    Boolean(
+      initialConnect === "web" ||
+        oauthFlash?.pickChannel ||
+        oauthFlash?.success ||
+        oauthFlash?.error,
+    ),
   );
   const [initialPlatformId, setInitialPlatformId] = useState<string | undefined>(
-    oauthFlash?.pickChannel ?? oauthFlash?.success,
+    initialConnect === "web" ? "web" : (oauthFlash?.pickChannel ?? oauthFlash?.success),
   );
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
   const [syncing, setSyncing] = useState<string | null>(null);
@@ -331,9 +341,15 @@ export function SettingsWorkspace({
                       <div className="mt-3 space-y-2 rounded-xl border border-teal-200/80 bg-white px-3 py-2.5">
                         <CopyRow
                           title="Snippet gắn website"
-                          hint="Dán trước thẻ đóng body. Trả lời khách trong Inbox — widget tự lấy tin shop."
+                          hint="Dán trước thẻ đóng body trên site thật."
                           value={channel.widgetSnippet}
                         />
+                        {channel.widgetKey && channel.pageId ? (
+                          <WebWidgetExtensionControls
+                            widgetKey={channel.widgetKey}
+                            websiteHost={channel.pageId}
+                          />
+                        ) : null}
                         {channel.lastWebhookAt ? (
                           <p className="text-xs font-medium text-emerald-600">
                             Tin widget gần nhất: {formatDateTime(channel.lastWebhookAt)}
@@ -457,6 +473,7 @@ export function SettingsWorkspace({
           shopifyOAuthConfigured={shopifyOAuthConfigured}
           pendingMetaPages={pendingMetaPages}
           initialPlatformId={initialPlatformId}
+          suggestedWebHost={suggestedWebHost}
           onClose={() => setOpen(false)}
         />
       ) : null}

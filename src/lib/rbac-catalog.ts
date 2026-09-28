@@ -302,6 +302,8 @@ export const AUDIT_ACTIONS = {
   superAdminGrant: "staff.super_admin_grant",
   superAdminRevoke: "staff.super_admin_revoke",
   shopOpsUpdate: "shop.ops_update",
+  channelSyncUpdate: "platform.channel_sync_update",
+  channelSyncRun: "platform.channel_sync_run",
 } as const;
 
 export type AuditActionCode = (typeof AUDIT_ACTIONS)[keyof typeof AUDIT_ACTIONS];
@@ -345,6 +347,8 @@ export const AUDIT_ACTION_LABEL: Record<string, string> = {
   [AUDIT_ACTIONS.superAdminGrant]: "Gán Super admin",
   [AUDIT_ACTIONS.superAdminRevoke]: "Gỡ Super admin",
   [AUDIT_ACTIONS.shopOpsUpdate]: "Cập nhật gói / hỗ trợ shop",
+  [AUDIT_ACTIONS.channelSyncUpdate]: "Cập nhật quét kênh",
+  [AUDIT_ACTIONS.channelSyncRun]: "Quét kênh ngay",
 };
 
 export const AUDIT_ENTITY_LABEL: Record<string, string> = {
@@ -361,6 +365,7 @@ export const AUDIT_ENTITY_LABEL: Record<string, string> = {
   Product: "Sản phẩm",
   OrderChecklistTemplate: "Checklist đơn",
   OrderChecklistCheck: "Tick checklist",
+  PlatformSetting: "Cấu hình nền tảng",
 };
 
 export function auditActionLabel(action: string): string {

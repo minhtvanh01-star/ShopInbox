@@ -120,7 +120,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="page-header shrink-0 bg-[linear-gradient(180deg,#ffffff_0%,#f0fdfa_100%)] px-4 py-4 sm:px-6 sm:py-5">
         <h1 className="page-title">Hồ sơ cá nhân</h1>
-        <p className="page-subtitle">Cập nhật thông tin và phương thức đăng nhập của bạn.</p>
+        <p className="page-subtitle">Tài khoản đăng nhập.</p>
       </header>
 
       {flashMessage ? (
@@ -181,8 +181,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
               <div className="min-w-0">
                 <p className="text-sm font-medium text-slate-800">Ảnh đại diện</p>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Bấm vào ảnh để thêm hoặc đổi. JPEG, PNG, WebP, GIF · tối đa {STAFF_AVATAR_MAX_MB}MB.
-                  Ảnh lưu xong sẽ hiện cho đồng nghiệp.
+                  JPEG, PNG, WebP, GIF · tối đa {STAFF_AVATAR_MAX_MB}MB.
                 </p>
               </div>
             </div>
@@ -337,8 +336,7 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
             <section className="card-padded">
               <h2 className="text-base font-semibold text-slate-900">Liên kết Google</h2>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Chỉ liên kết khi bạn đã đăng nhập. ShopInbox không tự gắn Google vào tài khoản mật
-                khẩu khi người khác bấm Đăng nhập/Đăng ký với Google.
+                Chỉ gắn Google khi bạn đã đăng nhập.
               </p>
               {profile.googleOAuthConfigured ? (
                 <a
@@ -362,8 +360,8 @@ export function ProfileForm({ profile, flash }: ProfileFormProps) {
             </h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">
               {profile.hasPassword
-                ? "Bắt buộc OTP gửi tới email đã che. Sau đó đăng nhập bằng email + mật khẩu."
-                : "Thêm mật khẩu (OTP email) để đăng nhập ngoài, không cần Google."}
+                ? "Mã OTP gửi về email trước khi đổi."
+                : "Thêm mật khẩu để đăng nhập bằng email."}
             </p>
             {passwordStep === "otp" ? (
               <form action={passwordConfirmAction} className="mt-4 space-y-4">

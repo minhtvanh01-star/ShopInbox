@@ -295,7 +295,8 @@ Một bước đỏ thì sửa bước đó. Đừng nhảy sang auto-reply khi 
 | “Miền URL không nằm trong miền ứng dụng” | Chưa khai App Domains / Website | Thêm hostname, Save |
 | Redirect URI không được phép | URI Meta ≠ URI app đang dùng | Copy từ `NEXT_PUBLIC_APP_URL` + `/api/connect/meta/callback` |
 | OAuth OK, Inbox trống | Webhook / subscribe / sai hostname / Roles | Mục 3, 4.4, 11; xem `lastWebhookAt` |
-| Chỉ vài người nhắn được | App Development | Thêm tester hoặc Live + App Review |
+| «Ứng dụng không hoạt động» khi bấm Kết nối | App còn Development; nick Facebook không có trong Roles | Meta Developers → App roles → Add Testers (đúng email nick đó). Muốn mọi nick nối/nhắn được thì Live + App Review |
+| Chỉ vài người nhắn / đồng bộ được | App Development | Thêm tester hoặc Live + App Review |
 | Gửi bị Meta từ chối | Hết cửa sổ 24h (IG) hoặc Human Agent chưa duyệt (FB) | Khách nhắn lại; xem banner composer |
 | IG nối được nhưng không có DM | Sai Page, chưa link IG, webhook IG thiếu | Đúng Page có IG; cấu hình webhook IG |
 | Hôm qua ngrok A, hôm nay B | URL đổi | Sửa env + Redirect + Webhook + App Domains |

@@ -22,6 +22,7 @@ import { absoluteAppUrl, getRequestOrigin } from "@/backend/public-url";
 import type { Channel } from "@/lib/types";
 import { AUDIT_ACTIONS, PERMISSION_CODES } from "@/lib/rbac-catalog";
 import { sanitizeOAuthFlashMessage } from "@/lib/meta-webhook-security";
+import { metaCallbackErrorCode } from "@/lib/oauth-flash";
 
 function settingsUrl(request: Request, params: Record<string, string>) {
   const url = absoluteAppUrl(request, "/settings");
@@ -55,8 +56,13 @@ export async function GET(request: Request) {
       const statePayload = await verifyOAuthStateToken(stateParam);
       channel = statePayload?.channel ?? "";
     }
+    const oauthError = metaCallbackErrorCode({
+      error,
+      errorDescription: searchParams.get("error_description"),
+      errorReason: searchParams.get("error_reason"),
+    });
     const response = NextResponse.redirect(
-      settingsUrl(request, { oauth_error: "meta_denied", ...(channel ? { channel } : {}) }),
+      settingsUrl(request, { oauth_error: oauthError, ...(channel ? { channel } : {}) }),
     );
     response.cookies.delete(OAUTH_STATE_COOKIE);
     return response;

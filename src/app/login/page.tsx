@@ -27,12 +27,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     <AuthShell
       title="Đăng nhập"
       subtitle="Inbox đa kênh cho cửa hàng"
-      intro={
-        <>
-          Đăng nhập bằng email/mật khẩu hoặc Google đã liên kết. Chủ shop mới đăng ký sẽ vào màn
-          cấu hình cửa hàng trước. Nhân viên vào shop bằng link mời, không đăng ký công khai.
-        </>
-      }
     >
       <LoginForm
         shopName="Nexo"

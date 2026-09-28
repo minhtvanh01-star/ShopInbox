@@ -42,6 +42,8 @@ npm run dev
 
 Mở [http://localhost:3000](http://localhost:3000) → trang đăng nhập.
 
+Tiện ích Chrome gắn thử Chat website: [extensions/web-widget/README.md](extensions/web-widget/README.md).
+
 ### Tài khoản demo
 
 | Vai trò | Email | Mật khẩu |

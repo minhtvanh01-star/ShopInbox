@@ -36,7 +36,7 @@ export function ShopPolicyForm({
     <section className="card-padded">
       <h2 className="text-sm font-semibold text-slate-900">Cấu hình cửa hàng</h2>
       <p className="mt-1 text-xs text-slate-500">
-        Chỉ Admin mới đổi được. Tên shop, nhả hội thoại, và giới hạn nhân viên của shop này.
+        Chỉ Admin mới đổi được.
       </p>
       <p
         role="status"
